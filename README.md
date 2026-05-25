@@ -1,56 +1,102 @@
-# Welcome to your Expo app 👋
+# MissionTrail-2.0
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+<p align="center">
+  <img src="./assets/images/splash_screen.png" width="700">
+</p>
 
-## Get started
+<p align="center">
+  <strong>CHART YOUR JOURNEY. EXPLORE YOUR WORLD.</strong>
+</p>
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
+## About Mission Trails
 
-2. Start the app
+Mission Trails is a location-based exploration and fitness mobile application designed to turn real-world movement into an interactive adventure.
 
-   ```bash
-   npx expo start
-   ```
+The app is built around the idea that fitness should feel exciting, rewarding, and social instead of repetitive. Instead of only tracking steps, calories, or workout numbers, Mission Trails uses movement as part of a larger exploration system. Users walk, explore, complete missions, unlock collectibles, level up companions, and build progress through outdoor activity.
 
-In the output, you'll find options to open the app in a
+Mission Trails is designed to motivate users to move more by giving them a reason to explore the world around them.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+---
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## What the App Does
 
-## Get a fresh project
+Mission Trails allows users to turn everyday walking and outdoor movement into a game-like experience. When users open the app, they can access missions, track their movement, view their live location, and explore areas around them through an interactive map system.
 
-When you're ready, run:
+As users walk, the app can track their movement through GPS and display glowing trails that show where they have traveled. These trails help users visualize their routes, distance, and exploration history in a more exciting way than a normal fitness tracker.
 
-```bash
-npm run reset-project
-```
+The app also includes missions that give users objectives to complete while moving outdoors. These missions can reward users with XP, collectibles, companion progress, badges, and other unlockable rewards. This gives users a stronger reason to stay active and continue exploring.
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Mission Trails also includes companion systems. Users can unlock companions, level them up, customize them, and evolve them through activity and mission completion. The more users explore and complete objectives, the more their companion grows with them.
 
-### Other setup steps
+Collectibles are another major part of the app. Users can discover items, rewards, and rare collectibles while exploring different locations. These collectibles can be stored in an inventory system and may later support rarity levels, trading, event rewards, and special unlocks.
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+The app also supports social interaction. Users can add friends, compare progress, invite others to missions, view leaderboard rankings, and participate in community challenges. This turns outdoor movement into a shared experience instead of something users do alone.
 
-## Learn more
+---
 
-To learn more about developing your project with Expo, look at the following resources:
+## Main App Systems
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Mission Trails is planned around several connected systems:
 
-## Join the community
+- A splash screen that introduces the Mission Trails brand.
+- A login and signup system for secure user accounts.
+- A home mission hub where users can view progress and start missions.
+- A live map that tracks real-time GPS movement.
+- A glowing trail system that shows where users have walked.
+- A mission system that gives users objectives and rewards.
+- A companion system for leveling, evolution, and customization.
+- A profile screen for user stats, progress, achievements, and activity.
+- An inventory system for collectibles, rewards, and unlocked items.
+- A leaderboard system for XP, mission rankings, and seasonal events.
+- A friends and chat system for social interaction.
+- A trading system for exchanging collectibles and rewards.
+- Future support for AR features, live events, and multiplayer exploration.
 
-Join our community of developers creating universal apps.
+---
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## User Experience
+
+The visual style of Mission Trails is designed to feel futuristic, dark, glowing, and immersive. The app uses neon colors, rounded interface elements, animated screens, glowing effects, and a sci-fi exploration theme.
+
+The goal is to make the app feel more like an adventure game than a basic fitness tracker. Screens are designed to feel clean but exciting, with a strong focus on movement, progression, missions, and discovery.
+
+The live map is one of the most important screens in the app. It is intended to show the user’s real-time movement, glowing walking trails, nearby collectibles, active missions, and other player activity.
+
+---
+
+## Purpose of the App
+
+Mission Trails is made for people who want fitness to feel more engaging. Many people lose motivation with normal fitness apps because the experience becomes repetitive. Mission Trails solves that problem by connecting movement to rewards, exploration, progression, and social interaction.
+
+The app encourages users to:
+
+- Walk more often.
+- Explore outdoor spaces.
+- Complete goals and missions.
+- Build healthy habits.
+- Unlock rewards through activity.
+- Interact with friends.
+- Stay motivated through progression systems.
+
+Instead of asking users to put their phones away, Mission Trails uses the phone as a tool to encourage healthier real-world movement.
+
+---
+
+## Future Vision
+
+Future versions of Mission Trails may include augmented reality companion interactions, 3D collectibles, companion battles, live multiplayer missions, hidden locations, seasonal events, voice chat, advanced movement statistics, heatmaps, and larger community-based challenges.
+
+The long-term goal is to create a mobile experience that combines fitness, exploration, gaming, and social interaction into one connected world.
+
+---
+
+## Development Team
+
+Created by:
+
+- Michael Clark  
+- Krystal Pereira
+
+MissionTrail-2.0
