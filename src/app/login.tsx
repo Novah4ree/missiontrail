@@ -1,21 +1,21 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  View,
+  Animated,
+  Image,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  Image,
-  Animated,
+  View,
 } from 'react-native';
 
-import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import {
-  Ionicons,
   FontAwesome,
+  Ionicons,
   MaterialCommunityIcons,
 } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Href, useRouter } from 'expo-router';
 
 export default function LoginScreen() {
 
@@ -133,6 +133,7 @@ export default function LoginScreen() {
 
         <TouchableOpacity
           style={styles.signInWrapper}
+          onPress={() => router.replace('/home-backup' as Href)}
         >
 
           <Animated.View
