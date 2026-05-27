@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+
 import {
     Dimensions,
     Image,
@@ -15,11 +16,31 @@ import {
     Text,
     View,
 } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
+
+type Region = {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+};
+
+let MapView: any = View;
+let Marker: any = View;
+let Polyline: any = View;
+let PROVIDER_GOOGLE: any = null;
+
+if (Platform.OS !== 'web') {
+  const Maps = require('react-native-maps');
+
+  MapView = Maps.default;
+  Marker = Maps.Marker;
+  Polyline = Maps.Polyline;
+  PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
+}
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type NeonIconName = React.ComponentProps<typeof Ionicons>['name'];
-
 const screen = Dimensions.get('window');
 const isSmallPhone = screen.height < 740 || screen.width < 380;
 const sidePadding = isSmallPhone ? 9 : 12;

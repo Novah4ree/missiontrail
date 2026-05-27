@@ -1,4 +1,9 @@
+// =======================
+// IMPORTS
+// =======================
+
 import React, { useEffect, useRef, useState } from 'react';
+
 import {
   Animated,
   Image,
@@ -14,61 +19,122 @@ import {
   Ionicons,
   MaterialCommunityIcons,
 } from '@expo/vector-icons';
+
 import { LinearGradient } from 'expo-linear-gradient';
+
 import { Href, useRouter } from 'expo-router';
+
+// =======================
+// LOGIN SCREEN
+// =======================
 
 export default function LoginScreen() {
 
+  // =======================
+  // ROUTER
+  // =======================
+
   const router = useRouter();
+
+  // =======================
+  // USER INPUT STATES
+  // =======================
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  // =======================
+  // PASSWORD VISIBILITY
+  // =======================
+
   const [showPassword, setShowPassword] = useState(false);
 
+  // =======================
+  // ANIMATED GRADIENT
+  // =======================
+
   const gradientAnim = useRef(new Animated.Value(0)).current;
+
+  // =======================
+  // START BUTTON ANIMATION
+  // =======================
 
   useEffect(() => {
 
     Animated.loop(
+
       Animated.sequence([
+
         Animated.timing(gradientAnim,{
           toValue:1,
           duration:2500,
           useNativeDriver:true,
         }),
+
         Animated.timing(gradientAnim,{
           toValue:0,
           duration:2500,
           useNativeDriver:true,
         }),
+
       ])
+
     ).start();
 
   },[]);
+
+  // =======================
+  // GRADIENT SLIDE
+  // =======================
 
   const slideX = gradientAnim.interpolate({
     inputRange:[0,1],
     outputRange:[-140,140],
   });
 
+  // =======================
+  // SCREEN UI
+  // =======================
+
   return (
 
     <View style={styles.container}>
+
+      {/* =======================
+          MAIN LOGO IMAGE
+      ======================= */}
+      {/* Wider image and moved upward */}
 
       <Image
         source={require('../../assets/images/splash_screen.png')}
         style={styles.logo}
       />
 
+      {/* =======================
+          SUBTITLE
+      ======================= */}
+
       <Text style={styles.subtitle}>
         CHART YOUR JOURNEY. EXPLORE YOUR WORLD.
       </Text>
 
+      {/* =======================
+          LOGIN CARD
+      ======================= */}
+
       <View style={styles.card}>
+
+        {/* =======================
+            LOGIN TITLE
+        ======================= */}
 
         <Text style={styles.loginTitle}>
           Login
         </Text>
+
+        {/* =======================
+            EMAIL INPUT
+        ======================= */}
 
         <View style={styles.inputBox}>
 
@@ -88,6 +154,10 @@ export default function LoginScreen() {
 
         </View>
 
+        {/* =======================
+            PASSWORD INPUT
+        ======================= */}
+
         <View style={styles.inputBox}>
 
           <Ionicons
@@ -104,6 +174,10 @@ export default function LoginScreen() {
             value={password}
             onChangeText={setPassword}
           />
+
+          {/* =======================
+              PASSWORD EYE BUTTON
+          ======================= */}
 
           <TouchableOpacity
             onPress={() => setShowPassword(!showPassword)}
@@ -123,6 +197,10 @@ export default function LoginScreen() {
 
         </View>
 
+        {/* =======================
+            FORGOT PASSWORD
+        ======================= */}
+
         <TouchableOpacity>
 
           <Text style={styles.forgotText}>
@@ -131,10 +209,18 @@ export default function LoginScreen() {
 
         </TouchableOpacity>
 
+        {/* =======================
+            SIGN IN BUTTON
+        ======================= */}
+
         <TouchableOpacity
           style={styles.signInWrapper}
           onPress={() => router.replace('/home-backup' as Href)}
         >
+
+          {/* =======================
+              MOVING GRADIENT
+          ======================= */}
 
           <Animated.View
             style={{
@@ -164,6 +250,10 @@ export default function LoginScreen() {
 
         </TouchableOpacity>
 
+        {/* =======================
+            BIOMETRIC BUTTON
+        ======================= */}
+
         <TouchableOpacity
           style={styles.bioButton}
         >
@@ -180,11 +270,23 @@ export default function LoginScreen() {
 
         </TouchableOpacity>
 
+        {/* =======================
+            SOCIAL LOGIN TITLE
+        ======================= */}
+
         <Text style={styles.orText}>
           OR CONTINUE WITH
         </Text>
 
+        {/* =======================
+            SOCIAL BUTTONS
+        ======================= */}
+
         <View style={styles.socialRow}>
+
+          {/* =======================
+              APPLE BUTTON
+          ======================= */}
 
           <TouchableOpacity
             style={styles.socialButton}
@@ -201,6 +303,10 @@ export default function LoginScreen() {
             </Text>
 
           </TouchableOpacity>
+
+          {/* =======================
+              GOOGLE BUTTON
+          ======================= */}
 
           <TouchableOpacity
             style={styles.socialButton}
@@ -220,7 +326,13 @@ export default function LoginScreen() {
 
         </View>
 
-        <TouchableOpacity>
+        {/* =======================
+            CREATE ACCOUNT BUTTON
+        ======================= */}
+
+        <TouchableOpacity
+          onPress={() => router.push('/Signup' as Href)}
+        >
 
           <Text style={styles.createText}>
             Don't have an account?{' '}
@@ -238,98 +350,159 @@ export default function LoginScreen() {
   );
 }
 
+// =======================
+// STYLES
+// =======================
+
 const styles = StyleSheet.create({
+
+  // =======================
+  // MAIN CONTAINER
+  // =======================
 
   container:{
     flex:1,
-    backgroundColor:'#05050E',
+    backgroundColor:'#02020A',
     justifyContent:'center',
     alignItems:'center',
     paddingHorizontal:22,
   },
 
+  // =======================
+  // MAIN IMAGE
+  // =======================
+  // Widened image and moved upward
+
   logo:{
-    width:280,
-    height:280,
+    width:700,
+    height:420,
+
     resizeMode:'contain',
-    marginBottom:-30,
-  },
+
+    // Push image upward
+    marginTop:-260,
+
+    // Creates space BELOW image
+    // so it sits ABOVE the text cleanly
+    marginBottom:-120,
+
+    alignSelf:'center',
+},
+  // =======================
+  // SUBTITLE
+  // =======================
 
   subtitle:{
     color:'#63D8FF',
     fontSize:11,
     letterSpacing:2,
-    marginBottom:14,
+    marginBottom:16,
     textAlign:'center',
   },
+
+  // =======================
+  // MAIN CARD
+  // =======================
+  // Removed ugly double border lines
 
   card:{
     width:'92%',
-    maxWidth:420,
-    backgroundColor:'#111124',
-    borderRadius:30,
-    paddingVertical:24,
+    maxWidth:480,
+    backgroundColor:'#101020',
+    borderRadius:32,
+    paddingVertical:26,
     paddingHorizontal:22,
-    borderWidth:1,
-    borderColor:'#2A2A4E',
+
     shadowColor:'#7B42F6',
-    shadowOpacity:0.35,
-    shadowRadius:18,
-    elevation:12,
+    shadowOpacity:0.45,
+    shadowRadius:24,
+    elevation:20,
   },
+
+  // =======================
+  // LOGIN TITLE
+  // =======================
 
   loginTitle:{
     color:'#FFF',
-    fontSize:28,
+    fontSize:34,
     fontWeight:'700',
     textAlign:'center',
-    marginBottom:18,
+    marginBottom:24,
   },
+
+  // =======================
+  // INPUT BOX
+  // =======================
 
   inputBox:{
     flexDirection:'row',
     alignItems:'center',
-    backgroundColor:'#191932',
+    backgroundColor:'#1A1A36',
     borderRadius:18,
     paddingHorizontal:16,
-    height:56,
-    marginBottom:14,
+    height:60,
+    marginBottom:18,
   },
+
+  // =======================
+  // INPUT TEXT
+  // =======================
 
   input:{
     flex:1,
     color:'#FFF',
-    fontSize:15,
+    fontSize:16,
     marginLeft:10,
   },
+
+  // =======================
+  // FORGOT PASSWORD
+  // =======================
 
   forgotText:{
     color:'#63D8FF',
     textAlign:'right',
-    fontSize:13,
-    marginBottom:18,
+    fontSize:14,
+    marginBottom:20,
   },
 
+  // =======================
+  // SIGN IN BUTTON
+  // =======================
+
   signInWrapper:{
-    height:54,
+    height:58,
     borderRadius:18,
     overflow:'hidden',
     justifyContent:'center',
     alignItems:'center',
-    marginBottom:14,
+    marginBottom:16,
   },
+
+  // =======================
+  // BUTTON GRADIENT
+  // =======================
 
   gradient:{
     width:'100%',
     height:'100%',
   },
 
+  // =======================
+  // SIGN IN TEXT
+  // =======================
+
   signInText:{
     color:'#FFF',
-    fontSize:17,
+    fontSize:20,
     fontWeight:'bold',
     letterSpacing:1,
   },
+
+  // =======================
+  // BIOMETRICS BUTTON
+  // =======================
 
   bioButton:{
     flexDirection:'row',
@@ -337,53 +510,82 @@ const styles = StyleSheet.create({
     alignItems:'center',
     backgroundColor:'#17172D',
     borderRadius:18,
-    paddingVertical:14,
-    marginBottom:18,
+    paddingVertical:16,
+    marginBottom:22,
   },
+
+  // =======================
+  // BIOMETRIC TEXT
+  // =======================
 
   bioText:{
     color:'#63D8FF',
     marginLeft:10,
     fontWeight:'600',
+    fontSize:16,
   },
+
+  // =======================
+  // OR TEXT
+  // =======================
 
   orText:{
     color:'#767676',
     textAlign:'center',
     fontSize:11,
-    marginBottom:16,
-    letterSpacing:1.5,
+    marginBottom:18,
+    letterSpacing:2,
   },
+
+  // =======================
+  // SOCIAL BUTTON ROW
+  // =======================
 
   socialRow:{
     flexDirection:'row',
     justifyContent:'space-between',
     gap:14,
-    marginBottom:22,
+    marginBottom:24,
   },
+
+  // =======================
+  // SOCIAL BUTTON
+  // =======================
 
   socialButton:{
     flex:1,
-    backgroundColor:'#191932',
+    backgroundColor:'#1A1A36',
     borderRadius:18,
-    height:58,
+    height:60,
     flexDirection:'row',
     justifyContent:'center',
     alignItems:'center',
   },
 
+  // =======================
+  // SOCIAL LABEL
+  // =======================
+
   socialLabel:{
     color:'#FFFFFF',
     marginLeft:10,
     fontWeight:'600',
-    fontSize:15,
+    fontSize:16,
   },
+
+  // =======================
+  // CREATE ACCOUNT TEXT
+  // =======================
 
   createText:{
     color:'#AAAAAA',
     textAlign:'center',
-    fontSize:13,
+    fontSize:14,
   },
+
+  // =======================
+  // CREATE ACCOUNT HIGHLIGHT
+  // =======================
 
   createAccent:{
     color:'#FF4FD8',
