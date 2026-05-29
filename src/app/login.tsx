@@ -12,6 +12,11 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+<<<<<<< Updated upstream
+=======
+  Alert,
+  ActivityIndicator,
+>>>>>>> Stashed changes
 } from 'react-native';
 
 import {
@@ -48,6 +53,7 @@ export default function LoginScreen() {
   // =======================
 
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // =======================
   // ANIMATED GRADIENT
@@ -93,9 +99,79 @@ export default function LoginScreen() {
   });
 
   // =======================
+<<<<<<< Updated upstream
   // SCREEN UI
   // =======================
 
+=======
+  // EMAIL SIGN IN (DATABASE CHECK)
+  // =======================
+
+  const handleSignIn = async () => {
+    // Stops empty fields and password bypass dead in their tracks
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Missing Fields', 'Please enter your email and password.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password,
+      });
+
+      if (error) {
+        Alert.alert('Login Failed', error.message);
+        setLoading(false);
+        return;
+      }
+
+      // Explicitly forcing screen route swap fallback
+      setLoading(false);
+      router.replace('/home-backup' as Href);
+    } catch (err) {
+      Alert.alert('Error', 'An unexpected system error occurred.');
+      setLoading(false);
+    }
+  };
+
+  // =======================
+  // GOOGLE SIGN IN
+  // =======================
+
+  const handleGoogleSignIn = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: 'myapp://home-backup',
+      },
+    });
+
+    if (error) {
+      Alert.alert('Google Sign In Error', error.message);
+    }
+  };
+
+  // =======================
+  // APPLE SIGN IN
+  // =======================
+
+  const handleAppleSignIn = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'apple',
+      options: {
+        redirectTo: 'myapp://home-backup',
+      },
+    });
+
+    if (error) {
+      Alert.alert('Apple Sign In Error', error.message);
+    }
+  };
+
+>>>>>>> Stashed changes
   return (
 
     <View style={styles.container}>
@@ -148,6 +224,8 @@ export default function LoginScreen() {
             style={styles.input}
             placeholder="Email"
             placeholderTextColor="#777"
+            autoCapitalize="none"
+            keyboardType="email-address"
             value={email}
             onChangeText={setEmail}
           />
@@ -171,6 +249,7 @@ export default function LoginScreen() {
             placeholder="Password"
             placeholderTextColor="#777"
             secureTextEntry={!showPassword}
+            autoCapitalize="none"
             value={password}
             onChangeText={setPassword}
           />
@@ -215,7 +294,8 @@ export default function LoginScreen() {
 
         <TouchableOpacity
           style={styles.signInWrapper}
-          onPress={() => router.replace('/home-backup' as Href)}
+          onPress={handleSignIn}
+          disabled={loading}
         >
 
           {/* =======================
@@ -244,10 +324,18 @@ export default function LoginScreen() {
 
           </Animated.View>
 
+<<<<<<< Updated upstream
           <Text style={styles.signInText}>
             SIGN IN
           </Text>
 
+=======
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.signInText}>SIGN IN</Text>
+          )}
+>>>>>>> Stashed changes
         </TouchableOpacity>
 
         {/* =======================
