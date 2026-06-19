@@ -770,15 +770,12 @@ function renderBottomTabBar(router: AppRouter) {
             ]}
 
             onPress={() => {
-
-              if (tab.key === 'profile') {
-                router.push('/profile');
-              }
-
-              if (tab.key === 'home') {
-                router.push('/home-backup');
-              }
-
+              if (tab.key === 'home') router.push('/home-backup');
+              if (tab.key === 'mission') router.push('/mission');
+              if (tab.key === 'trails') router.push('/trails');
+              if (tab.key === 'vault') router.push('/vault');
+              if (tab.key === 'profile') router.push('/profile');
+              if (tab.key === 'companion') router.push('/companion');
             }}
           >
             <View
