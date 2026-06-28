@@ -84,7 +84,7 @@ const mapButtons = [
 ] as const;
 
 // 20 MPH limit. If they move faster, tracking pauses.
-const WARNING_SPEED_MPH = 10;
+const WARNING_SPEED_MPH = 15;
 
 const WARNING_SPEED_MPS = WARNING_SPEED_MPH * 0.44704;
 
@@ -110,9 +110,9 @@ const darkMapStyle = [
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
 ];
 
-// =======================
+// =======================+
 // HOME SCREEN
-// =======================
+// =======================+
 // This is the main screen for the map.
 export default function HomeScreen() {
   const router = useRouter();
@@ -469,8 +469,9 @@ function renderUserGlow(
 }
 
 // This makes a soft transparent background from the selected aura color.
+// Increase for stronger glow, decrease for subtler effect.
 function getAuraGlowBackground(auraColor: string) {
-  return `${auraColor}06`;
+  return `${auraColor}55`;
 }
 
 // This shows the small floating aura button on the map.
@@ -808,9 +809,9 @@ function renderBottomTabBar(router: AppRouter) {
   );
 }
 
-// =======================
+// =======================+
 // STYLES
-// =======================
+// =======================+
 // This controls how everything looks.
 const styles = StyleSheet.create({
   screen: {
@@ -1264,47 +1265,47 @@ progressFill: {
   },
 
   mapFootprintGlow: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 78,
+    height: 78,
+    borderRadius: 39,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 99, 247, 0.01)',
+    backgroundColor: 'rgba(255, 99, 247, 0.12)',
     shadowColor: '#ff63f7',
-    shadowOpacity: 0.07,
-    shadowRadius: 4,
+    shadowOpacity: 0.24,
+    shadowRadius: 10,
     shadowOffset: {
       width: 0,
       height: 0,
     },
-    elevation: 3,
+    elevation: 7,
   },
 
   mapFootprintImage: {
-    width: 96,
-    height: 96,
+    width: 92,
+    height: 92,
   },
 
   currentFootprintGlow: {
-    width: 124,
-    height: 124,
-    borderRadius: 62,
+    width: 102,
+    height: 102,
+    borderRadius: 51,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 99, 247, 0.01)',
+    backgroundColor: 'rgba(255, 99, 247, 0.16)',
     shadowColor: '#ff63f7',
-    shadowOpacity: 0.08,
-    shadowRadius: 5,
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
     shadowOffset: {
       width: 0,
       height: 0,
     },
-    elevation: 4,
+    elevation: 9,
   },
 
   currentFootprintImage: {
-    width: 124,
-    height: 124,
+    width: 118,
+    height: 118,
   },
 
   tabBar: {
