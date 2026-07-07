@@ -1,12 +1,12 @@
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 const items = [
-  { title: "Cosmic Shard", rarity: "Legendary", color: "#ffd700" },
-  { title: "Nebula Crystal", rarity: "Epic", color: "#f000ff"  },
-  { title: "Star Fragment", rarity: "Rare", color: "#00d9ff" },
-  { title: "Undiscovered", rarity: "", color: "#4b345f" },
-
+  { title: "Cosmic Shard", rarity: "Legendary", color: "#ffd700", icon: require("../../assets/images/vaulticons/cosmicshard.png") },
+  { title: "Nebula Crystal", rarity: "Epic", color: "#f000ff", icon: require("../../assets/images/vaulticons/nebulacrystal.png") },
+  { title: "Star Fragment", rarity: "Rare", color: "#00d9ff", icon: require("../../assets/images/vaulticons/starfragment.png") },
+  { title: "Undiscovered", rarity: "Unknown", color: "#4b345f", icon: require("../../assets/images/vaulticons/undiscovered.png") },
+  { title: "Aurora Gem", rarity: "Epic", color: "#f000ff", icon: require("../../assets/images/vaulticons/auroragem.png") },
+  { title: "Eclipse Orb", rarity: "Epic", color: "#5E4B8B", icon: require("../../assets/images/vaulticons/eclipseorb.png") },
 ];
-
 export default function VaultScreen() {
   return (
     <View style={styles.container}>
@@ -50,13 +50,10 @@ export default function VaultScreen() {
                       ? "rgba(80,45,70,0.25)"
                       : "rgba(237,16,149,0.15)",
                 },
-              ]}
-            >
+              ]}>
               <View style={[styles.iconBox, { borderColor: item.color }]}>
-                <Text style={[styles.icon, { color: item.color }]}>
-                  
-                </Text>
-              </View>
+                <Image source={item.icon} style={styles.itemIcon} />
+               </View>
 
               <Text style={[styles.cardTitle, { color: item.color }]}>
                 {item.title}
@@ -202,6 +199,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  itemIcon: {
+  width: 52,
+  height: 52,
+  resizeMode: "contain",
+},
 
   rankTitle: {
     color: "#fff",
