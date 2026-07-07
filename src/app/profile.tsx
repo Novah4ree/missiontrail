@@ -14,7 +14,7 @@ import {
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 
 // Stepping up twice to escape /app and /src to reach root lib
 import { supabase } from '../../lib/supabase';
@@ -29,6 +29,7 @@ const tabBarHeight = isSmallPhone ? 72 : 82;
 // =======================
 const tabImages = {
   home: require('../../assets/images/tabIcons/homemain.png'),
+  map: require('../../assets/images/tabIcons/map.png'),
   mission: require('../../assets/images/tabIcons/mission.png'),
   trails: require('../../assets/images/tabIcons/trails.png'),
   vault: require('../../assets/images/tabIcons/vault.png'),
@@ -38,6 +39,7 @@ const tabImages = {
 
 const bottomTabs = [
   { key: 'home-backup', label: 'Home', image: tabImages.home },
+  { key: 'map', label: 'Map', image: tabImages.map },
   { key: 'mission', label: 'Mission', image: tabImages.mission },
   { key: 'trails', label: 'Trails', image: tabImages.trails },
   { key: 'vault', label: 'Vault', image: tabImages.vault },
@@ -56,7 +58,7 @@ export default function ProfileScreen() {
       await supabase.auth.signOut();
       
       // 2. Clear route state and force direct login redirect
-      router.replace('/login');
+      router.replace('/login' as Href);
     } catch (error) {
       console.error('Error signing out:', error);
     }
@@ -143,12 +145,8 @@ export default function ProfileScreen() {
                 key={tab.key} 
                 style={({ pressed }) => [styles.tabButton, pressed && styles.pressed]}
                 onPress={() => {
-                  if (tab.key === 'home-backup') router.push('/home-backup');
-                  if (tab.key === 'mission') router.push('/mission');
-                  if (tab.key === 'trails') router.push('/trails');
-                  if (tab.key === 'vault') router.push('/vault');
-                  if (tab.key === 'profile') router.push('/profile');
-                  if (tab.key === 'companion') router.push('/companion');
+                  if (tab.key === 'home-backup') router.push('/home-backup' as Href);
+                  if (tab.key === 'profile') router.push('/profile' as Href);
                 }}
               >
                 <View style={[styles.tabIconWrap, isActiveTab && styles.activeTabIconWrap]}>
@@ -175,11 +173,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a0a1a',
   },
   cosmicOverlay: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(18, 10, 46, 0.25)',
   },
   scrollContainer: {

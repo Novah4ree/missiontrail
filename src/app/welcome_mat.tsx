@@ -1,18 +1,40 @@
 // ======================================================
-// WELCOME MAT
+// WELCOME_MAT.TSX
+// ======================================================
+// Mission Trail Verification Screen
+//
+// FLOW:
+//
+// 1. User creates account
+// 2. User arrives here
+// 3. Welcome message appears
+// 4. User checks email
+// 5. User clicks verification link
+// 6. Supabase updates verification status
+// 7. User returns to app
+// 8. User presses CHECK VERIFICATION
+// 9. Screen updates automatically
+// 10. VERIFIED message appears
+// 11. HOME / LOGIN button appears
 // ======================================================
 
 import React, { useState } from 'react';
 
 import {
+  Alert,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  Linking,
 } from 'react-native';
 
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
+
+// ======================================================
+// SUPABASE
+// ======================================================
+
+import { supabase } from '../../lib/supabase';
 
 // ======================================================
 // SCREEN
@@ -20,63 +42,197 @@ import { router, useLocalSearchParams } from 'expo-router';
 
 export default function WelcomeMat() {
 
-  const { email } = useLocalSearchParams<{ email?: string }>();
-
-  const [isVerified] = useState(false);
-
   // ======================================================
-  // OPEN EMAIL APP (FIXED)
+  // USER VERIFIED STATE
   // ======================================================
 
-  const openEmailInbox = async () => {
-    try {
-      // This opens the user's default email app (Gmail, Apple Mail, Outlook, etc.)
-      await Linking.openURL('mailto:');
-    } catch (err) {
-      console.log('Failed to open email app:', err);
+  const [isVerified, setIsVerified] = useState(false);
+
+  // ======================================================
+  // LOADING STATE
+  // ======================================================
+
+  const [checkingVerification, setCheckingVerification] =
+    useState(false);
+
+  // ======================================================
+  // CHECK EMAIL VERIFICATION
+  // ======================================================
+
+  const checkVerification = async () => {
+
+    // ======================================================
+    // START LOADING
+    // ======================================================
+
+    setCheckingVerification(true);
+
+    // ======================================================
+    // GET USER
+    // ======================================================
+
+    const {
+
+      data: { user },
+
+      error,
+
+    } = await supabase.auth.getUser();
+
+    // ======================================================
+    // STOP LOADING
+    // ======================================================
+
+    setCheckingVerification(false);
+
+    // ======================================================
+    // ERROR
+    // ======================================================
+
+    if (error) {
+
+      Alert.alert(
+        'Error',
+        error.message
+      );
+
+      return;
     }
+
+    // ======================================================
+    // USER VERIFIED
+    // ======================================================
+
+    if (user?.email_confirmed_at) {
+
+      // ======================================================
+      // UPDATE SCREEN STATE
+      // ======================================================
+
+      setIsVerified(true);
+
+      return;
+    }
+
+    // ======================================================
+    // USER NOT VERIFIED
+    // ======================================================
+
+    Alert.alert(
+      'Not Verified',
+      'Please check your email and verify your account first.'
+    );
   };
 
+  // ======================================================
+  // GO TO LOGIN SCREEN
+  // ======================================================
+
+  const goToLogin = () => {
+
+    router.replace('/login');
+  };
+
+  // ======================================================
+  // SCREEN
+  // ======================================================
+
   return (
+
     <View style={styles.container}>
+
+      {/* ======================================================
+          TITLE
+      ====================================================== */}
 
       <Text style={styles.title}>
         Mission Trail
       </Text>
 
+      {/* ======================================================
+          MESSAGE AREA
+      ====================================================== */}
+
       {!isVerified ? (
+
+        // ======================================================
+        // BEFORE VERIFICATION
+        // ======================================================
+
         <>
+
           <Text style={styles.message}>
-            We sent a verification email to:
-            {'\n'}
-            {String(email)}
+
+            Congratulations on creating your new Mission Trail account.
+
+            {'\n\n'}
+
+            A verification email has been sent to your inbox.
+
+            {'\n\n'}
+
+            Please check your email and verify your account.
+
           </Text>
 
-          {/* CHECK EMAIL BUTTON */}
+          {/* ======================================================
+              CHECK VERIFICATION BUTTON
+          ====================================================== */}
+
           <TouchableOpacity
-            style={styles.emailButton}
-            onPress={openEmailInbox}
+            style={styles.button}
+            onPress={checkVerification}
           >
+
             <Text style={styles.buttonText}>
-              CHECK EMAIL
+
+              {
+                checkingVerification
+                  ? 'CHECKING...'
+                  : 'CHECK VERIFICATION'
+              }
+
             </Text>
+
           </TouchableOpacity>
+
         </>
+
       ) : (
+
+        // ======================================================
+        // AFTER VERIFICATION
+        // ======================================================
+
         <>
+
           <Text style={styles.verifiedMessage}>
-            Verified successfully.
+
+            Your account has been successfully verified.
+
+            {'\n\n'}
+
+            Please continue to the login screen.
+
           </Text>
+
+          {/* ======================================================
+              LOGIN BUTTON
+          ====================================================== */}
 
           <TouchableOpacity
             style={styles.successButton}
-            onPress={() => router.replace('/login')}
+            onPress={goToLogin}
           >
+
             <Text style={styles.buttonText}>
               GO TO LOGIN
             </Text>
+
           </TouchableOpacity>
+
         </>
+
       )}
 
     </View>
@@ -84,64 +240,125 @@ export default function WelcomeMat() {
 }
 
 // ======================================================
-// STYLES (FIXED BUTTON WIDTH)
+// STYLES
 // ======================================================
 
 const styles = StyleSheet.create({
 
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 25,
+  // ======================================================
+  // MAIN CONTAINER
+  // ======================================================
+
+  container:{
+    flex:1,
+
+    backgroundColor:'#000000',
+
+    justifyContent:'center',
+
+    alignItems:'center',
+
+    paddingHorizontal:25,
   },
 
-  title: {
-    color: '#fff',
-    fontSize: 42,
-    fontWeight: 'bold',
-    marginBottom: 30,
+  // ======================================================
+  // TITLE
+  // ======================================================
+
+  title:{
+    color:'#FFFFFF',
+
+    fontSize:42,
+
+    fontWeight:'bold',
+
+    marginBottom:35,
+
+    textAlign:'center',
   },
 
-  message: {
-    color: '#ccc',
-    fontSize: 18,
-    textAlign: 'center',
-    marginBottom: 30,
+  // ======================================================
+  // MESSAGE
+  // ======================================================
+
+  message:{
+    color:'#DDDDDD',
+
+    fontSize:20,
+
+    textAlign:'center',
+
+    lineHeight:34,
+
+    marginBottom:40,
   },
 
-  verifiedMessage: {
-    color: '#63D8FF',
-    fontSize: 22,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 30,
+  // ======================================================
+  // VERIFIED MESSAGE
+  // ======================================================
+
+  verifiedMessage:{
+    color:'#63D8FF',
+
+    fontSize:22,
+
+    textAlign:'center',
+
+    lineHeight:36,
+
+    marginBottom:40,
+
+    fontWeight:'bold',
   },
 
-  // ✅ FIXED: usable button size
-  emailButton: {
-    width: '10%',
-    height: 45,
-    backgroundColor: '#7B42F6',
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
+  // ======================================================
+  // MAIN BUTTON
+  // ======================================================
+
+  button:{
+    width:'100%',
+
+    height:68,
+
+    backgroundColor:'#2b86ff',
+
+    borderRadius:20,
+
+    justifyContent:'center',
+
+    alignItems:'center',
   },
 
-  successButton: {
-    width: '70%',
-    height: 45,
-    backgroundColor: '#14b86a',
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
+  // ======================================================
+  // SUCCESS BUTTON
+  // ======================================================
+
+  successButton:{
+    width:'100%',
+
+    height:68,
+
+    backgroundColor:'#14b86a',
+
+    borderRadius:20,
+
+    justifyContent:'center',
+
+    alignItems:'center',
   },
 
-  buttonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
-    letterSpacing: 0.8,
+  // ======================================================
+  // BUTTON TEXT
+  // ======================================================
+
+  buttonText:{
+    color:'#FFFFFF',
+
+    fontSize:18,
+
+    fontWeight:'bold',
+
+    letterSpacing:1,
   },
+
 });
