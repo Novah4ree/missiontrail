@@ -62,7 +62,7 @@ export default function SignupScreen() {
             first_name: firstName,
             last_name: lastName,
           },
-          emailRedirectTo: "exp://192.168.1.25:8081",
+          emailRedirectTo: 'http://localhost:8081/login',
         },
       });
 

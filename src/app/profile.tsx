@@ -1,20 +1,20 @@
 // =======================
 // IMPORTS
 // =======================
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { Href, useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import {
-  Dimensions,
-  Image,
-  Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
+  Image,
+  Pressable,
+  ScrollView,
+  Dimensions,
 } from 'react-native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Href, useRouter } from 'expo-router';
 
 // Stepping up twice to escape /app and /src to reach root lib
 import { supabase } from '../../lib/supabase';
@@ -147,11 +147,6 @@ export default function ProfileScreen() {
                 onPress={() => {
                   if (tab.key === 'home-backup') router.push('/home-backup' as Href);
                   if (tab.key === 'profile') router.push('/profile' as Href);
-                  if (tab.key === 'map') router.push('/map' as Href);
-                  if (tab.key === 'mission') router.push('/mission' as Href);
-                  if (tab.key === 'trails') router.push('/trails' as Href);
-                  if (tab.key === 'vault') router.push('/vault' as Href);
-                  if (tab.key === 'companion') router.push('/companion' as Href);
                 }}
               >
                 <View style={[styles.tabIconWrap, isActiveTab && styles.activeTabIconWrap]}>
@@ -178,7 +173,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a0a1a',
   },
   cosmicOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     backgroundColor: 'rgba(18, 10, 46, 0.25)',
   },
   scrollContainer: {

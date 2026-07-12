@@ -1,20 +1,60 @@
 import 'react-native-url-polyfill/auto';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://qjqlckpnvhploqrnfakt.supabase.co';
-const supabaseAnonKey = 'sb_publishable_-kFdNQtH4S2rIbdvRy-smQ_OSMLMI_0';
+// ======================================================
+// SUPABASE PROJECT URL
+// ======================================================
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Missing Supabase environment variables');
-}
+const supabaseUrl =
+  'https://vcthpbebwzfstaverlvz.supabase.co';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+// ======================================================
+// SUPABASE PUBLIC ANON KEY
+// ======================================================
+
+const supabaseAnonKey =
+  'sb_publishable_FUl3SA3Dely5yOfpQlFK6g_KEfRCjeF';
+
+// ======================================================
+// CREATE SUPABASE CLIENT
+// ======================================================
+
+export const supabase = createClient(
+  supabaseUrl,
+  supabaseAnonKey,
+  {
+
+    auth: {
+
+      // ======================================================
+      // FIX FOR EXPO WEB + MOBILE
+      // ======================================================
+
+      storage:
+        typeof window !== 'undefined'
+          ? AsyncStorage
+          : undefined,
+
+      // ======================================================
+      // AUTO REFRESH LOGIN TOKEN
+      // ======================================================
+
+      autoRefreshToken: true,
+
+      // ======================================================
+      // SAVE LOGIN SESSION
+      // ======================================================
+
+      persistSession: true,
+
+      // ======================================================
+      // REQUIRED FOR EXPO
+      // ======================================================
+
+      detectSessionInUrl: false,
+    },
+  }
+);
