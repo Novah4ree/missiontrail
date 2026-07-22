@@ -1,7 +1,7 @@
 // =======================
 // IMPORTS
 // =======================
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Animated,
   Image,
@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { FontAwesome, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 
@@ -23,13 +24,14 @@ import { supabase } from '../../lib/supabase';
 // =======================
 export default function LoginScreen() {
   const router = useRouter();
+  const homeRedirectUrl = Linking.createURL('/home-backup');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const gradientAnim = useRef(new Animated.Value(0)).current;
+  const [gradientAnim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     Animated.loop(
@@ -38,7 +40,7 @@ export default function LoginScreen() {
         Animated.timing(gradientAnim, { toValue: 0, duration: 2500, useNativeDriver: true }),
       ])
     ).start();
-  }, []);
+  }, [gradientAnim]);
 
   const slideX = gradientAnim.interpolate({
     inputRange: [0, 1],
@@ -64,7 +66,7 @@ export default function LoginScreen() {
       }
       setLoading(false);
       router.replace('/home-backup'); 
-    } catch (err) {
+    } catch {
       Alert.alert('Error', 'An unexpected system error occurred.');
       setLoading(false);
     }
@@ -73,7 +75,7 @@ export default function LoginScreen() {
   const handleGoogleSignIn = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: 'myapp://home-backup' },
+      options: { redirectTo: homeRedirectUrl },
     });
     if (error) Alert.alert('Google Sign In Error', error.message);
   };
@@ -81,7 +83,7 @@ export default function LoginScreen() {
   const handleAppleSignIn = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'apple',
-      options: { redirectTo: 'myapp://home-backup' },
+      options: { redirectTo: homeRedirectUrl },
     });
     if (error) Alert.alert('Apple Sign In Error', error.message);
   };
@@ -148,7 +150,7 @@ export default function LoginScreen() {
         </View>
 
         <TouchableOpacity onPress={() => router.push('/Signup')}>
-          <Text style={styles.createText}>Don't have an account? <Text style={styles.createAccent}>Create Account</Text></Text>
+          <Text style={styles.createText}>Don&apos;t have an account? <Text style={styles.createAccent}>Create Account</Text></Text>
         </TouchableOpacity>
       </View>
     </View>

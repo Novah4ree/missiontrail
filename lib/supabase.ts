@@ -9,18 +9,20 @@ import { createClient } from '@supabase/supabase-js';
 // ======================================================
 
 const supabaseUrl =
-  'https://vcthpbebwzfstaverlvz.supabase.co';
-
+  process.env.EXPO_PUBLIC_SUPABASE_URL;
 // ======================================================
 // SUPABASE PUBLIC ANON KEY
 // ======================================================
 
 const supabaseAnonKey =
-  'sb_publishable_FUl3SA3Dely5yOfpQlFK6g_KEfRCjeF';
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 // ======================================================
 // CREATE SUPABASE CLIENT
 // ======================================================
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error("Missing Supabase environment variables");
+}
 
 export const supabase = createClient(
   supabaseUrl,

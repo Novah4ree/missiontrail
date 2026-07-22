@@ -1,17 +1,21 @@
 
+import { DailyRelicProgress } from '@/components/daily-relic-progress';
+import { useDailyProgress } from '@/hooks/use-daily-progress';
+import type { VerifiedMissionProgress } from '@/types/daily-progress';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
-    Dimensions,
-    Image,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Dimensions,
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -48,36 +52,56 @@ const bottomTabs = [
   { key: 'companion', label: 'Compan...', image: tabImages.companion, route: '/companion' },
 ] as const;
 
-// This is the list of daily missions shown on the screen.
-const DailyMissions = [
-  { title: 'Walk 4 miles today', xp: '+50 XP', done: true },
-  { title: 'Discover 2 new locations', xp: '+80 XP', done: true },
-  { title: 'Complete morning stretch', xp: '+30 XP', done: false },
-  { title: 'Reach 10,000 steps', xp: '+75 XP', done: false },
-  { title: 'Talk to Novah 3 times', xp: '+40 XP', done: true },
-  { title: 'Show Novah some love with pets', xp: '+60 XP', done: true },
-  { title: 'Feed Novah 3 times', xp: '+50 XP', done: true },
-  { title: 'Go to the park for 30 minutes', xp: '+40 XP', done: true },
-  { title: 'Complete a 15 minute walk above 2.5 MPH speed', xp: '+70 XP', done: false },
-  { title: 'Share progress on social media', xp: '+40 XP', done: true },
-  { title: 'Cycle for 5 miles', xp: '+100 XP', done: false },
-   { title: 'Play a game with Novah', xp: '+40 XP', done: true },
-];
+type DailyMission = {
+  id: string;
+  title: string;
+  xp: string;
+  done: boolean;
+  difficulty: string;
+  state: VerifiedMissionProgress['state'];
+  progressLabel: string;
+  rewardXp: number;
+};
+
+const METERS_PER_MILE = 1_609.344;
+
+function missionProgressLabel(mission: VerifiedMissionProgress) {
+  if (mission.requirementType === 'distance') {
+    return `${(mission.progress / METERS_PER_MILE).toFixed(2)} / ${(mission.target / METERS_PER_MILE).toFixed(1)} miles`;
+  }
+  if (mission.requirementType === 'steps') return `${Math.floor(mission.progress)} / ${Math.floor(mission.target)} steps`;
+  if (mission.requirementType === 'relic') return `${Math.floor(mission.progress)} / ${Math.floor(mission.target)} relics`;
+  if (mission.requirementType === 'location') return `${Math.floor(mission.progress)} / ${Math.floor(mission.target)} locations`;
+  if (mission.requirementType === 'active_time') {
+    return `${Math.floor(mission.progress / 60)} / ${Math.round(mission.target / 60)} minutes`;
+  }
+  if (mission.requirementType === 'session') return `${Math.floor(mission.progress)} / ${Math.floor(mission.target)} sessions`;
+  return `${Math.floor(mission.progress)} / ${Math.floor(mission.target)}`;
+}
 
 // This is the main mission screen.
 export default function MissionScreen() {
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
-  const mapRef = useRef(null);
-  const [missions, setMissions] = useState(DailyMissions);
+  const { progress, isLoading, message, claimReward } = useDailyProgress();
+  const [selectedMissionId, setSelectedMissionId] = useState<string | null>(null);
+  const currentLevel = 1;
+  const missions = useMemo<DailyMission[]>(() => (progress?.missions ?? []).map((mission, index) => ({
+    id: mission.id,
+    title: mission.title,
+    xp: `+${mission.rewardXp} XP`,
+    rewardXp: mission.rewardXp,
+    done: mission.state === 'completed' || mission.state === 'claimed',
+    state: mission.state,
+    progressLabel: missionProgressLabel(mission),
+    difficulty: index === 0 ? 'Easy' : index === (progress?.missions.length ?? 0) - 1 ? 'Hard' : 'Medium',
+  })), [progress]);
+  const selectedMission = missions.find((mission) => mission.id === selectedMissionId) ?? null;
 
-  const completedMissions = missions.filter((item: any) => item.done).length;
-
-  const toggleMission = (index: number) => {
-    const updatedMissions = [...missions];
-    updatedMissions[index].done = !updatedMissions[index].done;
-    setMissions(updatedMissions);
-  };
+  const completedMissions = missions.filter((item) => item.done).length;
+  const progressPercent = missions.length
+    ? Math.round((completedMissions / missions.length) * 100)
+    : 0;
 
   return (
     <LinearGradient colors={['#05000c', '#10001d', '#05000c']} style={styles.screen}>
@@ -97,6 +121,8 @@ export default function MissionScreen() {
 
         <CompanionMessage />
 
+        <DailyRelicProgress />
+
         <View style={styles.statsRow}>
           <StatBox icon={missionIcons.bond} value="73%" label="Bond" color="#ff2df7" />
           <StatBox icon={missionIcons.energy} value="88%" label="Energy" color="#00d9ff" />
@@ -104,25 +130,39 @@ export default function MissionScreen() {
           <StatBox icon={missionIcons.level} value="7" label="Level" color="#ffd43b" />
         </View>
 
-        <ProgressCard />
+        <ProgressCard
+          level={currentLevel}
+          completed={completedMissions}
+          total={missions.length}
+          percent={progressPercent}
+        />
 
         <AdventureCard />
 
         <View style={styles.missionHeader}>
-          <Text style={styles.sectionTitle}>DAILY MISSIONS</Text>
+          <Text style={styles.sectionTitle}>LEVEL {currentLevel} MISSIONS</Text>
           <Text style={styles.counterText}>
             {completedMissions}/{missions.length}
           </Text>
         </View>
 
-        {missions.map((mission: any, index: number) => (
-          <MissionItem 
-            key={index} 
-            mission={mission} 
-            onToggle={() => toggleMission(index)}
+        {missions.map((mission) => (
+          <MissionItem
+            key={mission.id}
+            mission={mission}
+            onOpen={() => setSelectedMissionId(mission.id)}
           />
         ))}
+        {isLoading && missions.length === 0 ? <Text style={styles.loadingText}>Loading verified missions…</Text> : null}
+        {message ? <Text style={styles.errorText}>{message}</Text> : null}
       </ScrollView>
+
+      <MissionDetailsModal
+        mission={selectedMission}
+        isBusy={isLoading}
+        onClose={() => setSelectedMissionId(null)}
+        onClaim={(missionId) => void claimReward(missionId)}
+      />
 
       <BottomNav router={router} safeBottom={safeArea.bottom} />
     </LinearGradient>
@@ -193,22 +233,34 @@ function StatBox({
 }
 
 // This shows the XP progress bar.
-function ProgressCard() {
+function ProgressCard({
+  level,
+  completed,
+  total,
+  percent,
+}: {
+  level: number;
+  completed: number;
+  total: number;
+  percent: number;
+}) {
   return (
     <View style={styles.progressCard}>
       <View style={styles.rowBetween}>
-        <Text style={styles.cardTitle}>Experience Progress</Text>
-        <Text style={styles.percentText}>60%</Text>
+        <Text style={styles.cardTitle}>Level {level} Progress</Text>
+        <Text style={styles.percentText}>{percent}%</Text>
       </View>
 
       <View style={styles.progressTrack}>
         <LinearGradient
           colors={['#ff00f5', '#19d8ff']}
-          style={[styles.progressFill, { width: '60%' }]}
+          style={[styles.progressFill, { width: `${percent}%` }]}
         />
       </View>
 
-      <Text style={styles.smallText}>350 XP to Level 25 reach Level 30 today and your companion get an extra Beast Mode 100 XP!</Text>
+      <Text style={styles.smallText}>
+        {completed} of {total} missions completed. The next level unlocks when this one is fully cleared.
+      </Text>
     </View>
   );
 }
@@ -243,22 +295,19 @@ function AdventureCard() {
 // This shows one mission row from the daily mission list.
 function MissionItem({
   mission,
-  onToggle,
+  onOpen,
 }: {
-  mission: {
-    title: string;
-    xp: string;
-    done: boolean;
-  };
-  onToggle: () => void;
+  mission: DailyMission;
+  onOpen: () => void;
 }) {
   return (
-    <Pressable 
-      onPress={onToggle}
+    <Pressable
+      onPress={onOpen}
+      accessibilityHint="Opens mission details without changing progress"
       style={({ pressed }) => [
-        styles.missionItem, 
+        styles.missionItem,
         mission.done && styles.missionDone,
-        pressed && styles.missionPressed
+        pressed && styles.missionPressed,
       ]}
     >
       <Ionicons
@@ -267,12 +316,65 @@ function MissionItem({
         color={mission.done ? '#00d9ff' : '#5b5267'}
       />
 
-      <Text style={styles.missionText}>{mission.title}</Text>
+      <View style={styles.missionCopy}>
+        <Text style={styles.missionText}>{mission.title}</Text>
+        <Text style={styles.missionProgressText}>{mission.progressLabel}</Text>
+      </View>
 
-      <View style={styles.xpBadge}>
-        <Text style={styles.xpText}>{mission.xp}</Text>
+      <View style={styles.badgeColumn}>
+        <View style={styles.difficultyBadge}>
+          <Text style={styles.difficultyText}>{mission.difficulty}</Text>
+        </View>
+        <View style={styles.xpBadge}>
+          <Text style={styles.xpText}>{mission.xp}</Text>
+        </View>
       </View>
     </Pressable>
+  );
+}
+
+function MissionDetailsModal({
+  mission,
+  isBusy,
+  onClose,
+  onClaim,
+}: {
+  mission: DailyMission | null;
+  isBusy: boolean;
+  onClose: () => void;
+  onClaim: (missionId: string) => void;
+}) {
+  if (!mission) return null;
+  const canClaim = mission.state === 'completed';
+  const alreadyClaimed = mission.state === 'claimed';
+
+  return (
+    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={styles.modalCard} onPress={(event) => event.stopPropagation()}>
+          <Text style={styles.modalTitle}>{mission.title}</Text>
+          <Text style={styles.modalProgress}>{mission.progressLabel}</Text>
+          <Text style={styles.modalStatus}>Status: {mission.state}</Text>
+          <Text style={styles.modalHelp}>
+            Progress is verified automatically from the Live Map. Tapping this mission cannot complete it.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canClaim || isBusy }}
+            disabled={!canClaim || isBusy}
+            onPress={() => onClaim(mission.id)}
+            style={[styles.claimButton, (!canClaim || isBusy) && styles.claimButtonDisabled]}
+          >
+            <Text style={styles.claimButtonText}>
+              {alreadyClaimed ? 'Reward Claimed' : isBusy && canClaim ? 'Claiming…' : 'Claim Reward'}
+            </Text>
+          </Pressable>
+          <Pressable onPress={onClose} style={styles.closeButton}>
+            <Text style={styles.closeButtonText}>Close</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -576,7 +678,62 @@ const styles = StyleSheet.create({
     color: '#f2ecf7',
     fontSize: 14,
     fontWeight: '700',
+  },
+
+  missionCopy: { flex: 1, gap: 3 },
+  missionProgressText: { color: '#9ddff0', fontSize: 11, fontWeight: '700' },
+  loadingText: { color: '#b9adbf', textAlign: 'center', paddingVertical: 18 },
+  errorText: { color: '#ffc46b', textAlign: 'center', paddingVertical: 10 },
+
+  modalBackdrop: {
     flex: 1,
+    backgroundColor: 'rgba(2, 0, 8, 0.8)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#7e168f',
+    backgroundColor: '#170c29',
+    padding: 20,
+  },
+  modalTitle: { color: '#fff', fontSize: 20, fontWeight: '900' },
+  modalProgress: { color: '#68e7ff', fontSize: 17, fontWeight: '800', marginTop: 12 },
+  modalStatus: { color: '#d8c9e3', fontSize: 12, marginTop: 6, textTransform: 'capitalize' },
+  modalHelp: { color: '#a99bb5', fontSize: 12, lineHeight: 18, marginTop: 14 },
+  claimButton: {
+    minHeight: 44,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#008fb3',
+    marginTop: 18,
+  },
+  claimButtonDisabled: { backgroundColor: '#33213f', opacity: 0.7 },
+  claimButtonText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  closeButton: { minHeight: 40, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  closeButtonText: { color: '#c8a8df', fontSize: 12, fontWeight: '800' },
+
+  badgeColumn: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+
+  difficultyBadge: {
+    backgroundColor: 'rgba(0, 217, 255, 0.14)',
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+
+  difficultyText: {
+    color: '#6fe7ff',
+    fontSize: 9,
+    fontWeight: '800',
   },
 
   xpBadge: {
@@ -659,4 +816,3 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.97 }],
   },
 });
-

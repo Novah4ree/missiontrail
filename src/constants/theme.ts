@@ -61,5 +61,21 @@ export const Spacing = {
   six: 64,
 } as const;
 
+// Shared cyber colors keep new trail UI consistent with Mission Trails.
+export const MissionTrailColors = {
+  background: '#05000C',
+  surface: '#140A22',
+  surfaceRaised: '#1C1030',
+  border: '#4B2A63',
+  text: '#FFFFFF',
+  textMuted: '#B7A7C5',
+  cyan: '#19D8FF',
+  magenta: '#FF2DF7',
+  green: '#4DFF9A',
+  purple: '#9B5CFF',
+  warning: '#FFC46B',
+  danger: '#FF6B8A',
+} as const;
+
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;

@@ -8,7 +8,11 @@
     "scheme": "missiontrail02",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.anonymous.MissionTrail0.x2",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Allow Mission Trails to use your location to find nearby trails and track trails you choose to start."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +22,12 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.MissionTrail0.x2"
+      "package": "com.anonymous.MissionTrail0.x2",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -36,7 +45,24 @@
           }
         }
       ],
-      "@react-native-voice/voice"
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow MissionTrail to access your location.",
+          "locationWhenInUsePermission": "Allow MissionTrail to access your location."
+        }
+      ],
+      [
+        "@react-native-voice/voice",
+        {
+          "microphonePermission": "Allow MissionTrail to use the microphone for voice commands.",
+          "speechRecognitionPermission": "Allow MissionTrail to convert your voice commands to text."
+        }
+      ],
+      "expo-audio",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -51,4 +77,3 @@
     "owner": "novah2118"
   }
 }
-

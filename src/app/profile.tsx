@@ -1,20 +1,20 @@
 // =======================
 // IMPORTS
 // =======================
-import React from 'react';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useDailyProgress } from '@/hooks/use-daily-progress';
 import {
-  StyleSheet,
-  Text,
-  View,
+  Dimensions,
   Image,
   Pressable,
   ScrollView,
-  Dimensions,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Href, useRouter } from 'expo-router';
 
 // Stepping up twice to escape /app and /src to reach root lib
 import { supabase } from '../../lib/supabase';
@@ -38,18 +38,20 @@ const tabImages = {
 };
 
 const bottomTabs = [
-  { key: 'home-backup', label: 'Home', image: tabImages.home },
-  { key: 'map', label: 'Map', image: tabImages.map },
-  { key: 'mission', label: 'Mission', image: tabImages.mission },
-  { key: 'trails', label: 'Trails', image: tabImages.trails },
-  { key: 'vault', label: 'Vault', image: tabImages.vault },
-  { key: 'profile', label: 'Profile', image: tabImages.profile },
-  { key: 'companion', label: 'Compan...', image: tabImages.companion },
+  { key: 'home-backup', label: 'Home', image: tabImages.home, route: '/home' },
+  { key: 'map', label: 'Map', image: tabImages.map, route: '/home-backup' },
+  { key: 'mission', label: 'Mission', image: tabImages.mission, route: '/mission' },
+  { key: 'trails', label: 'Trails', image: tabImages.trails, route: '/trails' },
+  { key: 'vault', label: 'Vault', image: tabImages.vault, route: '/vault' },
+  { key: 'profile', label: 'Profile', image: tabImages.profile, route: '/profile' },
+  { key: 'companion', label: 'Compan...', image: tabImages.companion, route: '/companion' },
 ] as const;
 
 export default function ProfileScreen() {
   const safeArea = useSafeAreaInsets();
   const router = useRouter();
+  const { progress, isLoading, message: progressMessage, refresh } = useDailyProgress();
+  const todayMiles = ((progress?.verifiedDistanceMeters ?? 0) / 1_609.344).toFixed(2);
 
   // Handle Logout & Redirect
   const handleSignOut = async () => {
@@ -58,7 +60,7 @@ export default function ProfileScreen() {
       await supabase.auth.signOut();
       
       // 2. Clear route state and force direct login redirect
-      router.replace('/login' as Href);
+      router.replace('/login');
     } catch (error) {
       console.error('Error signing out:', error);
     }
@@ -97,15 +99,24 @@ export default function ProfileScreen() {
         <View style={styles.statsGrid}>
           <View style={styles.statBox}>
             <Ionicons name="footsteps" size={22} color="#ff63f7" />
-            <Text style={styles.statValue}>14.2k</Text>
-            <Text style={styles.statLabel}>Total Steps</Text>
+            <Text style={styles.statValue}>{isLoading ? '…' : progress?.verifiedSessionCount ?? 0}</Text>
+            <Text style={styles.statLabel}>Trips Today</Text>
           </View>
           <View style={styles.statBox}>
             <Ionicons name="map" size={22} color="#00e5ff" />
-            <Text style={styles.statValue}>6.4</Text>
-            <Text style={styles.statLabel}>Miles Tracked</Text>
+            <Text style={styles.statValue}>{isLoading ? '…' : todayMiles}</Text>
+            <Text style={styles.statLabel}>Miles Today</Text>
           </View>
         </View>
+
+        {progressMessage ? (
+          <View style={styles.progressMessageCard}>
+            <Text accessibilityLiveRegion="polite" style={styles.progressMessage}>{progressMessage}</Text>
+            <Pressable accessibilityRole="button" onPress={() => void refresh()} style={styles.progressRetry}>
+              <Text style={styles.progressRetryText}>Try Again</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {/* MENU OPTIONS */}
         <View style={styles.menuContainer}>
@@ -144,10 +155,7 @@ export default function ProfileScreen() {
               <Pressable 
                 key={tab.key} 
                 style={({ pressed }) => [styles.tabButton, pressed && styles.pressed]}
-                onPress={() => {
-                  if (tab.key === 'home-backup') router.push('/home-backup' as Href);
-                  if (tab.key === 'profile') router.push('/profile' as Href);
-                }}
+                onPress={() => router.push(tab.route)}
               >
                 <View style={[styles.tabIconWrap, isActiveTab && styles.activeTabIconWrap]}>
                   <Image source={tab.image} style={styles.tabIcon} resizeMode="contain" />
@@ -173,11 +181,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a0a1a',
   },
   cosmicOverlay: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(18, 10, 46, 0.25)',
   },
   scrollContainer: {
@@ -246,6 +250,35 @@ const styles = StyleSheet.create({
     gap: 12,
     width: '100%',
     marginBottom: 16,
+  },
+  progressMessageCard: {
+    width: '100%',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#7c3aed',
+    backgroundColor: 'rgba(40, 18, 67, 0.82)',
+    padding: 12,
+    gap: 8,
+    marginBottom: 16,
+  },
+  progressMessage: {
+    color: '#f3e8ff',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+  },
+  progressRetry: {
+    minHeight: 40,
+    alignSelf: 'flex-start',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: '#7c3aed',
+    paddingHorizontal: 14,
+  },
+  progressRetryText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '900',
   },
   statBox: {
     flex: 1,

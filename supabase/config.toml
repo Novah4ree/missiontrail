@@ -1,0 +1,41 @@
+project_id = "missiontrail-local"
+
+[api]
+enabled = true
+port = 55321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 55322
+major_version = 17
+
+[studio]
+enabled = true
+port = 55323
+
+[analytics]
+enabled = false
+
+[inbucket]
+enabled = false
+
+[auth]
+enabled = true
+site_url = "exp+missiontrail02://"
+additional_redirect_urls = ["http://localhost:8081", "exp+missiontrail02://**"]
+jwt_expiry = 3600
+enable_signup = true
+
+[functions.relic-field]
+verify_jwt = true
+
+[functions.daily-progress]
+verify_jwt = true
+
+[functions.relic-proximity]
+verify_jwt = true
+
+[functions.trail-discovery]
+verify_jwt = true

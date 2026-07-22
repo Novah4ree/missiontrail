@@ -1,30 +1,35 @@
+import { Ionicons } from '@expo/vector-icons';
+import * as Speech from 'expo-speech';
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
+  FlatList,
   KeyboardAvoidingView,
   Modal,
   Platform,
- Pressable,
+  Pressable,
   SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
-  View,
-  FlatList
+  View
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import * as Speech from 'expo-speech';
 
 let Voice: any = null;
 if (Platform.OS !== 'web') {
-  Voice = require('@react-native-voice/voice').default;
+  try {
+    // This succeeds only in a native build that includes the Voice module.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    Voice = require('@react-native-voice/voice').default;
+  } catch {
+    // Keep the rest of the app usable when it is opened in Expo Go.
+  }
 }
 
 // OpenAI Configuration
 const CHAT_API_URL = "https://api.openai.com/v1/chat/completions";
 
-// TEMPORARY: Replace with your own API key for local testing.
-// Remove this before committing or sharing your code.
-const OPENAI_API_KEY = "";
+const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 
 export default function MissionTrailBot({
   visible,
@@ -49,6 +54,14 @@ export default function MissionTrailBot({
   const isListeningRef = useRef(false);
   const isSpeakingRef = useRef(false);
 
+  useEffect(() => {
+    return () => {
+      if (Voice) {
+        void Voice.destroy().finally(() => Voice.removeAllListeners());
+      }
+    };
+  }, []);
+
   const startListening = () => {
     if (Platform.OS === 'web') {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -65,13 +78,37 @@ export default function MissionTrailBot({
         };
       }
       if (!isListeningRef.current) { isListeningRef.current = true; recognitionRef.current.start(); }
-    } else if (Voice) { Voice.start('en-US'); }
+    } else if (Voice) {
+      Voice.onSpeechResults = (event: { value?: string[] }) => {
+        const transcript = event.value?.[0];
+        isListeningRef.current = false;
+        if (transcript && !isSpeakingRef.current) {
+          void handleSendMessage(transcript);
+        }
+      };
+      Voice.onSpeechError = (event: { error?: { message?: string } }) => {
+        isListeningRef.current = false;
+        console.warn('Speech recognition error:', event.error?.message ?? event.error);
+      };
+      isListeningRef.current = true;
+      void Voice.start('en-US').catch((error: unknown) => {
+        isListeningRef.current = false;
+        console.warn('Unable to start speech recognition:', error);
+      });
+    } else {
+      Alert.alert(
+        'Voice build required',
+        'Voice recognition is unavailable in Expo Go. Open MissionTrail in a development build instead.',
+      );
+      isVoiceModeRef.current = false;
+      setIsVoiceMode(false);
+    }
   };
 
   const stopListening = () => {
     isListeningRef.current = false;
     if (Platform.OS === 'web') recognitionRef.current?.stop();
-    else if (Voice) Voice.stop();
+    else if (Voice) void Voice.stop();
   };
 
   const toggleVoiceMode = () => {
@@ -87,14 +124,12 @@ export default function MissionTrailBot({
     setInputText('');
 
     try {
+      if (!OPENAI_API_KEY) {
+        throw new Error('EXPO_PUBLIC_OPENAI_API_KEY is not configured');
+      }
+
       stopListening();
       isSpeakingRef.current = true;
-
-      // Debugging: Verify API key is loaded
-      console.log("API Key:", process.env.EXPO_PUBLIC_OPENAI_API_KEY?.substring(0, 10));
-
-      // Debugging: Verify API key is loaded
-console.log("API Key:", OPENAI_API_KEY.substring(0, 10));
 
 const response = await fetch(CHAT_API_URL, {
   method: "POST",

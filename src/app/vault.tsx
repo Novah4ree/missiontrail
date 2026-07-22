@@ -1,4 +1,9 @@
-import { useRouter } from "expo-router";
+import { RelicDetailModal } from "@/components/relic-detail-modal";
+import { RELICS, type Relic, type RelicRarity, UNDISCOVERED_RELIC_ICON } from "@/constants/relics";
+import { getPlayerProgress } from "@/utils/player-progress";
+import { syncServerVaultCache } from "@/services/vault";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import { Dimensions, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -24,18 +29,41 @@ const bottomTabs = [
   { key: "profile", label: "Profile", image: tabImages.profile, route: "/profile" },
   { key: "companion", label: "Compan...", image: tabImages.companion, route: "/companion" },
 ] as const;
-const items = [
-  { title: "Cosmic Shard", rarity: "Legendary", color: "#ffd700", icon: require("../../assets/images/vaulticons/cosmicshard.png") },
-  { title: "Nebula Crystal", rarity: "Epic", color: "#f000ff", icon: require("../../assets/images/vaulticons/nebulacrystal.png") },
-  { title: "Star Fragment", rarity: "Rare", color: "#00d9ff", icon: require("../../assets/images/vaulticons/starfragment.png") },
-  { title: "Undiscovered", rarity: "Unknown", color: "#4b345f", icon: require("../../assets/images/vaulticons/undiscovered.png") },
-  { title: "Aurora Gem", rarity: "Epic", color: "#f000ff", icon: require("../../assets/images/vaulticons/auroragem.png") },
-  { title: "Eclipse Orb", rarity: "Epic", color: "#5E4B8B", icon: require("../../assets/images/vaulticons/eclipseorb.png") },
-];
-
 export default function VaultScreen() {
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
+  const [collectedRelicIds, setCollectedRelicIds] = useState<string[]>([]);
+  const [collectedAtByRelicId, setCollectedAtByRelicId] = useState<Record<string, string>>({});
+  const [selectedRelic, setSelectedRelic] = useState<Relic | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      async function loadCollectedRelics() {
+        try {
+          const progress = await syncServerVaultCache().catch(() => getPlayerProgress());
+
+          if (isActive) {
+            setCollectedRelicIds(progress.collectedRelicIds);
+            setCollectedAtByRelicId(progress.collectedAtByRelicId);
+          }
+        } catch (error) {
+          console.error("Could not load collected relics:", error);
+        }
+      }
+
+      loadCollectedRelics();
+
+      return () => {
+        isActive = false;
+      };
+    }, []),
+  );
+
+  const collectedRelics = RELICS.filter((relic) => collectedRelicIds.includes(relic.id));
+  const rarityTotal = (rarity: RelicRarity) =>
+    collectedRelics.filter((relic) => relic.rarity === rarity).length;
 
   return (
     <View style={styles.container}>
@@ -56,49 +84,64 @@ export default function VaultScreen() {
 
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>2</Text>
+              <Text style={styles.statNumber}>{rarityTotal("Legendary")}</Text>
               <Text style={styles.statText}>Legendary</Text>
             </View>
 
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>4/6</Text>
+              <Text style={styles.statNumber}>{collectedRelics.length}/{RELICS.length}</Text>
               <Text style={styles.statText}>Collection</Text>
             </View>
 
             <View style={styles.statItem}>
-              <Text style={[styles.statNumber, { color: "#00d9ff" }]}>1</Text>
+              <Text style={[styles.statNumber, { color: "#f000ff" }]}>{rarityTotal("Epic")}</Text>
+              <Text style={styles.statText}>Epic</Text>
+            </View>
+
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, { color: "#00d9ff" }]}>{rarityTotal("Rare")}</Text>
               <Text style={styles.statText}>Rare</Text>
             </View>
           </View>
         </View>
 
         <View style={styles.grid}>
-          {items.map((item, index) => (
-            <View
-              key={index}
-              style={[
-                styles.card,
-                {
-                  borderColor: item.color,
-                  backgroundColor:
-                    item.title === "Undiscovered"
-                      ? "rgba(80,45,70,0.25)"
-                      : "rgba(237,16,149,0.15)",
-                },
-              ]}>
-              <View style={[styles.iconBox, { borderColor: item.color }]}>
-                <Image source={item.icon} style={styles.itemIcon} />
-               </View>
+          {RELICS.map((item) => {
+            const isCollected = collectedRelicIds.includes(item.id);
+            const displayColor = isCollected ? item.primaryColor : "#4b345f";
 
-              <Text style={[styles.cardTitle, { color: item.color }]}>
-                {item.title}
-              </Text>
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityRole="button"
+                accessibilityLabel={isCollected ? `View ${item.name}` : "View locked relic"}
+                onPress={() => setSelectedRelic(item)}
+                style={[
+                  styles.card,
+                  {
+                    borderColor: displayColor,
+                    backgroundColor: isCollected
+                      ? "rgba(237,16,149,0.15)"
+                      : "rgba(80,45,70,0.25)",
+                  },
+                ]}>
+                <View style={[styles.iconBox, { borderColor: displayColor }]}>
+                  <Image
+                    source={isCollected ? item.icon : UNDISCOVERED_RELIC_ICON}
+                    style={styles.itemIcon}
+                  />
+                </View>
 
-              {item.rarity !== "" && (
-                <Text style={styles.cardRarity}>{item.rarity}</Text>
-              )}
-            </View>
-          ))}
+                <Text style={[styles.cardTitle, { color: displayColor }]}>
+                  {isCollected ? item.name : "Undiscovered"}
+                </Text>
+
+                <Text style={styles.cardRarity}>
+                  {isCollected ? item.rarity : "Unknown"}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         <View style={styles.rankBox}>
@@ -138,6 +181,13 @@ export default function VaultScreen() {
           })}
         </View>
       </View>
+
+      <RelicDetailModal
+        relic={selectedRelic}
+        isCollected={selectedRelic ? collectedRelicIds.includes(selectedRelic.id) : false}
+        collectedAt={selectedRelic ? collectedAtByRelicId[selectedRelic.id] : undefined}
+        onClose={() => setSelectedRelic(null)}
+      />
     </View>
   );
 }
