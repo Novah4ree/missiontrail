@@ -29,7 +29,6 @@ const tabBarHeight = isSmallPhone ? 72 : 82;
 // =======================
 const tabImages = {
   home: require('../../assets/images/tabIcons/homemain.png'),
-  map: require('../../assets/images/tabIcons/map.png'),
   mission: require('../../assets/images/tabIcons/mission.png'),
   trails: require('../../assets/images/tabIcons/trails.png'),
   vault: require('../../assets/images/tabIcons/vault.png'),
@@ -38,8 +37,8 @@ const tabImages = {
 };
 
 const bottomTabs = [
-  { key: 'home-backup', label: 'Home', image: tabImages.home, route: '/home' },
-  { key: 'map', label: 'Map', image: tabImages.map, route: '/home-backup' },
+  // Home is the Live Map entry, so a second Map button is not needed.
+  { key: 'home', label: 'Home', image: tabImages.home, route: '/home-backup' },
   { key: 'mission', label: 'Mission', image: tabImages.mission, route: '/mission' },
   { key: 'trails', label: 'Trails', image: tabImages.trails, route: '/trails' },
   { key: 'vault', label: 'Vault', image: tabImages.vault, route: '/vault' },

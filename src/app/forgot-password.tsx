@@ -22,6 +22,15 @@ export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Returns safely even when this screen was opened as the first route.
+  const returnToLogin = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/login');
+  };
+
   const handleResetPassword = async () => {
 
     if (!email.trim()) {
@@ -55,7 +64,7 @@ export default function ForgotPasswordScreen() {
         'If an account exists for that email, a password reset link has been sent.'
       );
 
-      router.back();
+      returnToLogin();
 
     } catch {
 
@@ -130,7 +139,7 @@ export default function ForgotPasswordScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={returnToLogin}
         >
           <Text style={styles.backText}>
             ← Back to Login

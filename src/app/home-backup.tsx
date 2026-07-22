@@ -115,8 +115,6 @@ const tabBarHeight =
 const tabImages = {
   home: require('../../assets/images/tabIcons/homemain.png'),
 
-  map: require('../../assets/images/tabIcons/map.png'),
-
   mission: require('../../assets/images/tabIcons/mission.png'),
 
   trails: require('../../assets/images/tabIcons/trails.png'),
@@ -158,13 +156,6 @@ const bottomTabs = [
     key: 'home',
     label: 'Home',
     image: tabImages.home,
-    route: '/home',
-  },
-
-  {
-    key: 'map',
-    label: 'Map',
-    image: tabImages.map,
     route: '/home-backup',
   },
 
@@ -2277,7 +2268,7 @@ function renderBottomTabBar(
     <View style={styles.tabBar}>
       {bottomTabs.map((tab) => {
         const isActiveTab =
-          tab.key === 'map';
+          tab.key === 'home';
 
         return (
           <Pressable

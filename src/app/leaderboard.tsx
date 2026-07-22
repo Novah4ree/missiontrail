@@ -40,6 +40,15 @@ export default function LeaderboardScreen() {
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
 
+  // Returns to the previous screen or the Live Map when no history exists.
+  function returnToLiveMap() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/home-backup');
+  }
+
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
@@ -59,7 +68,7 @@ export default function LeaderboardScreen() {
           <Pressable
             accessibilityLabel="Go back"
             style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
-            onPress={() => router.back()}
+            onPress={returnToLiveMap}
           >
             <Ionicons name="chevron-back" size={22} color="#ffffff" />
           </Pressable>

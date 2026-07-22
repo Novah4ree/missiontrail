@@ -64,6 +64,15 @@ export default function TrailDetailsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [routeMessage, setRouteMessage] = useState<string | null>(null);
 
+  // Returns to Trails safely even if this details route has no back history.
+  function returnToTrails() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/trails');
+  }
+
   // Reloads detail data whenever navigation supplies a different trail ID.
   useEffect(() => {
     let active = true;
@@ -189,7 +198,7 @@ export default function TrailDetailsScreen() {
     <View style={styles.screen}>
       <StatusBar style="light" />
       <View style={[styles.header, { paddingTop: safeArea.top + 8 }]}>
-        <Pressable accessibilityLabel="Back to Explore Trails" onPress={() => router.back()} style={styles.iconButton}><Ionicons name="arrow-back" size={22} color={C.text} /></Pressable>
+        <Pressable accessibilityLabel="Back to Explore Trails" onPress={returnToTrails} style={styles.iconButton}><Ionicons name="arrow-back" size={22} color={C.text} /></Pressable>
         <Text numberOfLines={1} style={styles.headerTitle}>Trail Details</Text>
         <View style={styles.iconButton} />
       </View>

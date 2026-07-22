@@ -3,7 +3,6 @@ import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'r
 
 export type MissionTabKey =
   | 'home'
-  | 'map'
   | 'mission'
   | 'trails'
   | 'vault'
@@ -12,7 +11,6 @@ export type MissionTabKey =
 
 const TAB_IMAGES = {
   home: require('../../assets/images/tabIcons/homemain.png'),
-  map: require('../../assets/images/tabIcons/map.png'),
   mission: require('../../assets/images/tabIcons/mission.png'),
   trails: require('../../assets/images/tabIcons/trails.png'),
   vault: require('../../assets/images/tabIcons/vault.png'),
@@ -21,8 +19,8 @@ const TAB_IMAGES = {
 };
 
 const TABS = [
-  { key: 'home', label: 'Home', image: TAB_IMAGES.home, route: '/home' },
-  { key: 'map', label: 'Map', image: TAB_IMAGES.map, route: '/home-backup' },
+  // Home opens the Live Map; keeping a separate Map tab would duplicate it.
+  { key: 'home', label: 'Home', image: TAB_IMAGES.home, route: '/home-backup' },
   { key: 'mission', label: 'Mission', image: TAB_IMAGES.mission, route: '/mission' },
   { key: 'trails', label: 'Trails', image: TAB_IMAGES.trails, route: '/trails' },
   { key: 'vault', label: 'Vault', image: TAB_IMAGES.vault, route: '/vault' },
@@ -30,7 +28,7 @@ const TABS = [
   { key: 'companion', label: 'Compan...', image: TAB_IMAGES.companion, route: '/companion' },
 ] as const;
 
-/** Displays the same seven cyberpunk navigation buttons used by the Live Map. */
+/** Displays the same six cyberpunk navigation buttons used by the Live Map. */
 export function MissionBottomTabBar({ activeTab }: { activeTab: MissionTabKey }) {
   const router = useRouter();
   const window = useWindowDimensions();
