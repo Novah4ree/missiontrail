@@ -1,17 +1,44 @@
-
-import { DailyRelicProgress } from '@/components/daily-relic-progress';
+import { MissionBottomTabBar } from '@/components/mission-bottom-tab-bar';
+import {
+  AdventureOverview,
+  CompactMissionHeader,
+  CompanionStatus,
+  DailyMissionSection,
+  ExploreAction,
+  ExplorerLevel,
+  MissionWeather,
+  RelicUnlocks,
+  type MissionCardModel,
+} from '@/components/missions/mission-dashboard-sections';
+import { METERS_PER_MILE } from '@/config/activity-rules';
 import { useDailyProgress } from '@/hooks/use-daily-progress';
+import { useDailyActivity } from '@/providers/activity-progress-provider';
+import { loadActiveTrailActivity } from '@/services/trail-activity-service';
+import {
+  getTrailDailyForecast,
+  type TrailDailyForecast,
+} from '@/services/weather-forecast-service';
 import type { VerifiedMissionProgress } from '@/types/daily-progress';
+import { getLiveMissionProgress } from '@/utils/daily-activity-core';
+import { formatCompanionName, getEnergyPercent } from '@/utils/companion-progress';
+import {
+  clampProgress,
+  getCompanionDashboardMessage,
+  getMissionCollectionState,
+  getMissionDisplayStatus,
+  summarizeMissionDashboard,
+} from '@/utils/mission-dashboard-core';
+import { getPlayerLevelProgress } from '@/utils/player-level';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import * as Location from 'expo-location';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Dimensions,
-  Image,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -19,345 +46,405 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const screen = Dimensions.get('window');
-const isSmallPhone = screen.height < 740 || screen.width < 380;
-const sidePadding = isSmallPhone ? 9 : 12;
-const tabBarHeight = isSmallPhone ? 72 : 82;
+import { useAuth } from '../../context/auth';
 
-// These are the custom images for the bottom tab buttons.
-const tabImages = {
-  home: require('../../assets/images/tabIcons/homemain.png'),
-  mission: require('../../assets/images/tabIcons/mission.png'),
-  trails: require('../../assets/images/tabIcons/trails.png'),
-  vault: require('../../assets/images/tabIcons/vault.png'),
-  profile: require('../../assets/images/tabIcons/profile.png'),
-  companion: require('../../assets/images/tabIcons/companion.png'),
-};
+const WEATHER_LOCATION_TIMEOUT_MS = 8_000;
 
-// These are the custom mission stat icons.
-const missionIcons = {
-  bond: require('../../assets/images/tabIcons/missionIcons/Bond.png'),
-  energy: require('../../assets/images/tabIcons/missionIcons/Energy.png'),
-  burn: require('../../assets/images/tabIcons/missionIcons/Burn.png'),
-  level: require('../../assets/images/tabIcons/missionIcons/level.png'),
-};
-
-// This is the data for the bottom navigation bar.
-const bottomTabs = [
-  { key: 'home', label: 'Home', image: tabImages.home, route: '/home-backup' },
-  { key: 'mission', label: 'Mission', image: tabImages.mission, route: '/mission' },
-  { key: 'trails', label: 'Trails', image: tabImages.trails, route: '/trails' },
-  { key: 'vault', label: 'Vault', image: tabImages.vault, route: '/vault' },
-  { key: 'profile', label: 'Profile', image: tabImages.profile, route: '/profile' },
-  { key: 'companion', label: 'Compan...', image: tabImages.companion, route: '/companion' },
-] as const;
-
-type DailyMission = {
-  id: string;
-  title: string;
-  xp: string;
-  done: boolean;
-  difficulty: string;
-  state: VerifiedMissionProgress['state'];
-  progressLabel: string;
-  rewardXp: number;
-};
-
-const METERS_PER_MILE = 1_609.344;
-
-function missionProgressLabel(mission: VerifiedMissionProgress) {
-  if (mission.requirementType === 'distance') {
-    return `${(mission.progress / METERS_PER_MILE).toFixed(2)} / ${(mission.target / METERS_PER_MILE).toFixed(1)} miles`;
-  }
-  if (mission.requirementType === 'steps') return `${Math.floor(mission.progress)} / ${Math.floor(mission.target)} steps`;
-  if (mission.requirementType === 'relic') return `${Math.floor(mission.progress)} / ${Math.floor(mission.target)} relics`;
-  if (mission.requirementType === 'location') return `${Math.floor(mission.progress)} / ${Math.floor(mission.target)} locations`;
-  if (mission.requirementType === 'active_time') {
-    return `${Math.floor(mission.progress / 60)} / ${Math.round(mission.target / 60)} minutes`;
-  }
-  if (mission.requirementType === 'session') return `${Math.floor(mission.progress)} / ${Math.floor(mission.target)} sessions`;
-  return `${Math.floor(mission.progress)} / ${Math.floor(mission.target)}`;
+function validWeatherCoordinate(location: Location.LocationObject | null) {
+  if (!location) return null;
+  const { latitude, longitude } = location.coords;
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return null;
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
+  return { latitude, longitude };
 }
 
-// This is the main mission screen.
+async function currentWeatherCoordinate() {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+      new Promise<null>((resolve) => {
+        timeoutId = setTimeout(() => resolve(null), WEATHER_LOCATION_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+function missionInstruction(mission: VerifiedMissionProgress) {
+  switch (mission.requirementType) {
+    case 'distance':
+      return `Walk or run ${(mission.target / METERS_PER_MILE).toFixed(mission.target < METERS_PER_MILE ? 1 : 0)} miles on the Live Map`;
+    case 'steps':
+      return `Record ${Math.floor(mission.target).toLocaleString()} verified steps`;
+    case 'relic':
+      return `Discover ${Math.floor(mission.target)} ${mission.target === 1 ? 'relic' : 'relics'} on the map`;
+    case 'location':
+      return `Enter ${Math.floor(mission.target)} verified ${mission.target === 1 ? 'location' : 'locations'}`;
+    case 'active_time':
+      return `Explore on foot for ${Math.round(mission.target / 60)} minutes`;
+    case 'session':
+      return `Complete ${Math.floor(mission.target)} verified walking ${mission.target === 1 ? 'session' : 'sessions'}`;
+    case 'daily_set':
+      return 'Complete every required daily mission';
+  }
+}
+
+function missionIcon(requirementType: VerifiedMissionProgress['requirementType']) {
+  switch (requirementType) {
+    case 'distance':
+      return 'walk-outline' as const;
+    case 'steps':
+      return 'footsteps-outline' as const;
+    case 'relic':
+      return 'diamond-outline' as const;
+    case 'location':
+      return 'location-outline' as const;
+    case 'active_time':
+      return 'time-outline' as const;
+    case 'session':
+      return 'navigate-outline' as const;
+    case 'daily_set':
+      return 'checkmark-done-outline' as const;
+  }
+}
+
+function missionProgressLabel(
+  requirementType: VerifiedMissionProgress['requirementType'],
+  progress: number,
+  target: number,
+) {
+  switch (requirementType) {
+    case 'distance':
+      return `${(progress / METERS_PER_MILE).toFixed(2)} / ${(target / METERS_PER_MILE).toFixed(2)} mi`;
+    case 'steps':
+      return `${Math.floor(progress).toLocaleString()} / ${Math.floor(target).toLocaleString()} steps`;
+    case 'relic':
+      return `${Math.floor(progress)} / ${Math.floor(target)} relics`;
+    case 'location':
+      return `${Math.floor(progress)} / ${Math.floor(target)} locations`;
+    case 'active_time':
+      return `${Math.floor(progress / 60)} / ${Math.round(target / 60)} min`;
+    case 'session':
+      return `${Math.floor(progress)} / ${Math.floor(target)} sessions`;
+    case 'daily_set':
+      return `${Math.floor(progress)} / ${Math.floor(target)} complete`;
+  }
+}
+
 export default function MissionScreen() {
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
-  const { progress, isLoading, message, claimReward } = useDailyProgress();
+  const { session } = useAuth();
+  const activity = useDailyActivity();
+  const {
+    progress,
+    isLoading,
+    message,
+    isUsingCachedProgress,
+    walkingWarnings,
+    refresh,
+    claimReward,
+  } = useDailyProgress();
   const [selectedMissionId, setSelectedMissionId] = useState<string | null>(null);
-  const currentLevel = 1;
-  const missions = useMemo<DailyMission[]>(() => (progress?.missions ?? []).map((mission, index) => ({
-    id: mission.id,
-    title: mission.title,
-    xp: `+${mission.rewardXp} XP`,
-    rewardXp: mission.rewardXp,
-    done: mission.state === 'completed' || mission.state === 'claimed',
-    state: mission.state,
-    progressLabel: missionProgressLabel(mission),
-    difficulty: index === 0 ? 'Easy' : index === (progress?.missions.length ?? 0) - 1 ? 'Hard' : 'Medium',
-  })), [progress]);
-  const selectedMission = missions.find((mission) => mission.id === selectedMissionId) ?? null;
+  const [hasActiveSession, setHasActiveSession] = useState(false);
+  const [weather, setWeather] = useState<TrailDailyForecast | null>(null);
+  const [isWeatherLoading, setIsWeatherLoading] = useState(true);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
+  const weatherRequestIdRef = useRef(0);
+  const weatherAbortRef = useRef<AbortController | null>(null);
 
-  const completedMissions = missions.filter((item) => item.done).length;
-  const progressPercent = missions.length
-    ? Math.round((completedMissions / missions.length) * 100)
+  const refreshWeather = useCallback(async () => {
+    const requestId = ++weatherRequestIdRef.current;
+    weatherAbortRef.current?.abort();
+    const controller = new AbortController();
+    weatherAbortRef.current = controller;
+    setIsWeatherLoading(true);
+    setWeatherError(null);
+
+    try {
+      if (!(await Location.hasServicesEnabledAsync())) {
+        throw new Error('Turn on Location Services to see today’s local weather.');
+      }
+      let permission = await Location.getForegroundPermissionsAsync();
+      if (
+        permission.status !== Location.PermissionStatus.GRANTED
+        && permission.canAskAgain
+      ) {
+        permission = await Location.requestForegroundPermissionsAsync();
+      }
+      if (permission.status !== Location.PermissionStatus.GRANTED) {
+        throw new Error('Allow location access to show today’s local weather.');
+      }
+
+      const lastKnown = await Location.getLastKnownPositionAsync({
+        maxAge: 10 * 60 * 1_000,
+        requiredAccuracy: 5_000,
+      });
+      const fresh = await currentWeatherCoordinate();
+      const coordinate = validWeatherCoordinate(fresh) ?? validWeatherCoordinate(lastKnown);
+      if (!coordinate) {
+        throw new Error('Local weather is unavailable until GPS can determine your location.');
+      }
+      if (__DEV__) console.log('[Mission weather] Forecast coordinate:', coordinate);
+      const forecast = await getTrailDailyForecast(
+        coordinate.latitude,
+        coordinate.longitude,
+        controller.signal,
+      );
+      if (requestId === weatherRequestIdRef.current && !controller.signal.aborted) {
+        setWeather(forecast);
+      }
+    } catch (weatherLoadError) {
+      if (
+        weatherLoadError instanceof Error
+        && weatherLoadError.name === 'AbortError'
+      ) return;
+      if (__DEV__) console.warn('[Mission weather] Forecast could not load.', weatherLoadError);
+      if (requestId === weatherRequestIdRef.current && !controller.signal.aborted) {
+        setWeatherError(
+          weatherLoadError instanceof Error
+            ? weatherLoadError.message
+            : 'Today’s local forecast is temporarily unavailable.',
+        );
+      }
+    } finally {
+      if (requestId === weatherRequestIdRef.current && !controller.signal.aborted) {
+        setIsWeatherLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshWeather();
+    return () => weatherAbortRef.current?.abort();
+  }, [refreshWeather]);
+
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    void loadActiveTrailActivity().then((trailActivity) => {
+      if (active) setHasActiveSession(Boolean(trailActivity));
+    });
+    return () => {
+      active = false;
+    };
+  }, []));
+
+  const assignedMissions = useMemo(() => progress?.missions ?? [], [progress?.missions]);
+  const dashboardSummary = useMemo(
+    () => summarizeMissionDashboard(assignedMissions),
+    [assignedMissions],
+  );
+  const levelProgress = useMemo(
+    () => getPlayerLevelProgress(progress?.totalXp ?? 0),
+    [progress?.totalXp],
+  );
+  const missionCards = useMemo<MissionCardModel[]>(
+    () => assignedMissions.map((mission) => {
+      const liveProgress = getLiveMissionProgress(
+        mission.requirementType,
+        mission.progress,
+        mission.target,
+        activity,
+      );
+      return {
+        id: mission.id,
+        title: mission.title,
+        instruction: missionInstruction(mission),
+        progressLabel: missionProgressLabel(
+          mission.requirementType,
+          liveProgress,
+          mission.target,
+        ),
+        progressPercent: Math.round(clampProgress(liveProgress, mission.target) * 100),
+        rewardXp: mission.rewardXp,
+        rewardBondXp: mission.rewards?.bondXp,
+        energyRestore: mission.rewards?.energyRestore,
+        state: mission.state,
+        status: getMissionDisplayStatus(mission.state, liveProgress, mission.target),
+        icon: missionIcon(mission.requirementType),
+      };
+    }),
+    [activity, assignedMissions],
+  );
+  const selectedMission = missionCards.find((mission) => mission.id === selectedMissionId) ?? null;
+  const collectionState = getMissionCollectionState({
+    isLoading,
+    missionCount: assignedMissions.length,
+    hasError: Boolean(message),
+    isUsingCache: isUsingCachedProgress,
+  });
+  const companion = progress?.companion;
+  const companionName = formatCompanionName(companion?.companionId);
+  const fallbackName = session?.user.user_metadata?.full_name
+    ?? session?.user.user_metadata?.display_name
+    ?? session?.user.email?.split('@')[0]
+    ?? 'Explorer';
+  const displayName = companionName ?? fallbackName;
+  const energyPercent = companion
+    ? getEnergyPercent(companion.energy, companion.maximumEnergy)
     : 0;
+  const companionMessage = getCompanionDashboardMessage({
+    name: companionName ?? 'Your companion',
+    hasCompanion: Boolean(companionName),
+    todaySteps: activity.todaySteps,
+    todayMiles: activity.todayDistanceMiles,
+    hasReadyMission: assignedMissions.some((mission) => mission.state === 'completed'),
+    allRequiredComplete: dashboardSummary.allRequiredComplete,
+    energyPercent,
+  });
+  const headerMessage = isLoading && !progress
+    ? 'Loading today’s adventure…'
+    : companionMessage;
+  const activityMessage = walkingWarnings.distance
+    ?? walkingWarnings.steps
+    ?? activity.trackingError;
 
   return (
-    <LinearGradient colors={['#05000c', '#10001d', '#05000c']} style={styles.screen}>
+    <LinearGradient colors={['#05000C', '#12021F', '#05000C']} style={styles.screen}>
       <StatusBar style="light" />
-
       <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
+        refreshControl={(
+          <RefreshControl
+            refreshing={isLoading}
+            onRefresh={() => void Promise.all([
+              refresh(),
+              activity.refreshActivity(),
+              refreshWeather(),
+            ])}
+            tintColor="#62E7FF"
+          />
+        )}
         contentContainerStyle={[
           styles.content,
           {
-            paddingTop: safeArea.top + 20,
-            paddingBottom: safeArea.bottom + 121,
+            paddingTop: safeArea.top + 10,
+            paddingBottom: safeArea.bottom + 124,
           },
         ]}
       >
-        <CompanionHeader />
-
-        <CompanionMessage />
-
-        <DailyRelicProgress />
-
-        <View style={styles.statsRow}>
-          <StatBox icon={missionIcons.bond} value="73%" label="Bond" color="#ff2df7" />
-          <StatBox icon={missionIcons.energy} value="88%" label="Energy" color="#00d9ff" />
-          <StatBox icon={missionIcons.burn} value="21" label="Burn" color="#ff7b2c" />
-          <StatBox icon={missionIcons.level} value="7" label="Level" color="#ffd43b" />
-        </View>
-
-        <ProgressCard
-          level={currentLevel}
-          completed={completedMissions}
-          total={missions.length}
-          percent={progressPercent}
+        <CompactMissionHeader
+          name={displayName}
+          level={progress ? levelProgress.level : null}
+          totalXp={progress ? levelProgress.totalXp : null}
+          message={headerMessage}
         />
 
-        <AdventureCard />
+        <AdventureOverview
+          isLoading={isLoading}
+          hasMissions={dashboardSummary.totalCount > 0}
+          completedCount={dashboardSummary.completedCount}
+          totalCount={dashboardSummary.totalCount}
+          todayMiles={activity.todayDistanceMiles}
+          todaySteps={activity.todaySteps}
+          availableXp={dashboardSummary.availableXp}
+          claimableXp={dashboardSummary.claimableXp}
+          earnedXp={dashboardSummary.earnedXp}
+          dailyStreak={progress?.dailyStreak ?? 0}
+          calories={activity.activeCaloriesBurned}
+          progressPercent={dashboardSummary.progressPercent}
+          activityMessage={activityMessage}
+          onRetryActivity={() => void activity.refreshActivity()}
+        />
 
-        <View style={styles.missionHeader}>
-          <Text style={styles.sectionTitle}>LEVEL {currentLevel} MISSIONS</Text>
-          <Text style={styles.counterText}>
-            {completedMissions}/{missions.length}
-          </Text>
-        </View>
+        <MissionWeather
+          forecast={weather}
+          isLoading={isWeatherLoading}
+          error={weatherError}
+          onRetry={() => void refreshWeather()}
+        />
 
-        {missions.map((mission) => (
-          <MissionItem
-            key={mission.id}
-            mission={mission}
-            onOpen={() => setSelectedMissionId(mission.id)}
-          />
-        ))}
-        {isLoading && missions.length === 0 ? <Text style={styles.loadingText}>Loading verified missions…</Text> : null}
-        {message ? <Text style={styles.errorText}>{message}</Text> : null}
+        <DailyMissionSection
+          missions={missionCards}
+          completedCount={dashboardSummary.completedCount}
+          totalCount={dashboardSummary.totalCount}
+          collectionState={collectionState}
+          onOpen={setSelectedMissionId}
+          onRetry={() => void refresh()}
+        />
+
+        <ExploreAction
+          hasActiveSession={hasActiveSession}
+          onPress={() => router.push({
+            pathname: '/trails',
+            params: { focus: 'nearest' },
+          })}
+        />
+
+        <RelicUnlocks
+          currentMiles={activity.todayDistanceMiles}
+          rareTargetMiles={progress ? progress.rare.thresholdMeters / METERS_PER_MILE : null}
+          legendaryTargetMiles={progress ? progress.legendary.thresholdMeters / METERS_PER_MILE : null}
+          rareEarned={progress?.rare.earned ?? false}
+          legendaryEarned={progress?.legendary.earned ?? false}
+          completedMissions={dashboardSummary.completedCount}
+          totalMissions={dashboardSummary.totalCount}
+        />
+
+        <CompanionStatus
+          name={companionName ?? 'Companion'}
+          hasCompanion={Boolean(companionName)}
+          isLoading={isLoading && !progress}
+          bondPercent={companion?.bondPercent ?? 0}
+          energyPercent={energyPercent}
+        />
+
+        <ExplorerLevel
+          level={progress ? levelProgress.level : null}
+          xpIntoLevel={progress ? levelProgress.xpIntoLevel : null}
+          xpRequired={progress ? levelProgress.xpForNextLevel : null}
+          xpRemaining={progress ? levelProgress.xpRemaining : null}
+        />
       </ScrollView>
 
       <MissionDetailsModal
         mission={selectedMission}
         isBusy={isLoading}
+        errorMessage={message}
         onClose={() => setSelectedMissionId(null)}
         onClaim={(missionId) => void claimReward(missionId)}
       />
 
-      <BottomNav router={router} safeBottom={safeArea.bottom} />
+      <View style={[styles.bottomNavigation, { bottom: safeArea.bottom + 10 }]}>
+        <MissionBottomTabBar activeTab="mission" />
+      </View>
     </LinearGradient>
-  );
-}
-
-// This shows the glowing Novah companion at the top.
-function CompanionHeader() {
-  return (
-    <View style={styles.header}>
-      <View style={styles.orb}>
-        <Image
-          source={tabImages.mission}
-          style={{ width: 113, height: 122 }}
-          resizeMode="contain"
-        />
-      </View>
-
-      <Text style={styles.companionName}>Novah</Text>
-      <Text style={styles.companionType}>Your Missions</Text>
-    </View>
-  );
-}
-
-// This shows the small message from the companion.
-function CompanionMessage() {
-  return (
-    <View style={styles.messageCard}>
-      <LinearGradient colors={['#b93dff', '#5de7ff']} style={styles.messageIcon}>
-        <Ionicons name="chatbubble" size={15} color="#fff" />
-      </LinearGradient>
-
-      <View style={{ flex: 1 }}>
-        <Text style={styles.messageText}>
-          Novah feels energized after your morning walk, pace yourself for the adventure!
-        </Text>
-        <Text style={styles.smallText}>Just now</Text>
-      </View>
-    </View>
-  );
-}
-
-// This makes one small stat box, like Bond, Energy, Burn, or Level.
-function StatBox({
-  icon,
-  value,
-  label,
-  color,
-}: {
-  icon: any;
-  value: string;
-  label: string;
-  color: string;
-}) {
-  const isImage = typeof icon === 'number';
-  
-  return (
-    <View style={styles.statBox}>
-      {isImage ? (
-        <Image source={icon} style={{ width: 32, height: 32 }} resizeMode="contain" />
-      ) : (
-        <Ionicons name={icon} size={18} color={color} />
-      )}
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
-// This shows the XP progress bar.
-function ProgressCard({
-  level,
-  completed,
-  total,
-  percent,
-}: {
-  level: number;
-  completed: number;
-  total: number;
-  percent: number;
-}) {
-  return (
-    <View style={styles.progressCard}>
-      <View style={styles.rowBetween}>
-        <Text style={styles.cardTitle}>Level {level} Progress</Text>
-        <Text style={styles.percentText}>{percent}%</Text>
-      </View>
-
-      <View style={styles.progressTrack}>
-        <LinearGradient
-          colors={['#ff00f5', '#19d8ff']}
-          style={[styles.progressFill, { width: `${percent}%` }]}
-        />
-      </View>
-
-      <Text style={styles.smallText}>
-        {completed} of {total} missions completed. The next level unlocks when this one is fully cleared.
-      </Text>
-    </View>
-  );
-}
-
-// This shows the big adventure card and start button.
-function AdventureCard() {
-  return (
-    <LinearGradient colors={['#38145c', '#1b1946']} style={styles.adventureCard}>
-      <View style={styles.row}>
-        <LinearGradient colors={['#bc49ff', '#61e7ff']} style={styles.adventureIcon}>
-          <Ionicons name="sunny" size={18} color="#fff" />
-        </LinearGradient>
-
-        <View style={{ flex: 1 }}>
-          <Text style={styles.adventureTitle}>Welcome to TODAY’S ADVENTURE</Text>
-          <Text style={styles.adventureText}>
-            Lets go outside! What are you waiting for? Perfect weather for exploring. Found a peaceful trail nearby.
-          </Text>
-          <Text style={styles.rewardText}>💎 7XP Streak   🏆 420XP</Text>
-        </View>
-      </View>
-
-      <Pressable>
-        <LinearGradient colors={['#ff00dd', '#21d9ff']} style={styles.startButton}>
-          <Text style={styles.startText}>Time To Explore</Text>
-        </LinearGradient>
-      </Pressable>
-    </LinearGradient>
-  );
-}
-
-// This shows one mission row from the daily mission list.
-function MissionItem({
-  mission,
-  onOpen,
-}: {
-  mission: DailyMission;
-  onOpen: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onOpen}
-      accessibilityHint="Opens mission details without changing progress"
-      style={({ pressed }) => [
-        styles.missionItem,
-        mission.done && styles.missionDone,
-        pressed && styles.missionPressed,
-      ]}
-    >
-      <Ionicons
-        name={mission.done ? 'checkmark-circle' : 'ellipse-outline'}
-        size={18}
-        color={mission.done ? '#00d9ff' : '#5b5267'}
-      />
-
-      <View style={styles.missionCopy}>
-        <Text style={styles.missionText}>{mission.title}</Text>
-        <Text style={styles.missionProgressText}>{mission.progressLabel}</Text>
-      </View>
-
-      <View style={styles.badgeColumn}>
-        <View style={styles.difficultyBadge}>
-          <Text style={styles.difficultyText}>{mission.difficulty}</Text>
-        </View>
-        <View style={styles.xpBadge}>
-          <Text style={styles.xpText}>{mission.xp}</Text>
-        </View>
-      </View>
-    </Pressable>
   );
 }
 
 function MissionDetailsModal({
   mission,
   isBusy,
+  errorMessage,
   onClose,
   onClaim,
 }: {
-  mission: DailyMission | null;
+  mission: MissionCardModel | null;
   isBusy: boolean;
+  errorMessage: string | null;
   onClose: () => void;
   onClaim: (missionId: string) => void;
 }) {
   if (!mission) return null;
   const canClaim = mission.state === 'completed';
-  const alreadyClaimed = mission.state === 'claimed';
-
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose}>
         <Pressable style={styles.modalCard} onPress={(event) => event.stopPropagation()}>
-          <Text style={styles.modalTitle}>{mission.title}</Text>
-          <Text style={styles.modalProgress}>{mission.progressLabel}</Text>
-          <Text style={styles.modalStatus}>Status: {mission.state}</Text>
-          <Text style={styles.modalHelp}>
-            Progress is verified automatically from the Live Map. Tapping this mission cannot complete it.
+          <View style={styles.modalHeading}>
+            <Ionicons name={mission.icon} size={22} color="#62E7FF" />
+            <Text selectable style={styles.modalTitle}>{mission.title}</Text>
+          </View>
+          <Text selectable style={styles.modalInstruction}>{mission.instruction}</Text>
+          <Text selectable style={styles.modalProgress}>{mission.progressLabel}</Text>
+          <Text selectable style={styles.modalStatus}>Status: {mission.status}</Text>
+          <Text selectable style={styles.modalHelp}>
+            Live Map verification controls completion. Opening or repeatedly tapping this card cannot complete it.
           </Text>
+          {errorMessage ? <Text selectable style={styles.modalError}>{errorMessage}</Text> : null}
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ disabled: !canClaim || isBusy }}
@@ -366,10 +453,14 @@ function MissionDetailsModal({
             style={[styles.claimButton, (!canClaim || isBusy) && styles.claimButtonDisabled]}
           >
             <Text style={styles.claimButtonText}>
-              {alreadyClaimed ? 'Reward Claimed' : isBusy && canClaim ? 'Claiming…' : 'Claim Reward'}
+              {mission.state === 'claimed'
+                ? 'Reward Claimed'
+                : isBusy && canClaim
+                  ? 'Claiming…'
+                  : 'Claim Reward'}
             </Text>
           </Pressable>
-          <Pressable onPress={onClose} style={styles.closeButton}>
+          <Pressable accessibilityRole="button" onPress={onClose} style={styles.closeButton}>
             <Text style={styles.closeButtonText}>Close</Text>
           </Pressable>
         </Pressable>
@@ -378,441 +469,44 @@ function MissionDetailsModal({
   );
 }
 
-// This shows the custom bottom navigation bar.
-function BottomNav({
-  router,
-  safeBottom,
-}: {
-  router: any;
-  safeBottom: number;
-}) {
-  return (
-    <View style={[styles.bottomOverlay, { bottom: safeBottom + 10 }]}>
-      <View style={styles.tabBar}>
-        {bottomTabs.map((tab) => {
-          const isActiveTab = tab.key === 'mission';
-
-          return (
-            <Pressable
-              key={tab.key}
-              style={({ pressed }) => [
-                styles.tabButton,
-                pressed && styles.pressed
-              ]}
-              onPress={() => router.push(tab.route)}
-            >
-              <View
-                style={[
-                  styles.tabIconWrap,
-                  isActiveTab && styles.activeTabIconWrap
-                ]}
-              >
-                <Image
-                  source={tab.image}
-                  style={styles.tabIcon}
-                  resizeMode="contain"
-                />
-              </View>
-
-              <Text
-                style={[
-                  styles.tabLabel,
-                  isActiveTab && styles.activeTabLabel
-                ]}
-                numberOfLines={1}
-              >
-                {tab.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#05000c',
-  },
-
-  content: {
-    paddingHorizontal: 20,
-  },
-
-  header: {
-    alignItems: 'center',
-    marginBottom: 22,
-  },
-
-  orb: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    borderWidth: 1,
-    borderColor: '#D4AF37',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(212, 175, 55, 0.12)',
-    shadowColor: '#D4AF37',
-    shadowOpacity: 0.9,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 0 },
-  },
-
-  companionName: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: 2,
-    marginTop: 10,
-  },
-
-  companionType: {
-    color: '#D4AF37',
-    fontSize: 9,
-    letterSpacing: 1,
-    marginTop: 2,
-  },
-
-  messageCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#7e168f',
-    backgroundColor: 'rgba(20, 0, 32, 0.78)',
-    marginBottom: 12,
-  },
-
-  messageIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  messageText: {
-    color: '#e9dff1',
-    fontSize: 12,
-  },
-
-  smallText: {
-    color: '#8f8499',
-    fontSize: 10,
-    marginTop: 4,
-  },
-
-  statsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 14,
-  },
-
-  statBox: {
-    flex: 1,
-    height: 72,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#3d1550',
-    backgroundColor: 'rgba(9, 0, 18, 0.92)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  statValue: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '800',
-    marginTop: 4,
-  },
-
-  statLabel: {
-    color: '#8f8499',
-    fontSize: 9,
-    marginTop: 2,
-  },
-
-  progressCard: {
-    minHeight: 118,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#7e168f',
-    backgroundColor: 'rgba(7, 0, 15, 0.82)',
-    padding: 14,
-    marginBottom: 42,
-  },
-
-  rowBetween: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-
-  cardTitle: {
-    color: '#bbecff',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-
-  percentText: {
-    color: '#b9adbf',
-    fontSize: 10,
-  },
-
-  progressTrack: {
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: '#1f132a',
-    overflow: 'hidden',
-    marginTop: 14,
-  },
-
-  progressFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
-
-  adventureCard: {
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 42,
-  },
-
-  row: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-
-  adventureIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  adventureTitle: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-
-  adventureText: {
-    color: '#d8d0df',
-    fontSize: 11,
-    marginTop: 5,
-    lineHeight: 16,
-  },
-
-  rewardText: {
-    color: '#D4AF37',
-    fontSize: 10,
-    marginTop: 7,
-  },
-
-  startButton: {
-    height: 36,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-  },
-
-  startText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-
-  missionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-
-  sectionTitle: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-  },
-
-  counterText: {
-    color: '#8f8499',
-    fontSize: 10,
-  },
-
-  missionItem: {
-    minHeight: 48,
-    borderRadius: 11,
-    borderWidth: 1,
-    borderColor: '#1e132b',
-    backgroundColor: 'rgba(5, 0, 12, 0.92)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    marginBottom: 8,
-  },
-
-  missionDone: {
-    borderColor: '#008fb3',
-    backgroundColor: 'rgba(0, 72, 112, 0.45)',
-  },
-
-  missionPressed: {
-    opacity: 0.75,
-    transform: [{ scale: 0.98 }],
-  },
-
-  missionText: {
-    color: '#f2ecf7',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-
-  missionCopy: { flex: 1, gap: 3 },
-  missionProgressText: { color: '#9ddff0', fontSize: 11, fontWeight: '700' },
-  loadingText: { color: '#b9adbf', textAlign: 'center', paddingVertical: 18 },
-  errorText: { color: '#ffc46b', textAlign: 'center', paddingVertical: 10 },
-
+  screen: { flex: 1, backgroundColor: '#05000C' },
+  content: { paddingHorizontal: 18, gap: 18 },
+  bottomNavigation: { position: 'absolute', left: 12, right: 12, zIndex: 20 },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(2, 0, 8, 0.8)',
+    backgroundColor: 'rgba(2,0,8,0.82)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
   },
   modalCard: {
     width: '100%',
-    maxWidth: 420,
-    borderRadius: 18,
+    maxWidth: 430,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#7e168f',
-    backgroundColor: '#170c29',
+    borderColor: '#7E168F',
+    backgroundColor: '#170C29',
     padding: 20,
+    gap: 11,
   },
-  modalTitle: { color: '#fff', fontSize: 20, fontWeight: '900' },
-  modalProgress: { color: '#68e7ff', fontSize: 17, fontWeight: '800', marginTop: 12 },
-  modalStatus: { color: '#d8c9e3', fontSize: 12, marginTop: 6, textTransform: 'capitalize' },
-  modalHelp: { color: '#a99bb5', fontSize: 12, lineHeight: 18, marginTop: 14 },
+  modalHeading: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  modalTitle: { flex: 1, color: '#FFFFFF', fontSize: 20, fontWeight: '900' },
+  modalInstruction: { color: '#CFC3D7', fontSize: 12, lineHeight: 18 },
+  modalProgress: { color: '#62E7FF', fontSize: 17, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  modalStatus: { color: '#F6C85F', fontSize: 12, fontWeight: '800' },
+  modalHelp: { color: '#A99BB5', fontSize: 12, lineHeight: 18 },
+  modalError: { color: '#FFC46B', fontSize: 11, lineHeight: 16 },
   claimButton: {
-    minHeight: 44,
+    minHeight: 48,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#008fb3',
-    marginTop: 18,
+    backgroundColor: '#008FB3',
+    marginTop: 4,
   },
-  claimButtonDisabled: { backgroundColor: '#33213f', opacity: 0.7 },
-  claimButtonText: { color: '#fff', fontSize: 13, fontWeight: '900' },
-  closeButton: { minHeight: 40, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
-  closeButtonText: { color: '#c8a8df', fontSize: 12, fontWeight: '800' },
-
-  badgeColumn: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-
-  difficultyBadge: {
-    backgroundColor: 'rgba(0, 217, 255, 0.14)',
-    borderRadius: 999,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-  },
-
-  difficultyText: {
-    color: '#6fe7ff',
-    fontSize: 9,
-    fontWeight: '800',
-  },
-
-  xpBadge: {
-    backgroundColor: 'rgba(212, 175, 55, 0.13)',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-
-  xpText: {
-    color: '#D4AF37',
-    fontSize: 11,
-    fontWeight: '900',
-  },
-
-  bottomOverlay: {
-    position: 'absolute',
-    left: sidePadding,
-    right: sidePadding,
-  },
-
-  tabBar: {
-    minHeight: tabBarHeight,
-    maxHeight: tabBarHeight,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#6d28d9',
-    backgroundColor: 'rgba(6, 4, 26, 0.95)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 4,
-    paddingVertical: 4,
-    shadowColor: '#a855f7',
-    shadowOpacity: 0.45,
-    shadowRadius: 10,
-    elevation: 9,
-  },
-
-  tabButton: {
-    flex: 1,
-    minWidth: 0,
-    height: tabBarHeight - 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-
-  tabIconWrap: {
-    width: isSmallPhone ? 38 : 44,
-    height: isSmallPhone ? 38 : 44,
-    borderRadius: isSmallPhone ? 19 : 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  activeTabIconWrap: {
-    borderWidth: 1,
-    borderColor: '#00e5ff',
-    backgroundColor: 'rgba(86, 19, 216, 0.32)',
-  },
-
-  tabIcon: {
-    width: isSmallPhone ? 61 : 56,
-    height: isSmallPhone ? 61 : 56,
-  },
-
-  tabLabel: {
-    color: '#ffffff',
-    fontSize: isSmallPhone ? 9 : 10,
-    fontWeight: '800',
-  },
-
-  activeTabLabel: {
-    color: '#00e5ff',
-  },
-
-  pressed: {
-    opacity: 0.72,
-    transform: [{ scale: 0.97 }],
-  },
+  claimButtonDisabled: { backgroundColor: '#33213F', opacity: 0.72 },
+  claimButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
+  closeButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  closeButtonText: { color: '#C8A8DF', fontSize: 12, fontWeight: '800' },
 });

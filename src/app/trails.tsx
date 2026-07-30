@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  ActivityIndicator,
   FlatList,
+  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -13,6 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { MapView, PROVIDER_GOOGLE } from '@/components/maps/map-components';
 import { MissionBottomTabBar } from '@/components/mission-bottom-tab-bar';
 import { TrailCard } from '@/components/trails/trail-card';
 import { TrailFiltersView } from '@/components/trails/trail-filters';
@@ -23,30 +26,21 @@ import { TrailsLoadingState } from '@/components/trails/trails-loading-state';
 import { MissionTrailColors as C } from '@/constants/theme';
 import { useNearbyTrails } from '@/hooks/use-nearby-trails';
 import { saveSelectedTrail } from '@/services/selected-trail-service';
-import { startTrailActivity } from '@/services/trail-activity-service';
 import type { Trail } from '@/types/trails';
-
-let MapView: any = View;
-let PROVIDER_GOOGLE: unknown = null;
-if (Platform.OS !== 'web') {
-  // react-native-maps is already installed and used by the Live Map screen.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Maps = require('react-native-maps');
-  MapView = Maps.default;
-  PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
-}
 
 type ViewMode = 'list' | 'map';
 
 // This screen coordinates trail search, filters, map markers, and navigation.
 export default function TrailsScreen() {
   const router = useRouter();
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
   const safeArea = useSafeAreaInsets();
   const discovery = useNearbyTrails();
   const mapRef = useRef<any>(null);
   const shownLocationAlertRef = useRef<'denied' | 'services_off' | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedTrailId, setSelectedTrailId] = useState<string | null>(null);
+  const isBusy = discovery.isLoading || discovery.isRefreshing;
 
   // Reuses the selected marker, or safely falls back to the first visible trail.
   const selectedTrail = useMemo(
@@ -54,7 +48,14 @@ export default function TrailsScreen() {
     [discovery.trails, selectedTrailId],
   );
 
-  // Moves the camera to a GPS fix or the temporary simulator preview area.
+  // Mission's explore action asks this screen to highlight the first GPS-sorted trail.
+  useEffect(() => {
+    const nearestTrail = discovery.trails[0];
+    if (focus !== 'nearest' || discovery.locationStatus !== 'granted' || !nearestTrail) return;
+    setSelectedTrailId((currentTrailId) => currentTrailId ?? nearestTrail.id);
+  }, [discovery.locationStatus, discovery.trails, focus]);
+
+  // Moves the camera to a valid device or simulator GPS fix.
   // initialRegion only controls the first map render, so animation is required.
   useEffect(() => {
     if (Platform.OS === 'web' || viewMode !== 'map' || !discovery.locationCenter) return;
@@ -67,8 +68,7 @@ export default function TrailsScreen() {
 
   // Retries GPS and alerts once only for physical-device permission settings.
   const findMyExactLocation = useCallback(async () => {
-    setViewMode('map');
-    const result = await discovery.refresh();
+    const result = await discovery.refresh(true);
     if (result.kind === 'located') {
       shownLocationAlertRef.current = null;
       return;
@@ -90,35 +90,36 @@ export default function TrailsScreen() {
 
   // Saves the selected trail so the details screen can load its full typed data.
   const openTrail = useCallback(async (trail: Trail, section?: 'meetups') => {
-    setSelectedTrailId(trail.id);
-    await saveSelectedTrail(trail);
-    router.push({ pathname: '/trail-details', params: { trailId: trail.id, section } } as never);
+    try {
+      setSelectedTrailId(trail.id);
+      await saveSelectedTrail(trail);
+      router.push({ pathname: '/trail-details', params: { trailId: trail.id, section } } as never);
+    } catch (navigationError) {
+      if (__DEV__) console.warn('[Trails] Trail details navigation failed:', navigationError);
+      Alert.alert('Unable to open trail', 'The trail details could not be opened. Please try again.');
+    }
   }, [router]);
-
-  // Starts a real tracked session, but leaves completion and XP to GPS verification.
-  const startTrail = useCallback(async (trail: Trail) => {
-    if (trail.status !== 'open' || !trail.publicAccess) {
-      Alert.alert('Trail unavailable', 'This trail cannot be started while it is closed or restricted.');
-      return;
-    }
-    let coordinate = discovery.isPhysicalDevice ? discovery.userLocation : null;
-    if (!coordinate) {
-      const result = await discovery.refresh();
-      coordinate = result.kind === 'located' && result.isPhysicalDevice ? result.coordinate : null;
-    }
-    if (!coordinate) {
-      Alert.alert('Location needed', 'Enable foreground location to start verified GPS trail tracking. You can still browse without it.');
-      return;
-    }
-    // This handoff starts GPS tracking. It never grants XP or completes a mission.
-    await startTrailActivity(trail, coordinate);
-    router.replace('/home-backup');
-  }, [discovery, router]);
 
   // Restores the complete trail list by clearing search text and active filters.
   const clearSearch = useCallback(() => {
     discovery.setQuery('');
     discovery.setFilters({ selected: [] });
+  }, [discovery]);
+
+  const openLocationSettings = useCallback(() => {
+    void Linking.openSettings().catch((settingsError) => {
+      if (__DEV__) console.warn('[Trails] Device settings could not be opened:', settingsError);
+      Alert.alert('Settings unavailable', 'Open your device Settings and enable location for Mission Trails.');
+    });
+  }, []);
+
+  const toggleFavorite = useCallback(async (trail: Trail) => {
+    try {
+      await discovery.toggleFavorite(trail.id);
+    } catch (favoriteError) {
+      if (__DEV__) console.warn('[Trails] Favorite update failed:', favoriteError);
+      Alert.alert('Could not update saved trails', 'Your previous saved state was restored. Please try again.');
+    }
   }, [discovery]);
 
   // Builds one optimized FlatList row and connects its buttons to screen actions.
@@ -127,15 +128,16 @@ export default function TrailsScreen() {
       trail={item}
       meetupCount={discovery.meetupCounts[item.id] ?? 0}
       favorite={discovery.favoriteIds.includes(item.id)}
+      favoriteBusy={discovery.favoriteBusyIds.includes(item.id)}
       showDistance={discovery.locationStatus === 'granted'}
       selected={item.id === selectedTrailId}
-      onSelect={() => setSelectedTrailId(item.id)}
+      onSelect={() => void openTrail(item)}
       onViewDetails={() => void openTrail(item)}
-      onStartTrail={() => void startTrail(item)}
+      onStartTrail={() => void openTrail(item)}
       onViewMeetups={() => void openTrail(item, 'meetups')}
-      onToggleFavorite={() => void discovery.toggleFavorite(item.id)}
+      onToggleFavorite={() => void toggleFavorite(item)}
     />
-  ), [discovery, openTrail, selectedTrailId, startTrail]);
+  ), [discovery, openTrail, selectedTrailId, toggleFavorite]);
 
   return (
     <View style={styles.screen}>
@@ -152,7 +154,7 @@ export default function TrailsScreen() {
         <TrailSearchBar
           value={discovery.query}
           onChangeText={discovery.setQuery}
-          isLocating={discovery.isLoading}
+          isLocating={isBusy}
           onUseLocation={() => void findMyExactLocation()}
         />
         <TrailFiltersView filters={discovery.filters} onChange={discovery.setFilters} />
@@ -163,20 +165,44 @@ export default function TrailsScreen() {
           <Ionicons name="location-outline" size={18} color={C.warning} />
           <Text style={styles.permissionText}>
             {discovery.locationStatus === 'denied'
-              ? 'Location denied. Browse the sample area or enable permission for nearby distances.'
-              : 'Location services are off. Browse the sample area or turn location on.'}
+              ? 'Location denied. Enable permission to see trails within 25 miles of you.'
+              : 'Location Services are off. Turn them on to see trails within 25 miles of you.'}
           </Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open location settings" onPress={openLocationSettings} style={({ pressed }) => [styles.bannerButton, pressed && styles.pressed]}>
+            <Text style={styles.bannerButtonText}>Settings</Text>
+          </Pressable>
         </View>
       ) : null}
 
       {discovery.error ? (
-        <View style={styles.errorBanner}><Ionicons name="warning-outline" size={18} color={C.warning} /><Text style={styles.errorText}>{discovery.error}</Text></View>
+        <View style={styles.errorBanner}>
+          <Ionicons name="warning-outline" size={18} color={C.warning} />
+          <Text style={styles.errorText}>{discovery.error}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Try loading nearby trails again"
+            disabled={isBusy}
+            onPress={() => void discovery.refresh(true)}
+            style={({ pressed }) => [styles.bannerButton, isBusy && styles.disabled, pressed && styles.pressed]}
+          >
+            {isBusy ? <ActivityIndicator size="small" color={C.warning} /> : <Text style={styles.bannerButtonText}>Try Again</Text>}
+          </Pressable>
+        </View>
       ) : null}
 
       {discovery.locationWarning ? (
         <View style={styles.locationWarningBanner}>
           <Ionicons name="navigate-outline" size={18} color={C.warning} />
           <Text style={styles.locationWarningText}>{discovery.locationWarning}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Try finding my location again"
+            disabled={isBusy}
+            onPress={() => void discovery.refresh(true)}
+            style={({ pressed }) => [styles.bannerButton, isBusy && styles.disabled, pressed && styles.pressed]}
+          >
+            {isBusy ? <ActivityIndicator size="small" color={C.warning} /> : <Text style={styles.bannerButtonText}>Try Again</Text>}
+          </Pressable>
         </View>
       ) : null}
 
@@ -188,21 +214,34 @@ export default function TrailsScreen() {
             renderItem={renderTrail}
             contentInsetAdjustmentBehavior="automatic"
             keyboardShouldPersistTaps="handled"
+            refreshing={discovery.isRefreshing}
+            onRefresh={() => void discovery.refresh(true)}
             contentContainerStyle={[styles.list, { paddingBottom: safeArea.bottom + 112 }]}
-            ListHeaderComponent={<View style={styles.resultsRow}><Text style={styles.resultsTitle}>{discovery.trails.length} trails found</Text><Text style={styles.resultsMeta}>{discovery.locationStatus === 'granted' ? 'Sorted by distance' : 'Sample area results'}</Text></View>}
-            ListEmptyComponent={<TrailsEmptyState onClear={clearSearch} />}
+            ListHeaderComponent={<View style={styles.resultsRow}><Text style={styles.resultsTitle}>{discovery.trails.length} trails found</Text><Text style={styles.resultsMeta}>{discovery.locationStatus === 'granted' ? 'Within 25 mi · nearest first' : 'Location required'}</Text></View>}
+            ListEmptyComponent={discovery.error ? null : (
+              <TrailsEmptyState
+                locationRequired={discovery.locationStatus !== 'granted'}
+                isRefreshing={discovery.isRefreshing}
+                onClear={clearSearch}
+                onRefresh={() => void discovery.refresh(true)}
+                onUseLocation={() => void findMyExactLocation()}
+                onViewMap={() => setViewMode('map')}
+              />
+            )}
           />
         )
       ) : (
         <View style={styles.mapWrap}>
           {Platform.OS === 'web' ? (
             <View style={styles.mapState}><Ionicons name="map-outline" size={34} color={C.cyan} /><Text style={styles.mapStateText}>Interactive trail markers are available on iOS and Android.</Text></View>
+          ) : !discovery.locationCenter ? (
+            <View style={styles.mapState}><Ionicons name="location-outline" size={34} color={C.cyan} /><Text style={styles.mapStateText}>Your location is needed to display nearby trail markers.</Text></View>
           ) : (
             <MapView
               ref={mapRef}
               provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
               style={StyleSheet.absoluteFill}
-              initialRegion={{ ...discovery.searchCenter, latitudeDelta: 0.18, longitudeDelta: 0.18 }}
+              initialRegion={{ ...discovery.locationCenter, latitudeDelta: 0.18, longitudeDelta: 0.18 }}
               showsUserLocation={discovery.locationStatus === 'granted'}
               showsMyLocationButton={false}
               userInterfaceStyle="dark"
@@ -213,14 +252,19 @@ export default function TrailsScreen() {
           )}
 
           {discovery.hasPendingAreaSearch ? (
-            <Pressable accessibilityLabel="Search this map area" onPress={() => void discovery.searchThisArea()} style={styles.searchAreaButton}>
-              <Ionicons name="search" size={16} color={C.text} /><Text style={styles.searchAreaText}>Search This Area</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Return map to my nearby trail area" disabled={isBusy} onPress={() => void discovery.searchThisArea()} style={({ pressed }) => [styles.searchAreaButton, isBusy && styles.disabled, pressed && styles.pressed]}>
+              <Ionicons name="locate" size={16} color={C.text} /><Text style={styles.searchAreaText}>Return to My Area</Text>
             </Pressable>
           ) : null}
 
           {selectedTrail ? (
             <Pressable accessibilityRole="button" accessibilityLabel={`View ${selectedTrail.name}`} onPress={() => void openTrail(selectedTrail)} style={[styles.mapCard, { bottom: safeArea.bottom + 104 }]}>
-              <View style={styles.mapCardCopy}><Text numberOfLines={1} style={styles.mapCardName}>{selectedTrail.name}</Text><Text style={styles.mapCardMeta}>{selectedTrail.lengthMiles.toFixed(1)} mi · {selectedTrail.estimatedDurationMinutes} min · {selectedTrail.difficulty}</Text></View>
+              <View style={styles.mapCardCopy}>
+                <Text numberOfLines={1} style={styles.mapCardName}>{selectedTrail.name}</Text>
+                <Text style={styles.mapCardMeta}>
+                  {selectedTrail.distanceMiles.toFixed(1)} mi away · {selectedTrail.difficulty}
+                </Text>
+              </View>
               <Ionicons name="chevron-forward" size={21} color={C.cyan} />
             </Pressable>
           ) : null}
@@ -239,7 +283,7 @@ function ViewToggle({ value, onChange }: { value: ViewMode; onChange: (value: Vi
   return (
     <View style={styles.toggle} accessibilityLabel="Trail view selector">
       {(['list', 'map'] as const).map((option) => (
-        <Pressable key={option} accessibilityRole="button" accessibilityState={{ selected: value === option }} accessibilityLabel={`${option} view`} onPress={() => onChange(option)} style={[styles.toggleButton, value === option && styles.toggleSelected]}>
+        <Pressable key={option} accessibilityRole="button" accessibilityState={{ selected: value === option }} accessibilityLabel={`${option} view`} onPress={() => onChange(option)} style={({ pressed }) => [styles.toggleButton, value === option && styles.toggleSelected, pressed && styles.pressed]}>
           <Ionicons name={option === 'list' ? 'list' : 'map-outline'} size={18} color={value === option ? C.text : C.textMuted} />
         </Pressable>
       ))}
@@ -260,6 +304,10 @@ const styles = StyleSheet.create({
   toggleSelected: { backgroundColor: '#702288', shadowColor: C.magenta, shadowOpacity: 0.35, shadowRadius: 6 },
   permissionBanner: { flexDirection: 'row', alignItems: 'center', gap: 9, borderBottomWidth: 1, borderBottomColor: '#493523', backgroundColor: '#21180E', paddingHorizontal: 18, paddingVertical: 10 },
   permissionText: { flex: 1, color: '#F5D7A2', fontSize: 11, lineHeight: 16 },
+  bannerButton: { minHeight: 36, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: C.warning, paddingHorizontal: 12 },
+  bannerButtonText: { color: C.text, fontSize: 10, fontWeight: '900' },
+  disabled: { opacity: 0.55 },
+  pressed: { opacity: 0.75 },
   errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#2B1420', paddingHorizontal: 18, paddingVertical: 9 },
   errorText: { flex: 1, color: '#FFD0DA', fontSize: 11 },
   locationWarningBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#251B0C', borderBottomWidth: 1, borderBottomColor: '#594421', paddingHorizontal: 18, paddingVertical: 9 },

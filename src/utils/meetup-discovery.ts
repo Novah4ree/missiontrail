@@ -37,6 +37,12 @@ export type MeetupPopularityContext = {
   now?: Date;
 };
 
+export type MeetupMapFilterContext = MeetupPopularityContext & {
+  currentUserId?: string | null;
+  radiusMiles: MeetupRadiusMiles;
+  maxMarkers?: number;
+};
+
 export type MeetupPopularityBreakdown = {
   total: number;
   distance: number;
@@ -109,6 +115,43 @@ export function filterMeetupsByRadius(
     const distance = calculateMeetupDistanceMiles(userLocation, meetup);
     return distance !== null && distance <= radiusMiles;
   });
+}
+
+/** Checks private visibility without returning or displaying the invited-user list. */
+export function canUserViewMeetup(
+  meetup: Meetup,
+  currentUserId?: string | null,
+): boolean {
+  if (meetup.type !== 'friends') return true;
+  if (!currentUserId) return false;
+  return meetup.organizerId === currentUserId
+    || meetup.attendeeIds.includes(currentUserId)
+    || meetup.invitedUserIds?.includes(currentUserId) === true;
+}
+
+/** Builds a small, private, relevance-sorted marker set for today's map. */
+export function filterMeetupsForMap(
+  meetups: readonly Meetup[],
+  context: MeetupMapFilterContext,
+): Meetup[] {
+  const now = context.now ?? new Date();
+  const visibleToday = meetups.filter((meetup) => {
+    const joined = Boolean(
+      context.currentUserId && meetup.attendeeIds.includes(context.currentUserId),
+    );
+    const start = new Date(meetup.startTime);
+    return Number.isFinite(start.getTime())
+      && isSameLocalDay(start, now)
+      && canUserViewMeetup(meetup, context.currentUserId)
+      && (!meetup.isCancelled || joined);
+  });
+  const nearby = filterMeetupsByRadius(
+    visibleToday,
+    context.userLocation,
+    context.radiusMiles,
+  );
+  const markerLimit = Math.max(0, Math.min(100, Math.floor(context.maxMarkers ?? 40)));
+  return sortMeetupsByRelevance(nearby, context).slice(0, markerLimit);
 }
 
 /** Returns spaces left, zero for a full meetup, or null when capacity is unlimited. */

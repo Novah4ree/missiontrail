@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Linking from 'expo-linking';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -17,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CreateMeetupModal } from '@/components/trails/create-meetup-modal';
 import { TrailMeetupCard } from '@/components/trails/trail-meetup-card';
+import { MapView, Marker, Polyline, PROVIDER_GOOGLE } from '@/components/maps/map-components';
 import { MissionTrailColors as C } from '@/constants/theme';
 import { getHikingRoute } from '@/services/hiking-route-service';
 import { loadSelectedTrail } from '@/services/selected-trail-service';
@@ -29,20 +31,11 @@ import {
   type CreateMeetupInput,
 } from '@/services/trail-data-service';
 import { startTrailActivity } from '@/services/trail-activity-service';
+import {
+  getTrailDailyForecast,
+  type TrailDailyForecast,
+} from '@/services/weather-forecast-service';
 import type { HikingRoute, Trail, TrailAmenity, TrailMeetup, TrailSearchCoordinate } from '@/types/trails';
-
-let MapView: any = View;
-let Marker: any = View;
-let Polyline: any = View;
-let PROVIDER_GOOGLE: unknown = null;
-if (Platform.OS !== 'web') {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Maps = require('react-native-maps');
-  MapView = Maps.default;
-  Marker = Maps.Marker;
-  Polyline = Maps.Polyline;
-  PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
-}
 
 // This screen presents one trail and manages its route, safety, and meetup actions.
 export default function TrailDetailsScreen() {
@@ -63,6 +56,9 @@ export default function TrailDetailsScreen() {
   const [meetupSectionY, setMeetupSectionY] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [routeMessage, setRouteMessage] = useState<string | null>(null);
+  const [forecast, setForecast] = useState<TrailDailyForecast | null>(null);
+  const [isForecastLoading, setIsForecastLoading] = useState(false);
+  const [forecastError, setForecastError] = useState<string | null>(null);
 
   // Returns to Trails safely even if this details route has no back history.
   function returnToTrails() {
@@ -100,13 +96,16 @@ export default function TrailDetailsScreen() {
     if (!trail) return;
     const selectedTrail = trail;
     let active = true;
-    // Requests an approximate origin and asks the protected service for directions.
+    // Uses an already-granted location for directions without prompting while
+    // the user is only browsing the trail details.
     async function loadRoute() {
       setIsRouteLoading(true);
       try {
         if (!(await Location.hasServicesEnabledAsync())) throw new Error('Location is off. The saved trail preview is still available.');
-        const permission = await Location.requestForegroundPermissionsAsync();
-        if (permission.status !== Location.PermissionStatus.GRANTED) throw new Error('Location permission was denied. You can review the trail, but verified tracking cannot start.');
+        const permission = await Location.getForegroundPermissionsAsync();
+        if (permission.status !== Location.PermissionStatus.GRANTED) {
+          throw new Error('Start Navigation to enable foreground location and verified GPS trail tracking.');
+        }
         const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         const start = { latitude: location.coords.latitude, longitude: location.coords.longitude };
         if (active) setOrigin(start);
@@ -126,6 +125,31 @@ export default function TrailDetailsScreen() {
     return () => { active = false; };
   }, [trail]);
 
+  // Fetches today's forecast for the trail and cancels stale screen requests.
+  useEffect(() => {
+    if (!trail) return;
+    const controller = new AbortController();
+    setIsForecastLoading(true);
+    setForecast(null);
+    setForecastError(null);
+
+    void getTrailDailyForecast(trail.latitude, trail.longitude, controller.signal)
+      .then(setForecast)
+      .catch((forecastLoadError: unknown) => {
+        if (
+          forecastLoadError instanceof Error
+          && forecastLoadError.name === 'AbortError'
+        ) return;
+        if (__DEV__) console.warn('[Trail details] Forecast could not load.', forecastLoadError);
+        setForecastError('Today’s forecast is temporarily unavailable.');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsForecastLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [trail]);
+
   const previewGeometry = route?.geometry ?? trail?.geometry;
   // Converts GeoJSON longitude/latitude pairs into the map library's coordinate shape.
   const routeCoordinates = useMemo(() => previewGeometry?.coordinates.map(([longitude, latitude]) => ({ latitude, longitude })) ?? [], [previewGeometry]);
@@ -143,26 +167,39 @@ export default function TrailDetailsScreen() {
     }
   }, [meetupSectionY, section]);
 
-  // Sends the route to Live Map without granting progress, relics, or XP here.
+  // Opens turn-by-turn walking directions to the selected trailhead.
   async function startNavigation() {
     if (!trail || isStarting) return;
+    if (
+      !Number.isFinite(trail.latitude)
+      || trail.latitude < -90
+      || trail.latitude > 90
+      || !Number.isFinite(trail.longitude)
+      || trail.longitude < -180
+      || trail.longitude > 180
+    ) {
+      Alert.alert('Directions unavailable', 'This trail does not have valid destination coordinates.');
+      return;
+    }
     if (trail.status !== 'open' || !trail.publicAccess) {
       Alert.alert('Trail unavailable', 'This trail cannot be started while it is closed or restricted.');
       return;
     }
-    if (!origin) {
-      Alert.alert('Location needed', 'Enable foreground location to begin a verified GPS trail session.');
-      return;
-    }
     setIsStarting(true);
-    // Only Live Map GPS validation can add progress, complete missions, or award XP.
-    await startTrailActivity({
-      ...trail,
-      estimatedDurationMinutes: route?.durationMinutes ?? trail.estimatedDurationMinutes,
-      routeDistanceMiles: route?.distanceMiles ?? trail.lengthMiles,
-      geometry: route?.geometry ?? trail.geometry,
-    }, origin);
-    router.replace('/home-backup');
+    try {
+      // Save the destination before Maps backgrounds this app. Mission step
+      // credit can then remain paused until the user reaches the trailhead.
+      await startTrailActivity(trail, origin ?? undefined);
+      await Linking.openURL(getTrailNavigationUrl(trail));
+    } catch (navigationError) {
+      if (__DEV__) console.warn('[Trail details] Maps navigation could not open.', navigationError);
+      Alert.alert(
+        'Navigation unavailable',
+        'A maps app could not be opened. Please use the trail address shown above.',
+      );
+    } finally {
+      setIsStarting(false);
+    }
   }
 
   // Records a join request and updates the button so it cannot be sent repeatedly.
@@ -226,8 +263,18 @@ export default function TrailDetailsScreen() {
               <Text style={styles.description}>{trail.description ?? 'Not provided.'}</Text>
 
               <View style={styles.statsRow}>
-                <Stat label="Length" value={`${trail.lengthMiles.toFixed(1)} mi`} />
-                <Stat label="Est. time" value={`${trail.estimatedDurationMinutes} min`} />
+                <Stat
+                  label="Length"
+                  value={route
+                    ? `${route.distanceMiles.toFixed(1)} mi`
+                    : trail.lengthMiles > 0 ? `${trail.lengthMiles.toFixed(1)} mi` : 'Not provided'}
+                />
+                <Stat
+                  label="Est. time"
+                  value={route
+                    ? `${Math.round(route.durationMinutes)} min`
+                    : trail.estimatedDurationMinutes > 0 ? `${trail.estimatedDurationMinutes} min` : 'Not provided'}
+                />
                 <Stat label="Elevation" value={trail.elevationGainFeet !== undefined ? `${trail.elevationGainFeet} ft` : 'Not provided'} />
               </View>
 
@@ -250,7 +297,11 @@ export default function TrailDetailsScreen() {
               </Section>
 
               <Section title="Weather & Safety">
-                <View style={styles.weather}><Ionicons name="partly-sunny-outline" size={22} color={C.warning} /><View style={styles.noticeCopy}><Text style={styles.noticeTitle}>Weather warning placeholder</Text><Text style={styles.noticeText}>Live forecasts are not connected yet. Check an official forecast and park alerts before leaving.</Text></View></View>
+                <DailyForecast
+                  forecast={forecast}
+                  isLoading={isForecastLoading}
+                  error={forecastError}
+                />
                 {trail.safetyNotes.map((note) => <View key={note} style={styles.safetyLine}><Ionicons name="shield-checkmark-outline" size={16} color={C.green} /><Text style={styles.safetyText}>{note}</Text></View>)}
               </Section>
 
@@ -263,10 +314,10 @@ export default function TrailDetailsScreen() {
           </ScrollView>
 
           <View style={[styles.footer, { paddingBottom: safeArea.bottom + 12 }]}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Start GPS navigation for this trail" disabled={!origin || trail.status !== 'open' || isStarting} onPress={() => void startNavigation()} style={[styles.startButton, (!origin || trail.status !== 'open' || isStarting) && styles.disabled]}>
-              <Ionicons name="navigate" size={19} color={C.text} /><Text style={styles.startText}>{isStarting ? 'Opening Live Map…' : trail.status === 'closed' ? 'Trail Closed' : 'Start Navigation'}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Start GPS navigation for this trail" disabled={trail.status !== 'open' || isStarting} onPress={() => void startNavigation()} style={[styles.startButton, (trail.status !== 'open' || isStarting) && styles.disabled]}>
+              <Ionicons name="navigate" size={19} color={C.text} /><Text style={styles.startText}>{isStarting ? 'Opening Maps…' : trail.status === 'closed' ? 'Trail Closed' : 'Start Navigation'}</Text>
             </Pressable>
-            <Text style={styles.verificationText}>XP and relic eligibility unlock only after verified GPS movement.</Text>
+            <Text style={styles.verificationText}>Opens walking directions. Mission steps count once you are within 0.31 mi of the trailhead.</Text>
           </View>
 
           <CreateMeetupModal visible={showCreateMeetup} trail={trail} onClose={() => setShowCreateMeetup(false)} onCreate={createMeetup} />
@@ -297,8 +348,77 @@ function Amenity({ amenity, available }: { amenity: TrailAmenity; available: boo
   return <View style={[styles.amenity, !available && styles.unavailableAmenity]}><Ionicons name={available ? 'checkmark-circle' : 'remove-circle-outline'} size={16} color={available ? C.green : C.textMuted} /><Text style={styles.amenityText}>{label}: {available ? 'Yes' : 'Not provided'}</Text></View>;
 }
 
+function DailyForecast({
+  forecast,
+  isLoading,
+  error,
+}: {
+  forecast: TrailDailyForecast | null;
+  isLoading: boolean;
+  error: string | null;
+}) {
+  if (isLoading) {
+    return (
+      <View style={styles.weather}>
+        <ActivityIndicator color={C.warning} />
+        <Text style={styles.noticeText}>Loading today’s trail forecast…</Text>
+      </View>
+    );
+  }
+  if (!forecast || error) {
+    return (
+      <View style={styles.weather}>
+        <Ionicons name="cloud-offline-outline" size={22} color={C.warning} />
+        <View style={styles.noticeCopy}>
+          <Text style={styles.noticeTitle}>Forecast unavailable</Text>
+          <Text style={styles.noticeText}>{error ?? 'Check an official forecast before leaving.'}</Text>
+        </View>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.weather}>
+      <Ionicons name={weatherIcon(forecast.weatherCode)} size={24} color={C.warning} />
+      <View style={styles.noticeCopy}>
+        <Text style={styles.noticeTitle}>
+          {forecast.summary} · {Math.round(forecast.temperatureMaxF)}° / {Math.round(forecast.temperatureMinF)}°
+        </Text>
+        <Text style={styles.noticeText}>
+          Rain {Math.round(forecast.precipitationProbabilityPercent)}% · Wind up to {Math.round(forecast.windSpeedMaxMph)} mph · UV {Math.round(forecast.uvIndexMax)}
+        </Text>
+        <Text style={styles.forecastSource}>
+          Today, {formatForecastDate(forecast.date)} · Forecast by Open-Meteo
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function weatherIcon(code: number): keyof typeof Ionicons.glyphMap {
+  if (code === 0 || code === 1) return 'sunny-outline';
+  if (code === 2) return 'partly-sunny-outline';
+  if (code === 3 || code === 45 || code === 48) return 'cloudy-outline';
+  if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) return 'snow-outline';
+  if (code >= 95) return 'thunderstorm-outline';
+  return 'rainy-outline';
+}
+
+function formatForecastDate(date: string) {
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
+    .format(new Date(`${date}T12:00:00`));
+}
+
 // Capitalizes stored lowercase labels before showing them to the user.
 function capitalize(value: string) { return value.charAt(0).toUpperCase() + value.slice(1); }
+
+// Uses native Apple Maps on iOS and Google Maps directions everywhere else.
+function getTrailNavigationUrl(trail: Trail) {
+  const destination = `${trail.latitude},${trail.longitude}`;
+  if (Platform.OS === 'ios') {
+    return `http://maps.apple.com/?daddr=${destination}&q=${encodeURIComponent(trail.name)}&dirflg=w`;
+  }
+  return `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=walking&dir_action=navigate`;
+}
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.background },
@@ -340,6 +460,7 @@ const styles = StyleSheet.create({
   noticeCopy: { flex: 1 },
   noticeTitle: { color: '#FFE2A9', fontSize: 12, fontWeight: '900' },
   noticeText: { color: '#D9C7A4', fontSize: 11, lineHeight: 17, marginTop: 3 },
+  forecastSource: { color: '#A99B7E', fontSize: 9, lineHeight: 14, marginTop: 5 },
   safetyLine: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 7 },
   safetyText: { flex: 1, color: C.textMuted, fontSize: 12, lineHeight: 18 },
   createButton: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, backgroundColor: '#702288', paddingHorizontal: 14 },

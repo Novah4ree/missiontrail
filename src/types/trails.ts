@@ -82,6 +82,7 @@ export type HikingRoute = {
 
 export type TrailFilterKey =
   | 'near_me'
+  | 'parks'
   | 'walking'
   | 'hiking'
   | 'easy'
@@ -105,5 +106,5 @@ export type TrailSearchCoordinate = {
 export type ActiveTrailActivity = {
   trail: NearbyTrail;
   startedAt: string;
-  startCoordinate: TrailSearchCoordinate;
+  startCoordinate?: TrailSearchCoordinate;
 };

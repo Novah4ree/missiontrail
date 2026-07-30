@@ -1,7 +1,78 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { normalizeGeoapifyPlaces, normalizeGeoapifyRoute } from './trail-normalization.ts';
+import {
+  normalizeGeoapifyPlaces,
+  normalizeGeoapifyRoute,
+  normalizeOverpassPlaces,
+} from './trail-normalization.ts';
+
+test('OpenStreetMap nodes and area centers are normalized and sorted by distance', () => {
+  const trails = normalizeOverpassPlaces([
+    {
+      type: 'way',
+      id: 22,
+      center: { lat: 37.02, lon: -122 },
+      tags: { name: 'Far Park', leisure: 'park' },
+    },
+    {
+      type: 'node',
+      id: 11,
+      lat: 37.001,
+      lon: -122,
+      tags: { name: 'Near Trailhead', information: 'trailhead' },
+    },
+  ], { latitude: 37, longitude: -122 });
+
+  assert.deepEqual(trails.map((trail) => trail.id), ['node:11', 'way:22']);
+  assert.equal(trails[0].category, 'trailhead');
+  assert.equal(trails[1].category, 'park');
+  assert.equal(trails[0].source, 'openstreetmap');
+});
+
+test('OpenStreetMap trails require a name and valid coordinates', () => {
+  const trails = normalizeOverpassPlaces([
+    { type: 'way', id: 1, center: { lat: 37, lon: -122 }, tags: { highway: 'path' } },
+    { type: 'way', id: 2, center: { lat: 100, lon: -122 }, tags: { name: 'Invalid' } },
+    { type: 'way', id: 3, center: { lat: 37, lon: -122 }, tags: { name: 'Valid', highway: 'path' } },
+  ], { latitude: 37, longitude: -122 });
+
+  assert.deepEqual(trails.map((trail) => trail.name), ['Valid']);
+  assert.equal(trails[0].category, 'trail');
+});
+
+test('repeated OpenStreetMap segments become one nearby trail result', () => {
+  const trails = normalizeOverpassPlaces([
+    { type: 'way', id: 1, center: { lat: 37.02, lon: -122 }, tags: { name: 'Loop Trail', highway: 'path' } },
+    { type: 'way', id: 2, center: { lat: 37.001, lon: -122 }, tags: { name: 'Loop Trail', highway: 'path' } },
+  ], { latitude: 37, longitude: -122 });
+
+  assert.equal(trails.length, 1);
+  assert.equal(trails[0].id, 'way:2');
+});
+
+test('OpenStreetMap accessibility, address, and explicit hiking grade are preserved', () => {
+  const [trail] = normalizeOverpassPlaces([
+    {
+      type: 'relation',
+      id: 44,
+      center: { lat: 37, lon: -122 },
+      tags: {
+        name: 'Accessible Reserve',
+        boundary: 'protected_area',
+        wheelchair: 'yes',
+        sac_scale: 'mountain_hiking',
+        'addr:street': 'Park Road',
+        'addr:city': 'Fairfield',
+      },
+    },
+  ], { latitude: 37, longitude: -122 });
+
+  assert.equal(trail.category, 'nature_reserve');
+  assert.equal(trail.accessibility, 'Wheelchair access: yes');
+  assert.equal(trail.address, 'Park Road, Fairfield');
+  assert.equal(trail.difficulty, 'moderate');
+});
 
 test('places are normalized and sorted by calculated user distance', () => {
   const trails = normalizeGeoapifyPlaces([

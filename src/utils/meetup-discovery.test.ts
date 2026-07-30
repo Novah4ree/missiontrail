@@ -9,6 +9,7 @@ import {
   determineMeetupStatusLabel,
   filterMeetups,
   filterMeetupsByRadius,
+  filterMeetupsForMap,
   sortMeetupsByRelevance,
 } from './meetup-discovery.ts';
 
@@ -92,4 +93,32 @@ test('status labels recognize friends, capacity, trends, official, favorite, and
   assert.equal(determineMeetupStatusLabel(makeMeetup({ type: 'official' }), { now: NOW }), 'Official Meetup');
   assert.equal(determineMeetupStatusLabel(makeMeetup({ attendeeIds: Array.from({ length: 10 }, (_, index) => `${index}`), maxAttendees: 20, createdAt: '2026-01-01T12:00:00-08:00' }), { now: NOW }), 'Community Favorite');
   assert.equal(determineMeetupStatusLabel(makeMeetup(), { now: NOW }), 'New Meetup');
+});
+
+test('map filtering protects friends-only and cancelled meetup visibility', () => {
+  const publicMeetup = makeMeetup({ id: 'public' });
+  const invitedMeetup = makeMeetup({ id: 'invited', type: 'friends', invitedUserIds: ['viewer'] });
+  const privateMeetup = makeMeetup({ id: 'private', type: 'friends', invitedUserIds: ['someone-else'] });
+  const cancelledJoined = makeMeetup({ id: 'cancelled-joined', attendeeIds: ['viewer'], isCancelled: true });
+  const cancelledOther = makeMeetup({ id: 'cancelled-other', isCancelled: true });
+  const visible = filterMeetupsForMap(
+    [publicMeetup, invitedMeetup, privateMeetup, cancelledJoined, cancelledOther],
+    { currentUserId: 'viewer', userLocation: USER_LOCATION, radiusMiles: 5, now: NOW },
+  );
+
+  assert.deepEqual(new Set(visible.map(({ id }) => id)), new Set(['public', 'invited', 'cancelled-joined']));
+});
+
+test('map filtering respects radius and marker limits', () => {
+  const meetups = Array.from({ length: 6 }, (_, index) => makeMeetup({ id: `nearby-${index}` }));
+  const farAway = makeMeetup({ id: 'far-away', latitude: 39.5 });
+  const visible = filterMeetupsForMap([...meetups, farAway], {
+    userLocation: USER_LOCATION,
+    radiusMiles: 5,
+    maxMarkers: 3,
+    now: NOW,
+  });
+
+  assert.equal(visible.length, 3);
+  assert.equal(visible.some(({ id }) => id === 'far-away'), false);
 });

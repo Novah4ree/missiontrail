@@ -2,16 +2,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type {
   MeetupPace,
+  NearbyTrail,
   Trail,
   TrailMeetup,
   TrailSearchCoordinate,
 } from '@/types/trails';
-import { calculateDistanceMeters } from '@/utils/distance';
+import {
+  searchNearbyTrails,
+  TRAIL_SEARCH_RADIUS_METERS,
+} from '@/services/trail-discovery-service';
 
 const FAVORITES_KEY = 'mission-trails:favorite-trails:v1';
-const METERS_PER_MILE = 1_609.344;
 
-const MOCK_TRAILS: Trail[] = [
+// Kept only for explicit development fixtures; nearby discovery never falls
+// back to this San Diego catalog.
+export const DEVELOPMENT_TRAILS: Trail[] = __DEV__ ? [
   {
     id: 'mission-gorge-loop',
     name: 'Mission Gorge Explorer Loop',
@@ -168,7 +173,7 @@ const MOCK_TRAILS: Trail[] = [
     geometry: { type: 'LineString', coordinates: [[-117.0671, 32.8704], [-117.0619, 32.8748], [-117.0557, 32.8782]] },
     source: 'mission_trails',
   },
-];
+] : [];
 
 function localDate(offsetDays = 0) {
   const date = new Date();
@@ -182,14 +187,50 @@ let meetups: TrailMeetup[] = [
   { id: 'greenway-stroll', trailId: 'community-greenway', title: 'Community Stroll', date: localDate(1), startTime: '5:30 PM', meetingPoint: 'Public park information sign', hostName: 'Sam K.', attendeeCount: 4, maxGroupSize: 12, pace: 'relaxed' },
 ];
 
-/** Returns mock catalog data sorted by approximate device distance when available. */
-export async function getTrails(userLocation?: TrailSearchCoordinate | null) {
-  return MOCK_TRAILS.map((trail) => ({
+function toAppTrail(trail: NearbyTrail): Trail {
+  const isWalking = trail.category === 'walking_path' || trail.category === 'park';
+  const routeLength = trail.routeDistanceMiles ?? 0;
+
+  return {
     ...trail,
-    distanceMiles: userLocation
-      ? calculateDistanceMeters(userLocation, trail) / METERS_PER_MILE
-      : trail.lengthMiles,
-  })).sort((left, right) => left.distanceMiles - right.distanceMiles);
+    activityType: isWalking ? 'walking' : 'hiking',
+    city: trail.address ?? 'Nearby',
+    imageKey: 'mission-landscape',
+    lengthMiles: routeLength,
+    estimatedDurationMinutes: trail.estimatedDurationMinutes ?? 0,
+    difficulty: trail.difficulty ?? 'unknown',
+    terrain: ({
+      trail: 'Trail',
+      trailhead: 'Trailhead',
+      park: 'Park paths',
+      nature_reserve: 'Nature reserve trails',
+      walking_path: 'Walking path',
+    } as const)[trail.category],
+    rating: 0,
+    publicAccess: true,
+    status: 'open',
+    xpReward: 0,
+    relicsPossible: false,
+    accessible: Boolean(trail.accessibility?.toLowerCase().includes('yes')),
+    accessibility: trail.accessibility ?? 'Not provided by the trail data source.',
+    startLocation: trail.address ?? `${trail.name} entrance`,
+    amenities: [],
+    petRules: 'Not provided by the trail data source.',
+    safetyNotes: ['Confirm posted access conditions and trail notices before entering.'],
+  };
+}
+
+/** Queries the live nearby provider using the device coordinate and returns nearest first. */
+export async function getTrails(
+  userLocation?: TrailSearchCoordinate | null,
+  options: { forceRefresh?: boolean } = {},
+) {
+  if (!userLocation) return [];
+  const trails = await searchNearbyTrails(userLocation, {
+    radiusMeters: TRAIL_SEARCH_RADIUS_METERS,
+    forceRefresh: options.forceRefresh,
+  });
+  return trails.map(toAppTrail);
 }
 
 export async function getTrailMeetups(trailId?: string) {

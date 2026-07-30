@@ -1,3 +1,26 @@
+export type MissionRewards = {
+  xp: number;
+  bondXp?: number;
+  energyRestore?: number;
+  companionXp?: number;
+};
+
+export type MissionRewardTransaction = {
+  claimed: boolean;
+  resultCode: string;
+  xpAwarded: number;
+  oldTotalXp: number;
+  newTotalXp: number;
+  oldLevel: number;
+  newLevel: number;
+  levelsGained: number;
+  milestoneRewardsCrossed: {
+    level: number;
+    rewardCode: string;
+    reward: Record<string, unknown>;
+  }[];
+};
+
 export type RelicEligibility = {
   thresholdMeters: number;
   earned: boolean;
@@ -7,18 +30,31 @@ export type RelicEligibility = {
 
 export type VerifiedMissionProgress = {
   id: string;
+  level?: number;
   title: string;
   required: boolean;
-  state: 'locked' | 'active' | 'completed' | 'claimed';
+  state: 'locked' | 'active' | 'completed' | 'claimed' | 'expired';
   requirementType: 'distance' | 'steps' | 'relic' | 'location' | 'daily_set' | 'active_time' | 'session';
   progress: number;
   target: number;
   completed: boolean;
   rewardXp: number;
+  rewards?: MissionRewards;
   claimedAt: string | null;
 };
 
 export type VerifiedDailyProgress = {
+  totalXp: number;
+  dailyStreak: number;
+  verifiedSteps: number;
+  companion: {
+    companionId: string | null;
+    bondPoints: number;
+    bondTier: number;
+    bondPercent: number;
+    energy: number;
+    maximumEnergy: number;
+  };
   localDate: string;
   timezone: string;
   timezoneStatus: 'verified' | 'fallback';
@@ -50,14 +86,3 @@ export type QueuedGpsSample = {
   mocked: boolean;
   movementKind: 'walking' | 'running' | 'unknown';
 };
-
-export type HealthActivityRecord = {
-  recordId: string;
-  activityType: 'walking' | 'running';
-  startedAt: string;
-  endedAt: string;
-  distanceMeters: number;
-  sourceName: string;
-};
-
-export type HealthPermissionState = 'undetermined' | 'granted' | 'denied' | 'unavailable';

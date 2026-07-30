@@ -4,6 +4,9 @@ import { StatusBar } from 'expo-status-bar';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useDailyProgress } from '@/hooks/use-daily-progress';
+import { getPlayerLevelProgress } from '@/utils/player-level';
+
 type LeaderboardPlayer = {
   rank: number;
   name: string;
@@ -28,17 +31,14 @@ const rankedPlayers: LeaderboardPlayer[] = [
   { rank: 9, name: 'NebulaNinja', distance: '1,489 km' },
 ];
 
-const userRank: LeaderboardPlayer = {
-  rank: 127,
-  name: 'You',
-  level: 42,
-  distance: '847 km',
-};
-
 // This shows the full Global Rankings screen.
 export default function LeaderboardScreen() {
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
+  const { progress } = useDailyProgress();
+  const playerLevel = getPlayerLevelProgress(progress?.totalXp ?? 0);
+  const currentUserDistance =
+    `${((progress?.verifiedDistanceMeters ?? 0) / 1_000).toFixed(2)} km today`;
 
   // Returns to the previous screen or the Live Map when no history exists.
   function returnToLiveMap() {
@@ -87,7 +87,7 @@ export default function LeaderboardScreen() {
           {rankedPlayers.map((player) => renderPlayerRow(player))}
         </View>
 
-        {renderUserRankCard(userRank)}
+        {renderUserProgressCard(playerLevel.level, currentUserDistance)}
       </ScrollView>
     </View>
   );
@@ -130,17 +130,17 @@ function renderPlayerRow(player: LeaderboardPlayer) {
 }
 
 // This shows the current user's rank card at the bottom.
-function renderUserRankCard(player: LeaderboardPlayer) {
+function renderUserProgressCard(level: number, distance: string) {
   return (
     <View style={styles.userCard}>
       <View>
-        <Text style={styles.userLabel}>YOUR RANK</Text>
-        <Text style={styles.userName}>#{player.rank} {player.name}</Text>
+        <Text style={styles.userLabel}>YOUR PROGRESS</Text>
+        <Text style={styles.userName}>You</Text>
       </View>
 
       <View style={styles.userStats}>
-        <Text style={styles.userLevel}>Level {player.level}</Text>
-        <Text style={styles.userDistance}>{player.distance}</Text>
+        <Text style={styles.userLevel}>Level {level}</Text>
+        <Text style={styles.userDistance}>{distance}</Text>
       </View>
     </View>
   );

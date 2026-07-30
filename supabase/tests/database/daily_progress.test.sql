@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(22);
+select plan(24);
 
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
 values (
@@ -36,6 +36,28 @@ select isnt(
   private.ensure_daily_progress('11111111-1111-4111-8111-111111111111', '2026-03-08 07:30:00+00'),
   private.ensure_daily_progress('11111111-1111-4111-8111-111111111111', '2026-03-08 10:30:00+00'),
   'daily progress resets when the stored timezone enters a new local day'
+);
+
+select ok(
+  jsonb_array_length(
+    public.server_get_verified_daily_progress(
+      '11111111-1111-4111-8111-111111111111'
+    )->'missions'
+  ) > 0,
+  'a new authenticated user receives the configured mission catalog'
+);
+select ok(
+  not exists (
+    select 1
+    from jsonb_array_elements(
+      public.server_get_verified_daily_progress(
+        '11111111-1111-4111-8111-111111111111'
+      )->'missions'
+    ) as mission
+    where (mission->>'level')::integer <> 1
+      or (mission->>'progress')::numeric <> 0
+  ),
+  'new-user Level 1 missions start at zero and exclude other levels'
 );
 
 select is(
@@ -143,7 +165,7 @@ select is(result.accepted, true, 'a plausible verified mission activity is accep
 from batch
 cross join lateral public.server_record_verified_segment(
     '22222222-2222-4222-8222-222222222222', batch.batch_id, 'gps', repeat('f', 64),
-    'walking', 1609.344,
+    'walking', 4828.032,
     clock_timestamp() - interval '30 minutes', clock_timestamp() - interval '10 minutes', 1200, 1.34112
   ) as result;
 select is(

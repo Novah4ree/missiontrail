@@ -25,9 +25,25 @@ export function TrailSearchBar({ value, onChangeText, onUseLocation, isLocating 
           style={styles.input}
           value={value}
         />
-        {value ? <Pressable accessibilityLabel="Clear search" hitSlop={10} onPress={() => onChangeText('')}><Ionicons name="close-circle" size={19} color={C.textMuted} /></Pressable> : null}
+        {value ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Clear search"
+            hitSlop={10}
+            onPress={() => onChangeText('')}
+            style={({ pressed }) => pressed && styles.pressed}
+          >
+            <Ionicons name="close-circle" size={19} color={C.textMuted} />
+          </Pressable>
+        ) : null}
       </View>
-      <Pressable accessibilityLabel="Find and center on my exact location" disabled={isLocating} onPress={onUseLocation} style={[styles.locationButton, isLocating && styles.disabled]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Find and center on my exact location"
+        disabled={isLocating}
+        onPress={onUseLocation}
+        style={({ pressed }) => [styles.locationButton, isLocating && styles.disabled, pressed && styles.pressed]}
+      >
         {isLocating
           ? <ActivityIndicator color={C.cyan} />
           : <Ionicons name="locate" size={21} color={C.cyan} />}
@@ -42,4 +58,5 @@ const styles = StyleSheet.create({
   input: { flex: 1, color: C.text, fontSize: 14, paddingVertical: 12 },
   locationButton: { width: 48, height: 48, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.cyan, backgroundColor: '#102436' },
   disabled: { opacity: 0.65 },
+  pressed: { opacity: 0.72 },
 });

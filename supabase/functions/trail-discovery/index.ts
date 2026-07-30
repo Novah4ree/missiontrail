@@ -2,9 +2,9 @@ import { createClient } from 'npm:@supabase/supabase-js@2.106.2';
 
 import {
   METERS_PER_MILE,
-  normalizeGeoapifyPlaces,
   normalizeGeoapifyRoute,
-  type GeoapifyPlaceFeature,
+  normalizeOverpassPlaces,
+  type OverpassElement,
 } from '../_shared/trail-normalization.ts';
 
 type Coordinate = { latitude?: number; longitude?: number };
@@ -66,6 +66,93 @@ async function geoapify(path: string, parameters: URLSearchParams) {
   return result.json() as Promise<Record<string, unknown>>;
 }
 
+const OVERPASS_ENDPOINTS = [
+  'https://lz4.overpass-api.de/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+];
+
+function boundingBox(center: Required<Coordinate>, radiusMeters: number) {
+  const latitudeDelta = radiusMeters / 111_320;
+  const longitudeScale = Math.max(0.1, Math.cos(center.latitude * Math.PI / 180));
+  const longitudeDelta = radiusMeters / (111_320 * longitudeScale);
+  return [
+    center.latitude - latitudeDelta,
+    center.longitude - longitudeDelta,
+    center.latitude + latitudeDelta,
+    center.longitude + longitudeDelta,
+  ].map((value) => value.toFixed(6)).join(',');
+}
+
+async function overpassQuery(query: string) {
+  let lastFailure = 'OVERPASS_UNAVAILABLE';
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const result = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+          'User-Agent': 'Mission Trails nearby discovery',
+        },
+        body: new URLSearchParams({ data: query }),
+        signal: controller.signal,
+      });
+      if (!result.ok) {
+        lastFailure = `OVERPASS_${result.status}`;
+        continue;
+      }
+      const data = await result.json() as { elements?: unknown };
+      if (!Array.isArray(data.elements)) {
+        lastFailure = 'OVERPASS_INVALID_RESPONSE';
+        continue;
+      }
+      return data.elements as OverpassElement[];
+    } catch (error) {
+      lastFailure = error instanceof Error && error.name === 'AbortError'
+        ? 'OVERPASS_TIMEOUT'
+        : 'OVERPASS_UNAVAILABLE';
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  throw new Error(lastFailure);
+}
+
+async function overpass(center: Required<Coordinate>, radiusMeters: number) {
+  const destinationBox = boundingBox(center, radiusMeters);
+  // Dense named path segments are intentionally bounded to 10 km; parks,
+  // reserves, and trailheads still use the complete requested radius.
+  const trailBox = boundingBox(center, Math.min(radiusMeters, 10_000));
+  const destinationsQuery = `
+[out:json][timeout:25];
+(
+  nwr["name"]["leisure"~"^(park|garden|nature_reserve|recreation_ground)$"](${destinationBox});
+  nwr["name"]["landuse"="recreation_ground"](${destinationBox});
+  nwr["name"]["boundary"~"^(protected_area|national_park)$"](${destinationBox});
+  nwr["name"]["information"~"^(trailhead|guidepost|map)$"](${destinationBox});
+);
+out center 300;
+`;
+  const trailsQuery = `
+[out:json][timeout:25];
+(
+  nwr["name"]["highway"~"^(path|footway|pedestrian|cycleway|track|trailhead)$"](${trailBox});
+  relation["name"]["route"~"^(hiking|foot)$"](${trailBox});
+);
+out center 200;
+`;
+  const results = await Promise.allSettled([
+    overpassQuery(destinationsQuery),
+    overpassQuery(trailsQuery),
+  ]);
+  const elements = results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
+  if (elements.length > 0) return elements;
+  const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+  throw failure?.reason ?? new Error('OVERPASS_UNAVAILABLE');
+}
+
 Deno.serve(async (request) => {
   const requestId = crypto.randomUUID();
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
@@ -86,19 +173,12 @@ Deno.serve(async (request) => {
 
     if (body.action === 'search') {
       if (!validCoordinate(body.center)) return response({ error: 'INVALID_COORDINATE', requestId }, 400);
-      const radius = Math.min(25 * METERS_PER_MILE, Math.max(500, body.radiusMeters ?? 10 * METERS_PER_MILE));
-      const parameters = new URLSearchParams({
-        categories: [
-          'highway.footway', 'highway.path', 'leisure.park', 'leisure.park.nature_reserve',
-          'natural.protected_area', 'national_park', 'tourism.information.ranger_station',
-        ].join(','),
-        filter: `circle:${body.center.longitude},${body.center.latitude},${radius}`,
-        bias: `proximity:${body.center.longitude},${body.center.latitude}`,
-        limit: '100',
-      });
-      const data = await geoapify('/v2/places', parameters);
-      const features = Array.isArray(data.features) ? data.features as GeoapifyPlaceFeature[] : [];
-      return response({ trails: normalizeGeoapifyPlaces(features, body.center), requestId });
+      const radius = Math.min(25 * METERS_PER_MILE, Math.max(500, body.radiusMeters ?? 25 * METERS_PER_MILE));
+      const elements = await overpass(body.center, radius);
+      const trails = normalizeOverpassPlaces(elements, body.center)
+        .filter((trail) => trail.distanceMiles * METERS_PER_MILE <= radius)
+        .slice(0, 100);
+      return response({ trails, provider: 'openstreetmap', requestId });
     }
 
     if (body.action === 'route') {
@@ -119,7 +199,33 @@ Deno.serve(async (request) => {
 
     return response({ error: 'INVALID_REQUEST', requestId }, 400);
   } catch (error) {
-    console.error('Trail discovery request failed', error instanceof Error ? error.message : 'unknown');
+    const failure = error instanceof Error ? error.message : 'unknown';
+    console.error('Trail discovery request failed', failure);
+    if (
+      failure === 'Missing server environment: GEOAPIFY_API_KEY'
+      || failure === 'GEOAPIFY_401'
+      || failure === 'GEOAPIFY_403'
+    ) {
+      return response({
+        error: 'CONFIGURATION_ERROR',
+        message: 'Nearby trail discovery is not configured.',
+        requestId,
+      }, 503);
+    }
+    if (failure === 'GEOAPIFY_429') {
+      return response({
+        error: 'RATE_LIMITED',
+        message: 'Please wait a moment before searching again.',
+        requestId,
+      }, 429);
+    }
+    if (failure === 'OVERPASS_429') {
+      return response({
+        error: 'RATE_LIMITED',
+        message: 'Please wait a moment before searching again.',
+        requestId,
+      }, 429);
+    }
     return response({
       error: 'TRAIL_SERVICE_UNAVAILABLE',
       message: 'Nearby trails are unavailable right now. Please try again.',

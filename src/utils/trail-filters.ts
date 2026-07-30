@@ -22,23 +22,26 @@ export function filterTrails(
 
     const activityFilters = ['walking', 'hiking'].filter((key) => selected.has(key as 'walking' | 'hiking'));
     const activityMatches = activityFilters.length === 0 || activityFilters.includes(trail.activityType);
+    const parkMatches = !selected.has('parks') || trail.category === 'park';
 
     const difficultyFilters = ['easy', 'moderate', 'challenging'].filter((key) => selected.has(key as 'easy' | 'moderate' | 'challenging'));
     const difficultyMatches = difficultyFilters.length === 0 || difficultyFilters.includes(trail.difficulty);
 
     const lengthFilters = ['under_3', '3_5', '5_plus'].filter((key) => selected.has(key as 'under_3' | '3_5' | '5_plus'));
-    const lengthMatches = lengthFilters.length === 0 ||
+    const hasKnownLength = trail.lengthMiles > 0;
+    const lengthMatches = lengthFilters.length === 0 || (hasKnownLength && (
       (selected.has('under_3') && trail.lengthMiles < 3) ||
       (selected.has('3_5') && trail.lengthMiles >= 3 && trail.lengthMiles < 5) ||
-      (selected.has('5_plus') && trail.lengthMiles >= 5);
+      (selected.has('5_plus') && trail.lengthMiles >= 5)
+    ));
 
-    const nearMatches = !selected.has('near_me') || trail.distanceMiles <= 10;
+    const nearMatches = !selected.has('near_me') || trail.distanceMiles <= 25;
     const accessibilityMatches = !selected.has('accessible') || trail.accessible;
     const meetupMatches = !selected.has('meetups_today') || meetups.some(
       (meetup) => meetup.trailId === trail.id && isToday(meetup.date),
     );
 
-    return searchMatches && activityMatches && difficultyMatches && lengthMatches &&
+    return searchMatches && activityMatches && parkMatches && difficultyMatches && lengthMatches &&
       nearMatches && accessibilityMatches && meetupMatches;
   });
 }

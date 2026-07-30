@@ -11,7 +11,8 @@
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.anonymous.MissionTrail0.x2",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Allow Mission Trails to use your location to find nearby trails and track trails you choose to start."
+        "NSLocationWhenInUseUsageDescription": "Allow Mission Trails to use your location to find nearby trails and track trails you choose to start.",
+        "NSMotionUsageDescription": "Allow Mission Trails to count your steps and update today’s walking progress."
       }
     },
     "android": {
@@ -26,6 +27,7 @@
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACTIVITY_RECOGNITION",
         "android.permission.RECORD_AUDIO"
       ]
     },
@@ -46,12 +48,18 @@
         }
       ],
       "expo-font",
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Allow Mission Trails to count your steps and update today’s walking progress."
+        }
+      ],
       "expo-web-browser",
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow MissionTrail to access your location.",
-          "locationWhenInUsePermission": "Allow MissionTrail to access your location."
+          "locationAlwaysAndWhenInUsePermission": "Allow Mission Trails to use your location for nearby trails and verified GPS trail tracking.",
+          "locationWhenInUsePermission": "Allow Mission Trails to use your location for nearby trails and verified GPS trail tracking."
         }
       ],
       [

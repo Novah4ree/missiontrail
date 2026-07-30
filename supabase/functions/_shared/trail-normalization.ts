@@ -25,6 +25,15 @@ export type GeoapifyPlaceFeature = {
   properties?: GeoapifyPlaceProperties;
 };
 
+export type OverpassElement = {
+  type?: 'node' | 'way' | 'relation';
+  id?: number;
+  lat?: number;
+  lon?: number;
+  center?: { lat?: number; lon?: number };
+  tags?: Record<string, string>;
+};
+
 export type NormalizedTrail = {
   id: string;
   name: string;
@@ -36,7 +45,7 @@ export type NormalizedTrail = {
   description?: string;
   accessibility?: string;
   difficulty: 'easy' | 'moderate' | 'challenging' | 'unknown';
-  source: 'geoapify';
+  source: 'geoapify' | 'openstreetmap';
 };
 
 function radians(value: number) {
@@ -84,6 +93,91 @@ function difficultyFrom(raw: Record<string, unknown>): NormalizedTrail['difficul
     return 'challenging';
   }
   return 'unknown';
+}
+
+function categoryFromOsmTags(tags: Record<string, string>): NormalizedTrail['category'] {
+  if (
+    tags.highway === 'trailhead'
+    || ['trailhead', 'guidepost', 'map'].includes(tags.information)
+  ) {
+    return 'trailhead';
+  }
+  if (
+    tags.leisure === 'nature_reserve'
+    || ['protected_area', 'national_park'].includes(tags.boundary)
+  ) {
+    return 'nature_reserve';
+  }
+  if (
+    ['park', 'garden', 'recreation_ground'].includes(tags.leisure)
+    || tags.landuse === 'recreation_ground'
+  ) {
+    return 'park';
+  }
+  if (['footway', 'pedestrian', 'cycleway'].includes(tags.highway)) {
+    return 'walking_path';
+  }
+  return 'trail';
+}
+
+function osmAddress(tags: Record<string, string>) {
+  const street = [tags['addr:housenumber'], tags['addr:street']].filter(Boolean).join(' ');
+  return [street, tags['addr:city'], tags['addr:state']].filter(Boolean).join(', ') || undefined;
+}
+
+export function normalizeOverpassPlaces(elements: OverpassElement[], origin: Coordinate) {
+  const seen = new Set<string>();
+  const trails: NormalizedTrail[] = [];
+
+  for (const element of elements) {
+    if (!element.type || !Number.isFinite(element.id)) continue;
+    const tags = element.tags ?? {};
+    const name = readString(tags, 'name');
+    if (!name) continue;
+
+    const latitude = element.lat ?? element.center?.lat;
+    const longitude = element.lon ?? element.center?.lon;
+    if (
+      typeof latitude !== 'number'
+      || !Number.isFinite(latitude)
+      || latitude < -90
+      || latitude > 90
+      || typeof longitude !== 'number'
+      || !Number.isFinite(longitude)
+      || longitude < -180
+      || longitude > 180
+    ) {
+      continue;
+    }
+
+    const id = `${element.type}:${element.id}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const wheelchair = readString(tags, 'wheelchair');
+    trails.push({
+      id,
+      name,
+      latitude,
+      longitude,
+      distanceMiles: distanceMeters(origin, { latitude, longitude }) / METERS_PER_MILE,
+      category: categoryFromOsmTags(tags),
+      address: osmAddress(tags),
+      description: readString(tags, 'description'),
+      accessibility: wheelchair ? `Wheelchair access: ${wheelchair}` : undefined,
+      difficulty: difficultyFrom(tags),
+      source: 'openstreetmap',
+    });
+  }
+
+  const seenNames = new Set<string>();
+  return trails
+    .sort((left, right) => left.distanceMiles - right.distanceMiles)
+    .filter((trail) => {
+      const key = `${trail.category}:${trail.name.toLocaleLowerCase()}`;
+      if (seenNames.has(key)) return false;
+      seenNames.add(key);
+      return true;
+    });
 }
 
 export function normalizeGeoapifyPlaces(features: GeoapifyPlaceFeature[], origin: Coordinate) {

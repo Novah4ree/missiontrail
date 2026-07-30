@@ -2,23 +2,30 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { LocationObject } from 'expo-location';
 
 import { supabase } from '../../lib/supabase';
-import { getPlatformHealthProvider } from '@/services/health-provider';
-import { loadServerMissionProgress, saveServerMissionProgress } from '@/services/mission-cache-core';
+import {
+  getUserDailyStorageKey,
+  loadServerMissionProgress,
+  saveServerMissionProgress,
+} from '@/services/mission-cache-core';
 import type {
-  DistanceSource,
-  HealthActivityRecord,
+  MissionRewardTransaction,
   QueuedGpsSample,
   VerifiedDailyProgress,
 } from '@/types/daily-progress';
+import { getLocalDateKey } from '@/utils/daily-activity-core';
 
-const GPS_QUEUE_KEY = 'mission-trail:verified-gps-queue:v1';
-const HEALTH_CURSOR_KEY = 'mission-trail:health-sync-cursor:v1';
-const VERIFIED_PROGRESS_KEY = 'mission-trail:verified-daily-progress:v1';
+const GPS_QUEUE_KEY_PREFIX = 'mission-trail:verified-gps-queue:v2';
+const VERIFIED_PROGRESS_KEY_PREFIX = 'mission-trail:verified-daily-progress:v2';
 const MINIMUM_SYNC_SAMPLES = 6;
 const MAXIMUM_QUEUE_SAMPLES = 500;
 let queueOperation: Promise<unknown> = Promise.resolve();
+const progressListeners = new Set<(progress: VerifiedDailyProgress) => void>();
 
-type ProgressResponse = { progress: VerifiedDailyProgress; replayed?: boolean };
+type ProgressResponse = {
+  progress: VerifiedDailyProgress;
+  replayed?: boolean;
+  rewardTransaction?: MissionRewardTransaction;
+};
 
 export class VerifiedProgressError extends Error {
   constructor(public code: string, message: string) {
@@ -27,41 +34,111 @@ export class VerifiedProgressError extends Error {
   }
 }
 
-async function invokeProgress(body: Record<string, unknown>) {
+function verifiedProgressKey(userId: string) {
+  return `${VERIFIED_PROGRESS_KEY_PREFIX}:${userId}`;
+}
+
+type FunctionErrorPayload = {
+  error?: string;
+  message?: string;
+  requestId?: string;
+};
+
+/**
+ * Supabase stores an Edge Function's JSON error body on a Response object.
+ * Reading it here preserves useful server codes instead of replacing every
+ * failure with the same generic walking message.
+ */
+async function readFunctionError(error: unknown): Promise<FunctionErrorPayload | null> {
+  const context = (error as { context?: unknown } | null)?.context;
+  if (!context || typeof context !== 'object') return null;
+
+  const legacyBody = (context as { body?: FunctionErrorPayload }).body;
+  if (legacyBody && typeof legacyBody === 'object') return legacyBody;
+
+  const response = context as { clone?: () => Response; json?: () => Promise<unknown> };
+  try {
+    const body = response.clone
+      ? await response.clone().json()
+      : response.json
+        ? await response.json()
+        : null;
+    return body && typeof body === 'object' ? body as FunctionErrorPayload : null;
+  } catch {
+    return null;
+  }
+}
+
+async function invokeProgress(body: Record<string, unknown>, userId: string) {
   const { data, error } = await supabase.functions.invoke<ProgressResponse>('daily-progress', { body });
   if (error || !data?.progress) {
-    const context = (error as { context?: { body?: { error?: string; message?: string } } })?.context;
-    const code = context?.body?.error ?? 'SYNC_FAILED';
+    const errorBody = await readFunctionError(error);
+    const code = errorBody?.error
+      ?? (error as { name?: string } | null)?.name
+      ?? 'SYNC_FAILED';
     throw new VerifiedProgressError(
       code,
-      context?.body?.message ?? 'We couldn’t update today’s walk. We’ll try again soon.',
+      errorBody?.message ?? 'We couldn’t update today’s walk. We’ll try again soon.',
     );
   }
-  await saveServerMissionProgress(AsyncStorage, VERIFIED_PROGRESS_KEY, data.progress);
+  await saveServerMissionProgress(AsyncStorage, verifiedProgressKey(userId), data.progress);
+  progressListeners.forEach((listener) => listener(data.progress));
   return data;
 }
 
-export function getCachedVerifiedDailyProgress() {
-  return loadServerMissionProgress<VerifiedDailyProgress>(AsyncStorage, VERIFIED_PROGRESS_KEY);
+export function subscribeToVerifiedProgress(
+  listener: (progress: VerifiedDailyProgress) => void,
+) {
+  progressListeners.add(listener);
+  return () => {
+    progressListeners.delete(listener);
+  };
 }
 
-export async function getVerifiedDailyProgress() {
-  return (await invokeProgress({ action: 'get' })).progress;
+export function getCachedVerifiedDailyProgress(userId: string) {
+  return loadServerMissionProgress<VerifiedDailyProgress>(
+    AsyncStorage,
+    verifiedProgressKey(userId),
+  );
+}
+
+export async function getVerifiedDailyProgress(userId: string) {
+  return (await invokeProgress({ action: 'get' }, userId)).progress;
 }
 
 // Sends only the mission ID. Supabase checks verified progress and performs the
 // one-time XP transaction; the phone never sends a completion or reward value.
-export async function claimMissionReward(missionId: string) {
-  return (await invokeProgress({ action: 'claim-reward', missionId })).progress;
+export async function claimMissionReward(userId: string, missionId: string) {
+  return invokeProgress({ action: 'claim-reward', missionId }, userId);
 }
 
-export async function syncUserTimezone() {
+export async function syncDeviceSteps(
+  userId: string,
+  localDate: string,
+  steps: number,
+) {
+  return (await invokeProgress({
+    action: 'sync-steps',
+    localDate,
+    steps,
+    idempotencyKey: `${userId}:${localDate}:${steps}`,
+  }, userId)).progress;
+}
+
+export async function syncUserTimezone(userId: string) {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  return (await invokeProgress({ action: 'set-timezone', timezone })).progress;
+  return (await invokeProgress({ action: 'set-timezone', timezone }, userId)).progress;
 }
 
-async function readGpsQueue(): Promise<QueuedGpsSample[]> {
-  const value = await AsyncStorage.getItem(GPS_QUEUE_KEY);
+function gpsQueueKey(userId: string, localDate: string) {
+  return getUserDailyStorageKey(GPS_QUEUE_KEY_PREFIX, userId, localDate);
+}
+
+async function readGpsQueue(
+  userId: string,
+  localDate: string,
+): Promise<QueuedGpsSample[]> {
+  const value = await AsyncStorage.getItem(gpsQueueKey(userId, localDate));
   if (!value) return [];
   try {
     const parsed = JSON.parse(value);
@@ -84,52 +161,36 @@ function locationToSample(location: LocationObject): QueuedGpsSample {
   };
 }
 
-export function queueGpsLocation(location: LocationObject) {
+export function queueGpsLocation(location: LocationObject, userId: string) {
   const operation = queueOperation.then(async () => {
-    const queued = [...(await readGpsQueue()), locationToSample(location)].slice(-MAXIMUM_QUEUE_SAMPLES);
-    await AsyncStorage.setItem(GPS_QUEUE_KEY, JSON.stringify(queued));
-    if (queued.length >= MINIMUM_SYNC_SAMPLES) await flushGpsQueue();
+    const localDate = getLocalDateKey(new Date(location.timestamp));
+    const storageKey = gpsQueueKey(userId, localDate);
+    const queued = [
+      ...(await readGpsQueue(userId, localDate)),
+      locationToSample(location),
+    ].slice(-MAXIMUM_QUEUE_SAMPLES);
+    await AsyncStorage.setItem(storageKey, JSON.stringify(queued));
+    if (queued.length >= MINIMUM_SYNC_SAMPLES) {
+      return flushGpsQueue(userId, localDate);
+    }
+    return null;
   });
   queueOperation = operation.catch(() => undefined);
   return operation;
 }
 
-export async function flushGpsQueue() {
-  const queued = await readGpsQueue();
+export async function flushGpsQueue(
+  userId: string,
+  localDate = getLocalDateKey(),
+) {
+  const storageKey = gpsQueueKey(userId, localDate);
+  const queued = await readGpsQueue(userId, localDate);
   if (queued.length < 2) return null;
   const batchId = `gps-${queued[0].sampleId}-${queued.at(-1)?.sampleId}`;
   const result = await invokeProgress({
     action: 'sync-distance', provider: 'gps', batchId, gpsSamples: queued,
-  });
+  }, userId);
   // Keep the final point so the next batch can form one continuous segment.
-  await AsyncStorage.setItem(GPS_QUEUE_KEY, JSON.stringify(queued.slice(-1)));
+  await AsyncStorage.setItem(storageKey, JSON.stringify(queued.slice(-1)));
   return result.progress;
-}
-
-export async function syncHealthActivities(
-  provider: Extract<DistanceSource, 'healthkit' | 'health_connect'>,
-  activities: HealthActivityRecord[],
-) {
-  if (!activities.length) return getVerifiedDailyProgress();
-  const batchId = `${provider}-${activities[0].recordId}-${activities.at(-1)?.recordId}`;
-  return (await invokeProgress({
-    action: 'sync-distance', provider, batchId, healthActivities: activities,
-  })).progress;
-}
-
-export async function requestAndSyncPlatformHealth() {
-  const provider = getPlatformHealthProvider();
-  if (!provider?.isAvailable()) {
-    throw new VerifiedProgressError('HEALTH_UNAVAILABLE', 'Health app walks are not available on this version yet.');
-  }
-  const permission = await provider.requestPermissions();
-  if (permission !== 'granted') {
-    throw new VerifiedProgressError('HEALTH_PERMISSION_DENIED', 'Health access is off. You can still explore with location turned on.');
-  }
-  const cursor = await AsyncStorage.getItem(HEALTH_CURSOR_KEY);
-  const since = cursor ? new Date(cursor) : new Date(Date.now() - 24 * 60 * 60 * 1_000);
-  const activities = await provider.readActivities(since);
-  const progress = await syncHealthActivities(provider.source, activities);
-  await AsyncStorage.setItem(HEALTH_CURSOR_KEY, new Date().toISOString());
-  return progress;
 }

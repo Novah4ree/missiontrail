@@ -25,13 +25,16 @@ type HealthActivity = {
 };
 
 type RequestBody = {
-  action?: 'get' | 'set-timezone' | 'sync-distance' | 'claim-reward';
+  action?: 'get' | 'set-timezone' | 'sync-distance' | 'sync-steps' | 'claim-reward';
   timezone?: string;
   provider?: DistanceProvider;
   batchId?: string;
   gpsSamples?: GpsSample[];
   healthActivities?: HealthActivity[];
   missionId?: string;
+  localDate?: string;
+  steps?: number;
+  idempotencyKey?: string;
   // Eligibility and mission booleans are intentionally absent. Unknown fields are ignored.
 };
 
@@ -105,6 +108,64 @@ function validHealthActivity(activity: HealthActivity, serverNow: number) {
   return { start, end, distance, durationSeconds: Math.round(durationSeconds), averageSpeed };
 }
 
+type SupabaseAdmin = ReturnType<typeof createClient>;
+
+// Mission definitions and progress are the required payload. Newer optional
+// profile RPCs fall back independently so a missing migration cannot erase the
+// mission list for a user.
+async function loadDailyProgress(
+  admin: SupabaseAdmin,
+  userId: string,
+  requestId: string,
+) {
+  const progress = await admin.rpc('server_get_verified_daily_progress', { p_user_id: userId });
+  if (progress.error || !progress.data) throw new Error('MISSION_PROGRESS_FAILED');
+
+  const [totalXp, verifiedSteps, companion, streak, missionRewards] = await Promise.all([
+    admin.rpc('server_get_total_xp', { p_user_id: userId }),
+    admin.rpc('server_get_device_steps', { p_user_id: userId }),
+    admin.rpc('server_get_companion_progress', { p_user_id: userId }),
+    admin.rpc('server_get_daily_streak', { p_user_id: userId }),
+    admin.rpc('server_get_mission_rewards', { p_user_id: userId }),
+  ]);
+
+  if (totalXp.error) console.warn(`[daily-progress:${requestId}] total XP unavailable`);
+  if (verifiedSteps.error) console.warn(`[daily-progress:${requestId}] device steps unavailable`);
+  if (companion.error) console.warn(`[daily-progress:${requestId}] companion progress unavailable`);
+  if (streak.error) console.warn(`[daily-progress:${requestId}] daily streak unavailable`);
+  if (missionRewards.error) console.warn(`[daily-progress:${requestId}] mission rewards unavailable`);
+
+  const rewardsByMission = (
+    missionRewards.data && typeof missionRewards.data === 'object'
+      ? missionRewards.data
+      : {}
+  ) as Record<string, Record<string, number>>;
+  const missions = Array.isArray(progress.data.missions)
+    ? progress.data.missions.map((mission: Record<string, unknown>) => ({
+      ...mission,
+      rewards: rewardsByMission[String(mission.id)] ?? {
+        xp: Number(mission.rewardXp ?? 0),
+      },
+    }))
+    : [];
+
+  return {
+    ...progress.data,
+    totalXp: Number(totalXp.data ?? 0),
+    verifiedSteps: Number(verifiedSteps.data ?? 0),
+    dailyStreak: Number(streak.data ?? 0),
+    missions,
+    companion: companion.data ?? {
+      companionId: null,
+      bondPoints: 0,
+      bondTier: 1,
+      bondPercent: 0,
+      energy: 0,
+      maximumEnergy: 100,
+    },
+  };
+}
+
 Deno.serve(async (request) => {
   const requestId = crypto.randomUUID();
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
@@ -115,7 +176,7 @@ Deno.serve(async (request) => {
     if (!clients) return jsonResponse({ error: 'UNAUTHORIZED', requestId }, 401);
     const { user, admin } = clients;
     const body = (await request.json().catch(() => ({}))) as RequestBody;
-    const secret = requireSpawnHmacSecret();
+    let rewardTransaction: Record<string, unknown> | null = null;
 
     const rate = await admin.rpc('server_consume_field_rate_limit', {
       p_subject_key: `user:${user.id}`,
@@ -143,9 +204,42 @@ Deno.serve(async (request) => {
       if (!claim.data[0].claimed && claim.data[0].result_code !== 'ALREADY_CLAIMED') {
         return friendlyError(claim.data[0].result_code, requestId, 409);
       }
+      const transaction = claim.data[0];
+      rewardTransaction = {
+        claimed: transaction.claimed,
+        resultCode: transaction.result_code,
+        xpAwarded: Number(transaction.xp_awarded ?? 0),
+        oldTotalXp: Number(transaction.old_total_xp ?? 0),
+        newTotalXp: Number(transaction.new_total_xp ?? 0),
+        oldLevel: Number(transaction.old_level ?? 1),
+        newLevel: Number(transaction.new_level ?? 1),
+        levelsGained: Number(transaction.levels_gained ?? 0),
+        milestoneRewardsCrossed: transaction.milestone_rewards_crossed ?? [],
+      };
+    } else if (body.action === 'sync-steps') {
+      if (
+        !Number.isInteger(body.steps)
+        || (body.steps ?? -1) < 0
+        || (body.steps ?? 0) > 100_000
+        || typeof body.localDate !== 'string'
+        || typeof body.idempotencyKey !== 'string'
+      ) {
+        return friendlyError('INVALID_REQUEST', requestId, 400);
+      }
+      const recorded = await admin.rpc('server_record_device_steps', {
+        p_user_id: user.id,
+        p_local_date: body.localDate,
+        p_steps: body.steps,
+        p_idempotency_key: body.idempotencyKey,
+      });
+      if (recorded.error) throw new Error('STEP_SYNC_FAILED');
     } else if (body.action === 'sync-distance') {
       const provider = body.provider;
       if (!provider) return friendlyError('INVALID_REQUEST', requestId, 400);
+      // Only validated distance evidence needs server-side HMAC digests.
+      // Mission reads, timezone updates, steps, and claims must continue to
+      // work even when relic spawning has not been configured yet.
+      const secret = requireSpawnHmacSecret();
       if ((provider === 'healthkit' || provider === 'health_connect') && !HEALTH_SYNC_ENABLED) {
         return friendlyError('HEALTH_DISABLED', requestId, 403);
       }
@@ -175,8 +269,11 @@ Deno.serve(async (request) => {
       });
       if (batch.error || !batch.data?.[0]) throw new Error('BATCH_FAILED');
       if (batch.data[0].replayed) {
-        const progress = await admin.rpc('server_get_verified_daily_progress', { p_user_id: user.id });
-        return jsonResponse({ requestId, replayed: true, progress: progress.data });
+        return jsonResponse({
+          requestId,
+          replayed: true,
+          progress: await loadDailyProgress(admin, user.id, requestId),
+        });
       }
 
       const batchId = batch.data[0].batch_id;
@@ -265,10 +362,15 @@ Deno.serve(async (request) => {
       });
     }
 
-    const progress = await admin.rpc('server_get_verified_daily_progress', { p_user_id: user.id });
-    if (progress.error) throw new Error('PROGRESS_FAILED');
-    return jsonResponse({ requestId, progress: progress.data });
-  } catch {
+    return jsonResponse({
+      requestId,
+      rewardTransaction,
+      progress: await loadDailyProgress(admin, user.id, requestId),
+    });
+  } catch (error) {
+    console.error(
+      `[daily-progress:${requestId}] ${error instanceof Error ? error.message : 'UNKNOWN_FAILURE'}`,
+    );
     return jsonResponse({
       error: 'DAILY_PROGRESS_UNAVAILABLE',
       message: 'We couldn’t update today’s walk. We’ll try again soon.',

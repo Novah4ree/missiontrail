@@ -38,14 +38,28 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Chatbot popup component
+import {
+  Circle,
+  MapView,
+  Marker,
+  Polyline,
+  PROVIDER_GOOGLE,
+} from '@/components/maps/map-components';
+import { MeetupMapMarker } from '@/components/meetups/MeetupMapMarker';
+import { MeetupMapPreview } from '@/components/meetups/MeetupMapPreview';
+import { MeetupsTodaySection } from '@/components/meetups/MeetupsTodaySection';
 import { RelicAwakening } from '@/components/relic-awakening';
 import { SecureRelicCard } from '@/components/secure-relic-card';
 import { RELICS, type Relic } from '@/constants/relics';
+import { useDailyProgress } from '@/hooks/use-daily-progress';
 import { useSecureRelicField } from '@/hooks/use-secure-relic-field';
-import { queueGpsLocation } from '@/services/verified-distance';
+import { useDailyActivity } from '@/providers/activity-progress-provider';
+import { getDevelopmentMeetupsToday } from '@/services/development-meetup-data';
 import { loadActiveTrailActivity } from '@/services/trail-activity-service';
-import type { ActiveTrailActivity } from '@/types/trails';
+import { queueGpsLocation } from '@/services/verified-distance';
+import type { Meetup } from '@/types/meetups';
 import type { MysteryZone } from '@/types/relic-proximity';
+import type { ActiveTrailActivity } from '@/types/trails';
 import {
   calculateDistanceMeters,
   feetToMeters,
@@ -53,7 +67,14 @@ import {
   getCoordinateOffsetByFeet,
   type Coordinate,
 } from '@/utils/distance';
+import {
+  calculateFriendsAttending,
+  filterMeetupsForMap,
+  MEETUP_RADIUS_OPTIONS,
+  type MeetupRadiusMiles,
+} from '@/utils/meetup-discovery';
 import { collectRelic, getPlayerProgress } from '@/utils/player-progress';
+import { useAuth } from '../../context/auth';
 import MissionTrailBot from './MissionTrailBot';
 
 // =======================
@@ -71,27 +92,6 @@ type PlacedRelic = {
   relic: Relic;
   coordinate: Coordinate;
 };
-
-// =======================
-// MAP SETUP
-// =======================
-
-let MapView: any = View;
-let Marker: any = View;
-let Polyline: any = View;
-let Circle: any = View;
-let PROVIDER_GOOGLE: any = null;
-
-if (Platform.OS !== 'web') {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Maps = require('react-native-maps');
-
-  MapView = Maps.default;
-  Marker = Maps.Marker;
-  Polyline = Maps.Polyline;
-  Circle = Maps.Circle;
-  PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
-}
 
 type NeonIconName =
   React.ComponentProps<typeof Ionicons>['name'];
@@ -145,6 +145,11 @@ const footprintOptions = [
   { name: 'Sagittarius', source: require('../../assets/images/tabIcons/footprints/sagittarius.png') },
   { name: 'Scorpion', source: require('../../assets/images/tabIcons/footprints/scorpion.png') },
   { name: 'Taurus', source: require('../../assets/images/tabIcons/footprints/taraus.png') },
+  { name: 'Virgo', source: require('../../assets/images/tabIcons/footprints/virgo.png') },
+  { name: 'Libra', source: require('../../assets/images/tabIcons/footprints/libra.png') },
+  { name: 'Aquarius', source: require('../../assets/images/tabIcons/footprints/aquarius.png') },
+  { name: 'Footprint', source: require('../../assets/images/tabIcons/footprints/footprints.png') },
+
 ] as const;
 
 // =======================
@@ -218,6 +223,12 @@ const mapButtons = [
     icon: 'locate',
     action: 'current-location',
     label: 'Current location',
+  },
+
+  {
+    icon: 'people',
+    action: 'meetups-list',
+    label: 'Open meetups list',
   },
 ] as const;
 
@@ -366,6 +377,9 @@ const darkMapStyle = [
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { session } = useAuth();
+  const dailyActivity = useDailyActivity();
+  const { progress: sharedProgress, refresh: refreshSharedProgress } = useDailyProgress();
 
   const mapRef =
     useRef<any>(null);
@@ -391,8 +405,16 @@ export default function HomeScreen() {
   const [isProgressLoaded, setIsProgressLoaded] = useState(false);
   const [collectingRelicId, setCollectingRelicId] = useState<string | null>(null);
   const [awakeningRelic, setAwakeningRelic] = useState<Relic | null>(null);
-  const [totalXp, setTotalXp] = useState(0);
+  const [cachedTotalXp, setCachedTotalXp] = useState(0);
+  const totalXp = ENABLE_RELIC_TEST_MODE
+    ? cachedTotalXp
+    : sharedProgress?.totalXp ?? 0;
   const [activeTrailActivity, setActiveTrailActivity] = useState<ActiveTrailActivity | null>(null);
+  const [selectedMeetupId, setSelectedMeetupId] = useState<string | null>(null);
+  const [joinedMeetupIds, setJoinedMeetupIds] = useState<string[]>([]);
+  const [joiningMeetupId, setJoiningMeetupId] = useState<string | null>(null);
+  const [isMeetupListOpen, setIsMeetupListOpen] = useState(false);
+  const [meetupRadiusMiles, setMeetupRadiusMiles] = useState<MeetupRadiusMiles>(10);
 
   // =====================
   // MAP/GPS STATE
@@ -410,9 +432,10 @@ export default function HomeScreen() {
 
   const handleSecureCollection = useCallback((relic: Relic, serverTotalXp: number) => {
     setCollectedRelicIds((current) => current.includes(relic.id) ? current : [...current, relic.id]);
-    setTotalXp(serverTotalXp);
+    setCachedTotalXp(serverTotalXp);
     setAwakeningRelic(relic);
-  }, []);
+    void refreshSharedProgress();
+  }, [refreshSharedProgress]);
 
   const secureRelicField = useSecureRelicField({
     enabled: !ENABLE_RELIC_TEST_MODE,
@@ -448,16 +471,13 @@ export default function HomeScreen() {
   const latestGpsPoint =
     getLatestGpsPoint(gpsPoints);
 
-  const walkedMiles =
-    useMemo(
-      () =>
-        getTotalMiles(gpsPoints),
-
-      [gpsPoints],
-    );
-
   const liveStats =
-    getLiveStats(walkedMiles);
+    getLiveStats(
+      dailyActivity.todayDistanceMiles,
+      dailyActivity.todaySteps,
+      collectedRelicIds.length,
+      RELICS.length,
+    );
 
   const currentSpeedMph =
     getSpeedMph(latestGpsPoint);
@@ -468,6 +488,36 @@ export default function HomeScreen() {
     );
 
   const playerCoordinate = latestGpsPoint ? makeMapCoordinate(latestGpsPoint) : null;
+
+  // Test meetups exist only in development and never write to real user accounts.
+  const developmentMeetups = useMemo(() => getDevelopmentMeetupsToday(), []);
+  const meetupViewerId = session?.user.id ?? (__DEV__ ? 'test-map-viewer' : null);
+  const meetupFriendIds = useMemo(
+    () => Array.from(new Set(developmentMeetups.flatMap((meetup) => meetup.sampleFriendIds))),
+    [developmentMeetups],
+  );
+  const mapMeetups = useMemo<Meetup[]>(
+    () => developmentMeetups.map((meetup) => (
+      meetupViewerId && joinedMeetupIds.includes(meetup.id)
+        ? { ...meetup, attendeeIds: Array.from(new Set([...meetup.attendeeIds, meetupViewerId])) }
+        : meetup
+    )),
+    [developmentMeetups, joinedMeetupIds, meetupViewerId],
+  );
+  const visibleMapMeetups = useMemo(
+    () => filterMeetupsForMap(mapMeetups, {
+      currentUserId: meetupViewerId,
+      friendUserIds: meetupFriendIds,
+      maxMarkers: 40,
+      radiusMiles: meetupRadiusMiles,
+      userLocation: playerCoordinate,
+    }),
+    [mapMeetups, meetupFriendIds, meetupRadiusMiles, meetupViewerId, playerCoordinate],
+  );
+  const selectedMeetup = useMemo(
+    () => visibleMapMeetups.find((meetup) => meetup.id === selectedMeetupId) ?? null,
+    [selectedMeetupId, visibleMapMeetups],
+  );
 
   const placedRelics = useMemo<PlacedRelic[]>(
     () =>
@@ -528,7 +578,7 @@ export default function HomeScreen() {
 
         if (isMounted) {
           setCollectedRelicIds(progress.collectedRelicIds);
-          setTotalXp(progress.totalXp);
+          setCachedTotalXp(progress.totalXp);
         }
       } catch (error) {
         console.error('Could not load player progress:', error);
@@ -567,7 +617,7 @@ export default function HomeScreen() {
       const result = await collectRelic(relic);
 
       setCollectedRelicIds(result.progress.collectedRelicIds);
-      setTotalXp(result.progress.totalXp);
+      setCachedTotalXp(result.progress.totalXp);
 
       if (result.collected) {
         setAwakeningRelic(relic);
@@ -579,10 +629,11 @@ export default function HomeScreen() {
     }
   }
 
-  function saveGoodGpsPoint(
+  const saveGoodGpsPoint = useCallback((
     point: Location.LocationObject,
-  ) {
-    void queueGpsLocation(point).catch(() => {
+  ) => {
+    if (!session?.user.id) return;
+    void queueGpsLocation(point, session.user.id).catch(() => {
       // Offline and transient failures stay in the local queue for the next sync.
     });
     if (ENABLE_RELIC_TEST_MODE) {
@@ -599,7 +650,7 @@ export default function HomeScreen() {
         point,
       ],
     );
-  }
+  }, [session?.user.id]);
 
   // =====================
   // GPS TRACKING
@@ -677,7 +728,7 @@ export default function HomeScreen() {
     return () => {
       locationWatcher?.remove();
     };
-  }, [trackingRestartKey]);
+  }, [saveGoodGpsPoint, trackingRestartKey]);
 
   // =====================
   // CENTER MAP
@@ -770,6 +821,25 @@ export default function HomeScreen() {
     setIsFootprintModalOpen(false);
   }
 
+  // Opens one compact card while keeping the Live Map mounted.
+  const selectMeetupMarker = useCallback((meetupId: string) => {
+    setSelectedMeetupId(meetupId);
+  }, []);
+
+  // Development joins are local previews only; production will require a server mutation.
+  const joinMeetup = useCallback((meetup: Meetup) => {
+    if (!__DEV__) return;
+    setJoiningMeetupId(meetup.id);
+    setJoinedMeetupIds((current) => current.includes(meetup.id) ? current : [...current, meetup.id]);
+    setJoiningMeetupId(null);
+  }, []);
+
+  // Stage 4 uses the accessible meetup list as the fuller detail alternative.
+  const viewMeetupDetails = useCallback((meetup: Meetup) => {
+    setSelectedMeetupId(meetup.id);
+    setIsMeetupListOpen(true);
+  }, []);
+
   // =====================
   // SCREEN
   // =====================
@@ -856,6 +926,15 @@ export default function HomeScreen() {
               secureRelicField.setSelectedAssignmentId,
               secureRelicField.clueStrength,
             )}
+
+        {visibleMapMeetups.map((meetup) => (
+          <MeetupMapMarker
+            key={meetup.id}
+            meetup={meetup}
+            friendsAttending={calculateFriendsAttending(meetup, meetupFriendIds)}
+            onPress={selectMeetupMarker}
+          />
+        ))}
       </MapView>
 
       {/* ===================
@@ -948,7 +1027,26 @@ export default function HomeScreen() {
           onZoomOut={zoomOutMap}
           onCenterMap={centerMapOnUser}
           onOpenBot={openMissionTrailBot}
+          onOpenMeetups={() => setIsMeetupListOpen(true)}
         />
+
+        {selectedMeetup ? (
+          <View
+            pointerEvents="box-none"
+            style={[styles.meetupPreviewOverlay, { bottom: safeArea.bottom + tabBarHeight + 18 }]}
+          >
+            <MeetupMapPreview
+              meetup={selectedMeetup}
+              userLocation={playerCoordinate}
+              friendUserIds={meetupFriendIds}
+              currentUserId={meetupViewerId}
+              joining={joiningMeetupId === selectedMeetup.id}
+              onClose={() => setSelectedMeetupId(null)}
+              onJoin={joinMeetup}
+              onViewDetails={viewMeetupDetails}
+            />
+          </View>
+        ) : null}
 
         <RelicCompass
           relicBearing={compassBearing}
@@ -1005,6 +1103,23 @@ export default function HomeScreen() {
         relic={awakeningRelic}
         totalXp={totalXp}
         onClose={() => setAwakeningRelic(null)}
+      />
+
+      <MeetupListModal
+        visible={isMeetupListOpen}
+        meetups={mapMeetups}
+        radiusMiles={meetupRadiusMiles}
+        userLocation={playerCoordinate}
+        currentUserId={meetupViewerId}
+        friendUserIds={meetupFriendIds}
+        joiningMeetupId={joiningMeetupId}
+        onChangeRadius={setMeetupRadiusMiles}
+        onClose={() => setIsMeetupListOpen(false)}
+        onJoin={joinMeetup}
+        onViewDetails={(meetup) => {
+          setSelectedMeetupId(meetup.id);
+          setIsMeetupListOpen(false);
+        }}
       />
 
       {/* ===================
@@ -1120,20 +1235,17 @@ function getSpeedMph(
 
 function getLiveStats(
   walkedMiles: number,
+  todaySteps: number,
+  collectedItems: number,
+  totalItems: number,
 ) {
   return {
     distance:
       walkedMiles.toFixed(2),
 
-    steps: Math.max(
-      0,
+    steps: Math.max(0, todaySteps).toLocaleString(),
 
-      Math.round(
-        walkedMiles * 2200,
-      ),
-    ).toLocaleString(),
-
-    items: '2/5',
+    items: `${Math.max(0, collectedItems)}/${Math.max(0, totalItems)}`,
   };
 }
 
@@ -1148,98 +1260,6 @@ function getLatestGpsPoint(
   return points[
     points.length - 1
   ];
-}
-
-// =======================
-// TOTAL WALKED MILES
-// =======================
-
-function getTotalMiles(
-  points:
-    Location.LocationObject[],
-) {
-  let totalMeters = 0;
-
-  for (
-    let index = 1;
-    index < points.length;
-    index += 1
-  ) {
-    totalMeters +=
-      getMetersBetweenPoints(
-        points[index - 1],
-
-        points[index],
-      );
-  }
-
-  return (
-    totalMeters / 1609.344
-  );
-}
-
-// =======================
-// DISTANCE BETWEEN POINTS
-// =======================
-
-function getMetersBetweenPoints(
-  start:
-    Location.LocationObject,
-
-  end:
-    Location.LocationObject,
-) {
-  const earthRadiusMeters =
-    6371000;
-
-  const startLat =
-    (start.coords.latitude *
-      Math.PI) /
-    180;
-
-  const endLat =
-    (end.coords.latitude *
-      Math.PI) /
-    180;
-
-  const latChange =
-    ((end.coords.latitude -
-      start.coords.latitude) *
-      Math.PI) /
-    180;
-
-  const longChange =
-    ((end.coords.longitude -
-      start.coords.longitude) *
-      Math.PI) /
-    180;
-
-  const halfChordLength =
-    Math.sin(
-      latChange / 2,
-    ) **
-      2 +
-    Math.cos(startLat) *
-      Math.cos(endLat) *
-      Math.sin(
-        longChange / 2,
-      ) **
-        2;
-
-  return (
-    earthRadiusMeters *
-    2 *
-    Math.atan2(
-      Math.sqrt(
-        halfChordLength,
-      ),
-
-      Math.sqrt(
-        1 -
-          halfChordLength,
-      ),
-    )
-  );
 }
 
 // =======================
@@ -1933,20 +1953,6 @@ function renderHeader(openLeaderboard: () => void) {
           }
           color="#ffffff"
         />
-
-        <View
-          style={
-            styles.notificationDot
-          }
-        >
-          <Text
-            style={
-              styles.notificationText
-            }
-          >
-            3
-          </Text>
-        </View>
       </View>
     </View>
   );
@@ -2191,10 +2197,12 @@ function SideMapButtons({
   onZoomOut,
   onCenterMap,
   onOpenBot,
+  onOpenMeetups,
 }: {
   onZoomOut: () => void;
   onCenterMap: () => void;
   onOpenBot: () => void;
+  onOpenMeetups: () => void;
 }) {
   return (
     <View
@@ -2237,6 +2245,13 @@ function SideMapButtons({
               ) {
                 onCenterMap();
               }
+
+              if (
+                button.action ===
+                'meetups-list'
+              ) {
+                onOpenMeetups();
+              }
             }}
           >
             <Ionicons
@@ -2254,6 +2269,86 @@ function SideMapButtons({
         ),
       )}
     </View>
+  );
+}
+
+// This modal keeps meetup markers accessible through a readable card list.
+function MeetupListModal({
+  visible,
+  meetups,
+  radiusMiles,
+  userLocation,
+  currentUserId,
+  friendUserIds,
+  joiningMeetupId,
+  onChangeRadius,
+  onClose,
+  onJoin,
+  onViewDetails,
+}: {
+  visible: boolean;
+  meetups: readonly Meetup[];
+  radiusMiles: MeetupRadiusMiles;
+  userLocation: Coordinate | null;
+  currentUserId: string | null;
+  friendUserIds: readonly string[];
+  joiningMeetupId: string | null;
+  onChangeRadius: (radius: MeetupRadiusMiles) => void;
+  onClose: () => void;
+  onJoin: (meetup: Meetup) => void | Promise<void>;
+  onViewDetails: (meetup: Meetup) => void;
+}) {
+  return (
+    <Modal
+      animationType="slide"
+      onRequestClose={onClose}
+      presentationStyle="overFullScreen"
+      transparent
+      visible={visible}
+    >
+      <View style={styles.meetupModalBackdrop}>
+        <View style={styles.meetupModalCard}>
+          <View style={styles.meetupModalHeader}>
+            <View style={styles.meetupModalHeadingCopy}>
+              <Text style={styles.meetupModalTitle}>Meetups Today</Text>
+              <Text style={styles.meetupModalSubtitle}>Public landmark locations only</Text>
+            </View>
+            <Pressable accessibilityLabel="Close meetups list" accessibilityRole="button" onPress={onClose} style={styles.meetupModalClose}>
+              <Ionicons name="close" size={22} color="#FFFFFF" />
+            </Pressable>
+          </View>
+
+          <View accessibilityLabel="Meetup search radius" style={styles.meetupRadiusRow}>
+            {MEETUP_RADIUS_OPTIONS.map((radius) => {
+              const selected = radius === radiusMiles;
+              return (
+                <Pressable
+                  key={radius}
+                  accessibilityLabel={`Show meetups within ${radius} miles`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => onChangeRadius(radius)}
+                  style={[styles.meetupRadiusChip, selected && styles.meetupRadiusChipSelected]}
+                >
+                  <Text style={[styles.meetupRadiusText, selected && styles.meetupRadiusTextSelected]}>{radius} mi</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <MeetupsTodaySection
+            meetups={meetups}
+            userLocation={userLocation}
+            radiusMiles={radiusMiles}
+            currentUserId={currentUserId}
+            friendUserIds={friendUserIds}
+            joiningMeetupId={joiningMeetupId}
+            onJoinMeetup={onJoin}
+            onViewDetails={onViewDetails}
+          />
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -2368,6 +2463,102 @@ const styles =
 
       left: sidePadding,
       right: sidePadding,
+    },
+
+    meetupPreviewOverlay: {
+      position: 'absolute',
+      left: sidePadding,
+      right: sidePadding,
+    },
+
+    meetupModalBackdrop: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(3, 2, 18, 0.72)',
+    },
+
+    meetupModalCard: {
+      maxHeight: '76%',
+      borderTopLeftRadius: 26,
+      borderTopRightRadius: 26,
+      borderWidth: 1,
+      borderColor: 'rgba(155, 92, 255, 0.75)',
+      backgroundColor: 'rgba(6, 4, 26, 0.99)',
+      paddingTop: 14,
+      paddingBottom: 24,
+      shadowColor: '#9B5CFF',
+      shadowOpacity: 0.45,
+      shadowRadius: 16,
+      elevation: 16,
+    },
+
+    meetupModalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      gap: 10,
+    },
+
+    meetupModalHeadingCopy: {
+      flex: 1,
+    },
+
+    meetupModalTitle: {
+      color: '#FFFFFF',
+      fontSize: 21,
+      fontWeight: '900',
+    },
+
+    meetupModalSubtitle: {
+      color: '#B7A7C5',
+      fontSize: 11,
+      marginTop: 2,
+    },
+
+    meetupModalClose: {
+      width: 44,
+      height: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: '#4B2A63',
+      backgroundColor: '#140A22',
+    },
+
+    meetupRadiusRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 7,
+      paddingHorizontal: 16,
+      marginTop: 12,
+    },
+
+    meetupRadiusChip: {
+      minWidth: 58,
+      minHeight: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: '#4B2A63',
+      backgroundColor: '#140A22',
+      paddingHorizontal: 10,
+    },
+
+    meetupRadiusChipSelected: {
+      borderColor: '#19D8FF',
+      backgroundColor: '#0D2732',
+    },
+
+    meetupRadiusText: {
+      color: '#B7A7C5',
+      fontSize: 11,
+      fontWeight: '900',
+    },
+
+    meetupRadiusTextSelected: {
+      color: '#19D8FF',
     },
 
     relicDistanceCard: {
@@ -2593,34 +2784,6 @@ const styles =
 
       justifyContent:
         'center',
-    },
-
-    notificationDot: {
-      position: 'absolute',
-
-      right: 5,
-      top: 4,
-
-      width: 16,
-      height: 16,
-
-      borderRadius: 8,
-
-      alignItems: 'center',
-
-      justifyContent:
-        'center',
-
-      backgroundColor:
-        '#ff2d75',
-    },
-
-    notificationText: {
-      color: '#ffffff',
-
-      fontSize: 10,
-
-      fontWeight: '900',
     },
 
     statsCard: {

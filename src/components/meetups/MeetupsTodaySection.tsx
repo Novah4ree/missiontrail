@@ -16,9 +16,7 @@ import {
   calculateMeetupDistanceMiles,
   calculateRemainingCapacity,
   determineMeetupStatusLabel,
-  filterMeetups,
-  filterMeetupsByRadius,
-  sortMeetupsByRelevance,
+  filterMeetupsForMap,
   type MeetupPopularityContext,
   type MeetupRadiusMiles,
   type OptionalCoordinate,
@@ -76,10 +74,13 @@ export function MeetupsTodaySection({
 
   // Filtering and sorting run again only when relevant data or discovery settings change.
   const visibleMeetups = useMemo(() => {
-    const today = filterMeetups(meetups, 'today', popularityContext);
-    const nearby = filterMeetupsByRadius(today, userLocation, radiusMiles);
-    return sortMeetupsByRelevance(nearby, popularityContext);
-  }, [meetups, popularityContext, radiusMiles, userLocation]);
+    return filterMeetupsForMap(meetups, {
+      ...popularityContext,
+      currentUserId,
+      radiusMiles,
+      maxMarkers: 100,
+    });
+  }, [currentUserId, meetups, popularityContext, radiusMiles]);
 
   // FlatList reuses this render callback while its real inputs remain unchanged.
   const renderMeetup = useCallback(({ item }: { item: Meetup }) => (
@@ -151,7 +152,9 @@ const MeetupTodayCard = memo(function MeetupTodayCard({
   const friendsAttending = calculateFriendsAttending(meetup, context.friendUserIds);
   const distanceMiles = calculateMeetupDistanceMiles(context.userLocation, meetup);
   const remainingCapacity = calculateRemainingCapacity(meetup);
-  const status = determineMeetupStatusLabel(meetup, context) ?? 'Meetup';
+  const status = meetup.isCancelled
+    ? 'Cancelled'
+    : determineMeetupStatusLabel(meetup, context) ?? 'Meetup';
   const joined = Boolean(currentUserId && meetup.attendeeIds.includes(currentUserId));
   const ended = hasMeetupEnded(meetup, context.now ?? new Date());
   const full = remainingCapacity === 0;

@@ -3,6 +3,16 @@ export type KeyValueStorage = {
   setItem(key: string, value: string): Promise<void>;
 };
 
+// Activity data is isolated by both account and local calendar day. This keeps
+// one explorer's queued movement out of another explorer's mission progress.
+export function getUserDailyStorageKey(
+  prefix: string,
+  userId: string,
+  localDate: string,
+) {
+  return `${prefix}:${userId}:${localDate}`;
+}
+
 // Saves only a server response. Phone-created completion flags are never accepted.
 export async function saveServerMissionProgress<T>(
   storage: KeyValueStorage,

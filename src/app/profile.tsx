@@ -5,6 +5,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useDailyProgress } from '@/hooks/use-daily-progress';
+import { getPlayerLevelProgress } from '@/utils/player-level';
 import {
   Dimensions,
   Image,
@@ -51,6 +52,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { progress, isLoading, message: progressMessage, refresh } = useDailyProgress();
   const todayMiles = ((progress?.verifiedDistanceMeters ?? 0) / 1_609.344).toFixed(2);
+  const playerLevel = getPlayerLevelProgress(progress?.totalXp ?? 0);
 
   // Handle Logout & Redirect
   const handleSignOut = async () => {
@@ -91,7 +93,9 @@ export default function ProfileScreen() {
             <View style={styles.onlineBadge} />
           </View>
           <Text style={styles.usernameText}>Explorer_01</Text>
-          <Text style={styles.rankText}>RANK: CADET</Text>
+          <Text style={styles.rankText}>
+            {isLoading && !progress ? 'LEVEL …' : `LEVEL ${playerLevel.level} · ${playerLevel.totalXp.toLocaleString()} XP`}
+          </Text>
         </View>
 
         {/* STATS OVERVIEW */}

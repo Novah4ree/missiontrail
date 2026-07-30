@@ -5,6 +5,7 @@ import type { TrailFilterKey, TrailFilters } from '@/types/trails';
 
 const options: { value: TrailFilterKey; label: string }[] = [
   { value: 'near_me', label: 'Near Me' },
+  { value: 'parks', label: 'Parks' },
   { value: 'walking', label: 'Walking' },
   { value: 'hiking', label: 'Hiking' },
   { value: 'easy', label: 'Easy' },
@@ -37,6 +38,21 @@ export function TrailFiltersView({ filters, onChange }: {
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.row}
     >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ selected: filters.selected.length === 0 }}
+        accessibilityLabel="Filter: All Trails"
+        onPress={() => onChange({ selected: [] })}
+        style={({ pressed }) => [
+          styles.chip,
+          filters.selected.length === 0 && styles.selectedChip,
+          pressed && styles.pressed,
+        ]}
+      >
+        <Text style={[styles.label, filters.selected.length === 0 && styles.selectedLabel]}>
+          All Trails
+        </Text>
+      </Pressable>
       {options.map((option) => {
         const selected = filters.selected.includes(option.value);
         return (
