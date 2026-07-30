@@ -1,11 +1,13 @@
 // =======================
 // IMPORTS
 // =======================
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { useDailyProgress } from '@/hooks/use-daily-progress';
 import { getPlayerLevelProgress } from '@/utils/player-level';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Image as ExpoImage } from 'expo-image';
+import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect, useState } from 'react';
 import {
   Dimensions,
   Image,
@@ -47,12 +49,97 @@ const bottomTabs = [
   { key: 'companion', label: 'Compan...', image: tabImages.companion, route: '/companion' },
 ] as const;
 
+type ProfileHeaderData = {
+  displayName: string;
+  username: string;
+  avatarUrl?: string;
+  explorerRank: string;
+  auraColors: string[];
+  bio: string;
+  isOnline: boolean;
+};
+
+const profilePlaceholder: ProfileHeaderData = {
+  displayName: 'Unnamed Explorer',
+  username: 'username-unavailable',
+  explorerRank: 'Rank unavailable',
+  auraColors: [],
+  bio: 'No bio added yet.',
+  isOnline: false,
+};
+
+function metadataText(metadata: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function metadataAuraColors(metadata: Record<string, unknown>) {
+  const colors = metadata.aura_colors;
+  const values = Array.isArray(colors)
+    ? colors
+    : [metadata.aura_color, metadata.secondary_aura_color];
+  return values.filter(
+    (value): value is string =>
+      typeof value === 'string'
+      && /^(#[0-9a-f]{3,8}|rgba?\([^)]+\))$/i.test(value.trim()),
+  ).map((value) => value.trim()).slice(0, 4);
+}
+
 export default function ProfileScreen() {
   const safeArea = useSafeAreaInsets();
   const router = useRouter();
   const { progress, isLoading, message: progressMessage, refresh } = useDailyProgress();
   const todayMiles = ((progress?.verifiedDistanceMeters ?? 0) / 1_609.344).toFixed(2);
   const playerLevel = getPlayerLevelProgress(progress?.totalXp ?? 0);
+  const [profileHeader, setProfileHeader] = useState<ProfileHeaderData>(profilePlaceholder);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadProfileHeader() {
+      const { data, error } = await supabase.auth.getUser();
+      if (!isMounted) return;
+      if (error || !data.user) {
+        setProfileHeader(profilePlaceholder);
+        return;
+      }
+
+      const metadata = data.user.user_metadata as Record<string, unknown>;
+      const emailUsername = data.user.email?.split('@')[0]?.trim();
+      const firstName = metadataText(metadata, 'first_name');
+      const lastName = metadataText(metadata, 'last_name');
+      const fullName = [firstName, lastName].filter(Boolean).join(' ');
+
+      setProfileHeader({
+        displayName: metadataText(metadata, 'full_name', 'display_name', 'name')
+          ?? fullName
+          ?? emailUsername
+          ?? profilePlaceholder.displayName,
+        username: metadataText(metadata, 'username', 'handle')
+          ?? emailUsername
+          ?? profilePlaceholder.username,
+        avatarUrl: metadataText(metadata, 'avatar_url', 'picture', 'photo_url'),
+        explorerRank: metadataText(metadata, 'explorer_rank', 'rank')
+          ?? profilePlaceholder.explorerRank,
+        auraColors: metadataAuraColors(metadata),
+        bio: metadataText(metadata, 'bio', 'about', 'description')
+          ?? profilePlaceholder.bio,
+        isOnline: true,
+      });
+    }
+
+    void loadProfileHeader();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const auraDots: (string | null)[] = profileHeader.auraColors.length
+    ? profileHeader.auraColors
+    : [null, null, null];
 
   // Handle Logout & Redirect
   const handleSignOut = async () => {
@@ -84,17 +171,180 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* HEADER */}
-        <Text style={styles.headerTitle}>OPERATOR PROFILE</Text>
-
-        {/* PROFILE CARD */}
-        <View style={styles.profileCard}>
-          <View style={styles.avatarContainer}>
-            <Ionicons name="person-circle-outline" size={80} color="#00e5ff" />
-            <View style={styles.onlineBadge} />
+        <View
+          style={[
+            styles.profileCard,
+            {
+              paddingHorizontal: isSmallPhone ? 18 : 24,
+              paddingTop: 18,
+              paddingBottom: 22,
+              gap: 0,
+            },
+          ]}
+        >
+          <View style={{ width: '100%', minHeight: 40, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={[styles.headerTitle, { marginVertical: 0 }]}>OPERATOR PROFILE</Text>
+            <Pressable
+              accessibilityLabel="Open profile menu"
+              accessibilityRole="button"
+              disabled
+              hitSlop={10}
+              style={({ pressed }) => ({
+                position: 'absolute',
+                right: 0,
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: 'rgba(0, 229, 255, 0.45)',
+                backgroundColor: 'rgba(0, 229, 255, 0.08)',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Ionicons name="ellipsis-horizontal" size={22} color="#ffffff" />
+            </Pressable>
           </View>
-          <Text style={styles.usernameText}>Explorer_01</Text>
-          <Text style={styles.rankText}>
-            {isLoading && !progress ? 'LEVEL …' : `LEVEL ${playerLevel.level} · ${playerLevel.totalXp.toLocaleString()} XP`}
+
+          <View
+            style={{
+              marginTop: 16,
+              width: 106,
+              height: 106,
+              borderRadius: 53,
+              borderWidth: 2,
+              borderColor: '#00e5ff',
+              backgroundColor: '#17132f',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'visible',
+            }}
+          >
+            {profileHeader.avatarUrl ? (
+              <ExpoImage
+                source={{ uri: profileHeader.avatarUrl }}
+                contentFit="cover"
+                transition={180}
+                style={{ width: 98, height: 98, borderRadius: 49 }}
+              />
+            ) : (
+              <Ionicons name="person" size={54} color="#8a90bd" />
+            )}
+            <View
+              accessibilityLabel={profileHeader.isOnline ? 'Online' : 'Offline'}
+              style={{
+                position: 'absolute',
+                right: 2,
+                bottom: 7,
+                width: 19,
+                height: 19,
+                borderRadius: 10,
+                borderWidth: 3,
+                borderColor: '#08051c',
+                backgroundColor: profileHeader.isOnline ? '#35f38b' : '#72758d',
+              }}
+            />
+          </View>
+
+          <Text selectable style={[styles.usernameText, { marginTop: 12, textAlign: 'center' }]}>
+            {profileHeader.displayName}
+          </Text>
+          <Text
+            selectable
+            style={{ marginTop: 3, color: '#9298bd', fontSize: 13, fontWeight: '700' }}
+          >
+            @{profileHeader.username.replace(/^@+/, '')}
+          </Text>
+
+          <View
+            style={{
+              marginTop: 14,
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              justifyContent: 'center',
+              gap: 8,
+            }}
+          >
+            <View
+              style={{
+                minHeight: 30,
+                borderRadius: 15,
+                paddingHorizontal: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 5,
+                backgroundColor: '#6d28d9',
+              }}
+            >
+              <Ionicons name="sparkles" size={13} color="#ffffff" />
+              <Text style={{ color: '#ffffff', fontSize: 11, fontWeight: '900', letterSpacing: 0.7 }}>
+                {isLoading && !progress ? 'LEVEL —' : `LEVEL ${playerLevel.level}`}
+              </Text>
+            </View>
+            <View
+              style={{
+                minHeight: 30,
+                borderRadius: 15,
+                borderWidth: 1,
+                borderColor: 'rgba(0, 229, 255, 0.55)',
+                paddingHorizontal: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 5,
+                backgroundColor: 'rgba(0, 229, 255, 0.08)',
+              }}
+            >
+              <Ionicons name="compass-outline" size={14} color="#00e5ff" />
+              <Text style={{ color: '#c6f8ff', fontSize: 11, fontWeight: '800' }}>
+                EXPLORER RANK · {profileHeader.explorerRank.toUpperCase()}
+              </Text>
+            </View>
+          </View>
+
+          <View
+            style={{
+              marginTop: 15,
+              minHeight: 24,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+            }}
+          >
+            <Text style={{ color: '#9ba0c8', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 }}>
+              AURA
+            </Text>
+            {auraDots.map((color, index) => (
+              <View
+                key={`${color ?? 'empty'}-${index}`}
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: 7,
+                  borderWidth: 1,
+                  borderColor: color ?? '#595d7c',
+                  backgroundColor: color ?? 'transparent',
+                }}
+              />
+            ))}
+            {profileHeader.auraColors.length === 0 ? (
+              <Text style={{ color: '#747997', fontSize: 10, fontWeight: '600' }}>Not selected</Text>
+            ) : null}
+          </View>
+
+          <Text
+            selectable
+            style={{
+              marginTop: 13,
+              maxWidth: 310,
+              color: '#d9dcf3',
+              fontSize: 13,
+              lineHeight: 19,
+              textAlign: 'center',
+            }}
+          >
+            {profileHeader.bio}
           </Text>
         </View>
 
