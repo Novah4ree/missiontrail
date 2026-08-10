@@ -31,6 +31,7 @@ export type OverpassElement = {
   lat?: number;
   lon?: number;
   center?: { lat?: number; lon?: number };
+  geometry?: { lat?: number; lon?: number }[];
   tags?: Record<string, string>;
 };
 
@@ -40,11 +41,17 @@ export type NormalizedTrail = {
   latitude: number;
   longitude: number;
   distanceMiles: number;
-  category: 'trail' | 'trailhead' | 'park' | 'nature_reserve' | 'walking_path';
+  category: 'trail' | 'trailhead' | 'park' | 'nature_reserve' | 'nature_area' | 'walking_path';
   address?: string;
   description?: string;
+  imageUrl?: string;
   accessibility?: string;
+  publicAccess?: boolean;
   difficulty: 'easy' | 'moderate' | 'challenging' | 'unknown';
+  estimatedDurationMinutes?: number;
+  routeDistanceMiles?: number;
+  geometry?: { type: 'LineString'; coordinates: [number, number][] };
+  metricSource?: 'provider' | 'geometry_estimate';
   source: 'geoapify' | 'openstreetmap';
 };
 
@@ -59,7 +66,11 @@ export function distanceMeters(from: Coordinate, to: Coordinate) {
   const endLatitude = radians(to.latitude);
   const haversine = Math.sin(latitudeDelta / 2) ** 2 +
     Math.cos(startLatitude) * Math.cos(endLatitude) * Math.sin(longitudeDelta / 2) ** 2;
-  return EARTH_RADIUS_METERS * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+  const clampedHaversine = Math.min(1, Math.max(0, haversine));
+  return EARTH_RADIUS_METERS * 2 * Math.atan2(
+    Math.sqrt(clampedHaversine),
+    Math.sqrt(1 - clampedHaversine),
+  );
 }
 
 function readString(raw: Record<string, unknown>, key: string) {
@@ -76,7 +87,8 @@ function categoryFrom(categories: string[], raw: Record<string, unknown>): Norma
     return 'nature_reserve';
   }
   if (categories.some((value) => value.startsWith('leisure.park'))) return 'park';
-  if (categories.some((value) => value === 'highway.footway')) return 'walking_path';
+  if (categories.some((value) => value.startsWith('natural.'))) return 'nature_area';
+  if (categories.some((value) => value === 'highway.footway' || value.includes('running'))) return 'walking_path';
   return 'trail';
 }
 
@@ -93,6 +105,13 @@ function difficultyFrom(raw: Record<string, unknown>): NormalizedTrail['difficul
     return 'challenging';
   }
   return 'unknown';
+}
+
+function publicAccessFrom(raw: Record<string, unknown>) {
+  const access = readString(raw, 'access')?.toLowerCase();
+  if (['private', 'no', 'customers'].includes(access ?? '')) return false;
+  if (['yes', 'permissive', 'designated', 'public'].includes(access ?? '')) return true;
+  return undefined;
 }
 
 function categoryFromOsmTags(tags: Record<string, string>): NormalizedTrail['category'] {
@@ -114,6 +133,18 @@ function categoryFromOsmTags(tags: Record<string, string>): NormalizedTrail['cat
   ) {
     return 'park';
   }
+  if (['wood', 'heath', 'grassland', 'scrub', 'wetland'].includes(tags.natural)) {
+    return 'nature_area';
+  }
+  if (
+    ['running', 'fitness_trail', 'foot'].includes(tags.route)
+    || tags.leisure === 'track'
+  ) {
+    return 'walking_path';
+  }
+  if (['hiking', 'nature_trail'].includes(tags.route) || tags.highway === 'bridleway') {
+    return 'trail';
+  }
   if (['footway', 'pedestrian', 'cycleway'].includes(tags.highway)) {
     return 'walking_path';
   }
@@ -123,6 +154,18 @@ function categoryFromOsmTags(tags: Record<string, string>): NormalizedTrail['cat
 function osmAddress(tags: Record<string, string>) {
   const street = [tags['addr:housenumber'], tags['addr:street']].filter(Boolean).join(' ');
   return [street, tags['addr:city'], tags['addr:state']].filter(Boolean).join(', ') || undefined;
+}
+
+// OpenStreetMap's image tag is either a direct HTTPS image or a Wikimedia file
+// name. Special:FilePath safely resolves the latter to a displayable image.
+function imageUrlFromOsmTags(tags: Record<string, string>) {
+  const image = readString(tags, 'image') ?? readString(tags, 'wikimedia_commons');
+  if (!image) return undefined;
+  if (/^https:\/\//i.test(image)) return image;
+
+  const fileName = image.replace(/^File:/i, '').trim();
+  if (!fileName || /[?#]/.test(fileName)) return undefined;
+  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(fileName.replace(/ /g, '_'))}?width=960`;
 }
 
 export function normalizeOverpassPlaces(elements: OverpassElement[], origin: Coordinate) {
@@ -154,6 +197,7 @@ export function normalizeOverpassPlaces(elements: OverpassElement[], origin: Coo
     if (seen.has(id)) continue;
     seen.add(id);
     const wheelchair = readString(tags, 'wheelchair');
+    const publicAccess = publicAccessFrom(tags);
     trails.push({
       id,
       name,
@@ -163,7 +207,9 @@ export function normalizeOverpassPlaces(elements: OverpassElement[], origin: Coo
       category: categoryFromOsmTags(tags),
       address: osmAddress(tags),
       description: readString(tags, 'description'),
+      imageUrl: imageUrlFromOsmTags(tags),
       accessibility: wheelchair ? `Wheelchair access: ${wheelchair}` : undefined,
+      ...(publicAccess === undefined ? {} : { publicAccess }),
       difficulty: difficultyFrom(tags),
       source: 'openstreetmap',
     });
@@ -178,6 +224,59 @@ export function normalizeOverpassPlaces(elements: OverpassElement[], origin: Coo
       seenNames.add(key);
       return true;
     });
+}
+
+/**
+ * Converts ordered OSM way geometry into real path length. Duration is clearly
+ * marked as a geometry estimate and is never produced for parks, areas, nodes,
+ * or relations whose member ordering cannot be proven from this response.
+ */
+export function normalizeOverpassTrailDetails(element: OverpassElement) {
+  if (!element.type || !Number.isFinite(element.id)) return null;
+  const tags = element.tags ?? {};
+  const category = categoryFromOsmTags(tags);
+  if (element.type !== 'way' || !['trail', 'walking_path'].includes(category)) {
+    return { id: `${element.type}:${element.id}` };
+  }
+
+  const coordinates = (element.geometry ?? []).flatMap((point) => {
+    const latitude = point.lat;
+    const longitude = point.lon;
+    return typeof latitude === 'number'
+      && Number.isFinite(latitude)
+      && latitude >= -90
+      && latitude <= 90
+      && typeof longitude === 'number'
+      && Number.isFinite(longitude)
+      && longitude >= -180
+      && longitude <= 180
+      ? [[longitude, latitude] as [number, number]]
+      : [];
+  });
+  if (coordinates.length < 2 || coordinates.length !== element.geometry?.length) {
+    return { id: `${element.type}:${element.id}` };
+  }
+
+  const distance = coordinates.slice(1).reduce((total, [longitude, latitude], index) => {
+    const [previousLongitude, previousLatitude] = coordinates[index];
+    return total + distanceMeters(
+      { latitude: previousLatitude, longitude: previousLongitude },
+      { latitude, longitude },
+    );
+  }, 0);
+  const routeDistanceMiles = distance / METERS_PER_MILE;
+  if (!Number.isFinite(routeDistanceMiles) || routeDistanceMiles <= 0) {
+    return { id: `${element.type}:${element.id}` };
+  }
+
+  const estimatedSpeedMph = category === 'walking_path' ? 3 : 2.5;
+  return {
+    id: `${element.type}:${element.id}`,
+    routeDistanceMiles,
+    estimatedDurationMinutes: Math.max(1, Math.round(routeDistanceMiles / estimatedSpeedMph * 60)),
+    geometry: { type: 'LineString' as const, coordinates },
+    metricSource: 'geometry_estimate' as const,
+  };
 }
 
 export function normalizeGeoapifyPlaces(features: GeoapifyPlaceFeature[], origin: Coordinate) {
@@ -201,6 +300,7 @@ export function normalizeGeoapifyPlaces(features: GeoapifyPlaceFeature[], origin
     const rawName = readString(raw, 'name');
     const address = properties.formatted || [properties.address_line1, properties.address_line2].filter(Boolean).join(', ') || undefined;
     const wheelchair = properties.wheelchair ?? readString(raw, 'wheelchair');
+    const publicAccess = publicAccessFrom(raw);
     trails.push({
       id,
       name: properties.name?.trim() || rawName || categoryLabel(categoryFrom(categories, raw)),
@@ -210,7 +310,9 @@ export function normalizeGeoapifyPlaces(features: GeoapifyPlaceFeature[], origin
       category: categoryFrom(categories, raw),
       address,
       description: properties.description ?? readString(raw, 'description'),
+      imageUrl: imageUrlFromOsmTags(raw as Record<string, string>),
       accessibility: wheelchair ? `Wheelchair access: ${wheelchair}` : undefined,
+      ...(publicAccess === undefined ? {} : { publicAccess }),
       difficulty: difficultyFrom(raw),
       source: 'geoapify',
     });
@@ -225,6 +327,7 @@ function categoryLabel(category: NormalizedTrail['category']) {
     trailhead: 'Trailhead',
     park: 'Park',
     nature_reserve: 'Nature Reserve',
+    nature_area: 'Nature Area',
     walking_path: 'Walking Path',
   } as const)[category];
 }

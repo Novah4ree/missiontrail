@@ -18,6 +18,7 @@ import type { CreateMeetupInput } from '@/services/trail-data-service';
 import type { MeetupPace, Trail } from '@/types/trails';
 
 // This form collects only public meetup details and never asks for a private location.
+// Important note: Displays the create meetup popup.
 export function CreateMeetupModal({ visible, trail, onClose, onCreate }: {
   visible: boolean;
   trail: Trail;
@@ -28,16 +29,17 @@ export function CreateMeetupModal({ visible, trail, onClose, onCreate }: {
   const [title, setTitle] = useState('Public Trail Walk');
   const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('');
-  const [meetingPoint, setMeetingPoint] = useState(trail.startLocation);
+  const [meetingPoint, setMeetingPoint] = useState(trail.startLocation ?? '');
   const [pace, setPace] = useState<MeetupPace>('moderate');
   const [maxGroupSize, setMaxGroupSize] = useState('10');
 
   // Keeps the public meeting-point field matched to the currently selected trail.
-  useEffect(() => { setMeetingPoint(trail.startLocation); }, [trail.startLocation]);
+  useEffect(() => { setMeetingPoint(trail.startLocation ?? ''); }, [trail.startLocation]);
 
   const canSubmit = Boolean(title.trim() && date.trim() && startTime.trim() && meetingPoint.trim() && Number(maxGroupSize) >= 2);
 
   // Validates the simple form, limits group size, and sends clean values to the service.
+  // Important note: Checks and submits the new meetup information.
   async function submit() {
     if (!canSubmit) return;
     await onCreate({
@@ -79,6 +81,7 @@ export function CreateMeetupModal({ visible, trail, onClose, onCreate }: {
 }
 
 // Reuses the same accessible label and styling for every meetup text field.
+// Important note: Displays the field UI.
 function Field({ label, ...inputProps }: { label: string; value: string; onChangeText: (value: string) => void; placeholder: string; keyboardType?: 'default' | 'number-pad' }) {
   return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput accessibilityLabel={label} placeholderTextColor="#766B81" style={styles.input} {...inputProps} /></View>;
 }

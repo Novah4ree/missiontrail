@@ -9,6 +9,7 @@ import type { ReturnTypeOfSecureRelicField } from '@/types/secure-relic-hook';
 const HAPTICS_KEY = 'mission-trail:relic-haptics:v1';
 const SOUNDS_KEY = 'mission-trail:relic-sounds:v1';
 
+// Important note: Displays the secure relic card.
 export function SecureRelicCard({ field }: { field: ReturnTypeOfSecureRelicField }) {
   const [hapticsEnabled, setHapticsEnabled] = useState(false);
   const [soundsEnabled, setSoundsEnabled] = useState(false);
@@ -45,11 +46,13 @@ export function SecureRelicCard({ field }: { field: ReturnTypeOfSecureRelicField
     if (soundsEnabled) Speech.speak(field.status === 'collected' ? 'Added to your Vault!' : 'You found a relic!');
   }, [field.status, hapticsEnabled, soundsEnabled]);
 
+  // Important note: Updates haptics.
   function setHaptics(value: boolean) {
     setHapticsEnabled(value);
     void AsyncStorage.setItem(HAPTICS_KEY, String(value));
   }
 
+  // Important note: Updates sounds.
   function setSounds(value: boolean) {
     setSoundsEnabled(value);
     void AsyncStorage.setItem(SOUNDS_KEY, String(value));

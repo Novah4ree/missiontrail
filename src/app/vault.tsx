@@ -29,6 +29,7 @@ const bottomTabs = [
   { key: "profile", label: "Profile", image: tabImages.profile, route: "/profile" },
   { key: "companion", label: "Compan...", image: tabImages.companion, route: "/companion" },
 ] as const;
+// Important note: Builds and controls the vault screen.
 export default function VaultScreen() {
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
@@ -40,6 +41,7 @@ export default function VaultScreen() {
     useCallback(() => {
       let isActive = true;
 
+      // Important note: Loads collected relics.
       async function loadCollectedRelics() {
         try {
           const progress = await syncServerVaultCache().catch(() => getPlayerProgress());
@@ -62,6 +64,7 @@ export default function VaultScreen() {
   );
 
   const collectedRelics = RELICS.filter((relic) => collectedRelicIds.includes(relic.id));
+  // Important note: Counts collected relics that match one rarity.
   const rarityTotal = (rarity: RelicRarity) =>
     collectedRelics.filter((relic) => relic.rarity === rarity).length;
 

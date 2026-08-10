@@ -9,6 +9,7 @@ export type ThemedViewProps = ViewProps & {
   type?: ThemeColor;
 };
 
+// Important note: Displays the themed view UI.
 export function ThemedView({ style, lightColor, darkColor, type, ...otherProps }: ThemedViewProps) {
   const theme = useTheme();
 

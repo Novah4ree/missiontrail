@@ -13,6 +13,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 
+// Important note: Displays the cosmic sky glow UI.
 function CosmicSkyGlow() {
 
   const glowAnim = useRef(new Animated.Value(0)).current;
@@ -99,6 +100,7 @@ function CosmicSkyGlow() {
   );
 }
 
+// Important note: Displays the skyline glow UI.
 function SkylineGlow() {
 
   const purplePulse = useRef(new Animated.Value(0)).current;
@@ -106,6 +108,7 @@ function SkylineGlow() {
 
   useEffect(() => {
 
+    // Important note: Creates pulse.
     const createPulse = (value: Animated.Value, duration: number) =>
       Animated.loop(
         Animated.sequence([
@@ -138,6 +141,7 @@ function SkylineGlow() {
 
   }, [bluePulse, purplePulse]);
 
+  // Important note: Creates the opacity and movement for one skyline glow layer.
   const animatedLayerStyle = (value: Animated.Value) => ({
     opacity: value.interpolate({
       inputRange: [0, 1],
@@ -186,6 +190,7 @@ function SkylineGlow() {
   );
 }
 
+// Important note: Displays the water aurora glow UI.
 function WaterAuroraGlow() {
 
   const leftAurora = useRef(new Animated.Value(0)).current;
@@ -194,6 +199,7 @@ function WaterAuroraGlow() {
 
   useEffect(() => {
 
+    // Important note: Creates aurora loop.
     const createAuroraLoop = (value: Animated.Value, duration: number) =>
       Animated.loop(
         Animated.sequence([
@@ -227,6 +233,7 @@ function WaterAuroraGlow() {
 
   }, [centerAurora, leftAurora, rightAurora]);
 
+  // Important note: Creates the opacity and movement for one aurora layer.
   const animatedAuroraStyle = (
     value: Animated.Value,
     horizontalDrift: number,
@@ -358,6 +365,7 @@ const COSMIC_STAR_CONFIG: Star[] = [
   { x: 87, y: 5, size: 3, color: '#67e8f9', delay: 870, duration: 2700 },
 ];
 
+// Important note: Displays the cosmic stars UI.
 function CosmicStars() {
 
   const starAnimations = useRef(
@@ -490,29 +498,100 @@ function CosmicStars() {
 
   );
 }
-
+// 0 & 1 is for the builds on the left side of the skyline, 2 is for the right side of the skyline.
 const CITY_WINDOW_LIGHT_CONFIG = [
-  { left: 19, top: 62, size: 2, group: 0 },
-  { left: 24, top: 48, size: 2, group: 1 },
+  { left: 22, top: 62, size: 2, group: 0 },
+  { left: 23, top: 65, size: 2, group: 1 },
+  { left: 24, top: 66, size: 2, group: 0 },
+  { left: 21, top: 68, size: 2, group: 1 },
+   { left: 23, top: 56, size: 2, group: 0 },
+  { left: 22, top: 58, size: 2, group: 1 },
+  
+   { left: 22, top: 46, size: 2, group: 0 },
+  { left: 21, top: 48, size: 1.5, group: 1 },
+  { left: 21, top: 49, size: 2, group: 1 },
   { left: 29, top: 72, size: 1.5, group: 2 },
-  { left: 34, top: 38, size: 2.5, group: 0 },
-  { left: 39, top: 58, size: 2, group: 2 },
-  { left: 44, top: 27, size: 2, group: 1 },
-  { left: 48, top: 68, size: 2.5, group: 0 },
+
+  { left: 34, top: 38, size: 2, group: 0 },
+  { left: 41, top: 38, size: 1.5, group: 0 },
+  { left: 43, top: 38, size: 2, group: 2 },
+  { left: 41, top: 69, size: 1.5, group: 2},
+  { left: 55, top: 67, size: 2, group: 2},
+  { left: 54, top: 65, size: 2, group: 2},
+  { left: 43, top: 58, size: 1.5, group: 2 },
+
+  { left: 48, top: 68, size: 1.5, group: 0 },
   { left: 52, top: 43, size: 2, group: 2 },
   { left: 57, top: 76, size: 1.5, group: 1 },
-  { left: 62, top: 34, size: 2.5, group: 0 },
-  { left: 67, top: 59, size: 2, group: 1 },
-  { left: 72, top: 47, size: 1.5, group: 2 },
-  { left: 77, top: 70, size: 2, group: 0 },
-  { left: 82, top: 55, size: 2.5, group: 2 },
+  { left: 62, top: 34, size: 2, group: 0 },
+
+ 
+  { left: 51, top: 30, size: 2, group: 2 },
+  { left: 49, top: 29, size: 2, group: 2 },
+  { left: 50, top: 28, size: 1.5, group: 2 },
+  { left: 47, top: 32, size: 2, group: 2 },
+  { left: 49, top: 25, size: 1.5, group: 2 },
+
+  
+  { left: 49, top: 95, size: 2, group: 2 },
+  { left: 49, top: 89, size: 1, group: 2 },
+  { left: 49, top: 85, size: 1.5, group: 2 },
+
+  { left: 55, top: 83, size: 1, group: 2 },
+  { left: 44, top: 86, size: 2, group: 2 },
+  { left: 64, top: 29, size: 1, group: 2 },
+  
+  { left: 49, top: 82, size: 2, group: 2 },
+  { left: 63, top: 25, size: 1.5, group: 2 },
+  { left: 63, top: 26, size: 2, group: 2 },
+  { left: 63, top: 22, size: 1.5, group: 2 },
+  { left: 63, top: 20, size: 2, group: 2 },
+
+  { left: 49, top: 4, size: 2, group: 2 },
+  
+  { left: 65, top: 50, size: 1.5, group: 2 },
+  { left: 65, top: 44, size: 2, group: 2 },
+ 
+  { left: 65, top: 55, size: 2, group: 2 },
+  { left: 65, top: 67, size: 1.5, group: 2 },
+  { left: 65, top: 77, size: 2, group: 2 },
+  { left: 65, top: 82, size: 1.5, group: 2 },
+  { left: 64, top: 44, size: 2, group: 2 },
+  { left: 63, top: 60, size: 2, group: 2 },
+  { left: 61.5, top: 55, size: 1.5, group: 2 },
+  { left: 61.5, top: 51, size: 2, group: 2 },
+
+  { left: 61.5, top: 35, size: 1.5, group: 2 },
+  { left: 61.5, top: 37, size: 2, group: 2 },
+  { left: 61.5, top: 45, size: 1.5, group: 2 },
+  { left: 61.5, top: 41, size: 2, group: 2 },
+  { left: 62, top: 67, size: 1.5, group: 2 },
+  { left: 65, top: 66, size: 2, group: 2 },
+  { left: 58, top: 70, size: 1, group: 0 },
+  { left: 56, top: 55, size: 1.5, group: 2 },
+  { left: 57, top: 64, size: 2, group: 2 },
+
+  { left: 75, top: 82, size: 1.5, group: 2 },
+  { left: 71, top: 82, size: 1.5, group: 2 },
+
+
+  { left: 65, top: 50, size: 1.5, group: 2 },
+  { left: 65, top: 44, size: 1.5, group: 2},
+ 
+
+  { left: 71, top: 72, size: 2, group: 2},
+  { left: 73, top: 67, size: 2, group: 2},
+  { left: 77, top: 77, size: 2, group: 2 },
+  { left: 76, top: 72, size: 2, group: 2 },
 ] as const;
 
-const CITY_WINDOW_COLORS = ['#60a5fa', '#3b82f6', '#93c5fd'] as const;
-
+const CITY_WINDOW_COLORS = ['#60a5fa', '#3b82f6', '#93c5fd', '#c084fc'] as const;
+const CITY_WINDOW_LIGHT_PULSE_DURATION = 1200;
+// Important note: Displays the city window lights UI.
 function CityWindowLights() {
 
   const windowPulses = useRef([
+    new Animated.Value(0),
     new Animated.Value(0),
     new Animated.Value(0),
     new Animated.Value(0),
@@ -556,17 +635,18 @@ function CityWindowLights() {
 
     <View pointerEvents="none" style={styles.cityWindowLights}>
 
-      {CITY_WINDOW_LIGHT_CONFIG.map((light) => {
+      {CITY_WINDOW_LIGHT_CONFIG.map((light, index) => {
         const pulse = windowPulses[light.group];
 
         return (
 
           <Animated.View
-            key={`${light.left}-${light.top}`}
+            key={`city-window-${index}`}
             style={[
               styles.cityWindowLight,
               {
                 left: `${light.left}%`,
+                right: `${100 - light.left}%`,
                 top: `${light.top}%`,
                 width: light.size,
                 height: light.size,
@@ -648,6 +728,7 @@ type TrailSparklePathProps = {
   height: number;
 };
 
+// Important note: Displays the trail sparkle path UI.
 function TrailSparklePath({
   positions,
   progress,
@@ -694,14 +775,17 @@ function TrailSparklePath({
   });
 }
 
+// Important note: Displays the left trail sparkles UI.
 function LeftTrailSparkles(props: Omit<TrailSparklePathProps, 'positions'>) {
   return <TrailSparklePath {...props} positions={LEFT_TRAIL_DOTS} />;
 }
 
+// Important note: Displays the right trail sparkles UI.
 function RightTrailSparkles(props: Omit<TrailSparklePathProps, 'positions'>) {
   return <TrailSparklePath {...props} positions={RIGHT_TRAIL_DOTS} />;
 }
 
+// Important note: Displays the trail edge sparkles UI.
 function TrailEdgeSparkles() {
 
   const { width, height } = useWindowDimensions();
@@ -709,6 +793,7 @@ function TrailEdgeSparkles() {
   const rightProgress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Important note: Creates trail loop.
     const createTrailLoop = (progress: Animated.Value) =>
       Animated.loop(
         Animated.timing(progress, {
@@ -743,6 +828,7 @@ function TrailEdgeSparkles() {
   );
 }
 
+// Important note: Builds and controls the splash screen.
 export default function SplashScreen() {
 
   const router = useRouter();
@@ -771,6 +857,7 @@ export default function SplashScreen() {
 
   }, [fadeAnim]);
 
+  // Important note: Handles the enter action.
   const handleEnter = () => {
 
     router.replace('/login');

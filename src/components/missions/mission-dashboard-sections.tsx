@@ -14,6 +14,7 @@ import type { TrailDailyForecast } from '@/services/weather-forecast-service';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
+// Important note: Displays the mission weather UI.
 export function MissionWeather({
   forecast,
   isLoading,
@@ -68,6 +69,7 @@ export function MissionWeather({
   );
 }
 
+// Important note: Chooses an icon that matches the weather condition.
 function weatherIcon(code: number): IconName {
   if (code === 0 || code === 1) return 'sunny-outline';
   if (code === 2) return 'partly-sunny-outline';
@@ -77,6 +79,7 @@ function weatherIcon(code: number): IconName {
   return 'rainy-outline';
 }
 
+// Important note: Formats weather date for display.
 function formatWeatherDate(date: string) {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
     .format(new Date(`${date}T12:00:00`));
@@ -96,6 +99,7 @@ export type MissionCardModel = {
   icon: IconName;
 };
 
+// Important note: Displays the dashboard progress bar UI.
 export function DashboardProgressBar({
   progress,
   color = '#19D8FF',
@@ -118,6 +122,7 @@ export function DashboardProgressBar({
   );
 }
 
+// Important note: Displays the compact mission header UI.
 export function CompactMissionHeader({
   name,
   level,
@@ -153,6 +158,7 @@ export function CompactMissionHeader({
   );
 }
 
+// Important note: Displays the adventure overview UI.
 export function AdventureOverview({
   isLoading,
   hasMissions,
@@ -240,6 +246,7 @@ export function AdventureOverview({
   );
 }
 
+// Important note: Displays the metric UI.
 function Metric({
   icon,
   value,
@@ -257,6 +264,7 @@ function Metric({
   );
 }
 
+// Important note: Displays the daily mission section.
 export function DailyMissionSection({
   missions,
   completedCount,
@@ -322,6 +330,7 @@ export function DailyMissionSection({
   );
 }
 
+// Important note: Displays the state card.
 function StateCard({
   icon,
   message,
@@ -344,6 +353,7 @@ function StateCard({
   );
 }
 
+// Important note: Displays the mission dashboard card.
 function MissionDashboardCard({
   mission,
   onPress,
@@ -410,6 +420,7 @@ function MissionDashboardCard({
   );
 }
 
+// Important note: Displays the explore action UI.
 export function ExploreAction({
   hasActiveSession,
   onPress,
@@ -434,6 +445,7 @@ export function ExploreAction({
   );
 }
 
+// Important note: Displays the relic unlocks UI.
 export function RelicUnlocks({
   currentMiles,
   rareTargetMiles,
@@ -489,6 +501,7 @@ export function RelicUnlocks({
   );
 }
 
+// Important note: Displays the relic goal UI.
 function RelicGoal({
   name,
   currentMiles,
@@ -528,6 +541,7 @@ function RelicGoal({
   );
 }
 
+// Important note: Displays the companion status UI.
 export function CompanionStatus({
   name,
   hasCompanion,
@@ -565,6 +579,7 @@ export function CompanionStatus({
   );
 }
 
+// Important note: Displays the status meter UI.
 function StatusMeter({ label, value, color }: { label: string; value: number; color: string }) {
   const safeValue = Math.round(Math.min(100, Math.max(0, value)));
   return (
@@ -578,6 +593,7 @@ function StatusMeter({ label, value, color }: { label: string; value: number; co
   );
 }
 
+// Important note: Displays the explorer level UI.
 export function ExplorerLevel({
   level,
   xpIntoLevel,
@@ -627,6 +643,7 @@ export function ExplorerLevel({
   );
 }
 
+// Important note: Displays the dashboard card.
 function DashboardCard({
   title,
   icon,

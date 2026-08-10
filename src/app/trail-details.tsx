@@ -16,12 +16,19 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { MapView, Marker, Polyline, PROVIDER_GOOGLE } from '@/components/maps/map-components';
 import { CreateMeetupModal } from '@/components/trails/create-meetup-modal';
 import { TrailMeetupCard } from '@/components/trails/trail-meetup-card';
-import { MapView, Marker, Polyline, PROVIDER_GOOGLE } from '@/components/maps/map-components';
+import { TrailSessionConfirmModal } from '@/components/trails/trail-session-confirm-modal';
 import { MissionTrailColors as C } from '@/constants/theme';
-import { getHikingRoute } from '@/services/hiking-route-service';
-import { loadSelectedTrail } from '@/services/selected-trail-service';
+import { useLocationState } from '@/providers/location-provider';
+import { getHikingRoute, HikingRouteError } from '@/services/hiking-route-service';
+import { loadSelectedTrail, saveSelectedTrail } from '@/services/selected-trail-service';
+import {
+  ActiveTrailConflictError,
+  loadActiveTrailActivity,
+  startTrailActivity,
+} from '@/services/trail-activity-service';
 import {
   blockMeetupHost,
   createTrailMeetup,
@@ -30,22 +37,40 @@ import {
   requestToJoinMeetup,
   type CreateMeetupInput,
 } from '@/services/trail-data-service';
-import { startTrailActivity } from '@/services/trail-activity-service';
+import {
+  enrichTrailDetails,
+  reverseGeocodeTrailLocation,
+  type TrailAddressResult,
+} from '@/services/trail-discovery-service';
 import {
   getTrailDailyForecast,
   type TrailDailyForecast,
 } from '@/services/weather-forecast-service';
-import type { HikingRoute, Trail, TrailAmenity, TrailMeetup, TrailSearchCoordinate } from '@/types/trails';
+import type { ActiveTrailActivity, HikingRoute, Trail, TrailAmenity, TrailMeetup, TrailSearchCoordinate } from '@/types/trails';
+import { calculateDistanceMeters, formatGeographicDistance } from '@/utils/distance';
+import { validateActiveGpsLocation } from '@/utils/location-validation';
+import {
+  calculateTrailGeometryLengthMiles,
+  getTrailDestinationCoordinate,
+  getValidLineCoordinates,
+} from '@/utils/trail-location';
+import { createTrailNavigationPlan, getTrailNavigationUrl } from '@/utils/trail-navigation';
+import { formatTrailheadProximityRadius, isActiveTrailCurrent } from '@/utils/trail-proximity';
+
+const TRAIL_MAP_DELTA = 0.025;
+const DIRECTIONS_REFRESH_DISTANCE_METERS = 250;
 
 // This screen presents one trail and manages its route, safety, and meetup actions.
+// Important note: Builds and controls the trail details screen.
 export default function TrailDetailsScreen() {
   const { trailId, section } = useLocalSearchParams<{ trailId?: string; section?: string }>();
   const router = useRouter();
+  const { location, setGpsLocation } = useLocationState();
   const safeArea = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const mapRef = useRef<any>(null);
   const [trail, setTrail] = useState<Trail | null>(null);
-  const [origin, setOrigin] = useState<TrailSearchCoordinate | null>(null);
+  const [directionsOrigin, setDirectionsOrigin] = useState<TrailSearchCoordinate | null>(null);
   const [route, setRoute] = useState<HikingRoute | null>(null);
   const [meetups, setMeetups] = useState<TrailMeetup[]>([]);
   const [requestedMeetupIds, setRequestedMeetupIds] = useState<string[]>([]);
@@ -59,8 +84,12 @@ export default function TrailDetailsScreen() {
   const [forecast, setForecast] = useState<TrailDailyForecast | null>(null);
   const [isForecastLoading, setIsForecastLoading] = useState(false);
   const [forecastError, setForecastError] = useState<string | null>(null);
+  const [resolvedAddress, setResolvedAddress] = useState<TrailAddressResult | null>(null);
+  const [isAddressLoading, setIsAddressLoading] = useState(false);
+  const [activeTrailToReplace, setActiveTrailToReplace] = useState<ActiveTrailActivity | null>(null);
 
   // Returns to Trails safely even if this details route has no back history.
+  // Important note: Takes the user back to trails.
   function returnToTrails() {
     if (router.canGoBack()) {
       router.back();
@@ -73,14 +102,25 @@ export default function TrailDetailsScreen() {
   useEffect(() => {
     let active = true;
     // Loads the trail handoff and its public meetups when the route opens.
+    // Important note: Loads the trail, weather, and meetup details.
     async function load() {
       try {
         const selected = await loadSelectedTrail(trailId);
         if (!selected) throw new Error('This trail is no longer available. Return to Explore Trails and select it again.');
-        const selectedMeetups = await getTrailMeetups(selected.id);
+        if (!getTrailDestinationCoordinate(selected)) {
+          throw new Error('This trail does not have valid trailhead coordinates. Return to Explore Trails and choose another location.');
+        }
+        const [selectedMeetups, enrichedTrail] = await Promise.all([
+          getTrailMeetups(selected.id),
+          enrichTrailDetails(selected).catch((detailsError: unknown) => {
+            if (__DEV__) console.warn('[Trail details] Provider metrics could not load.', detailsError);
+            return selected;
+          }),
+        ]);
         if (!active) return;
-        setTrail(selected);
+        setTrail(enrichedTrail);
         setMeetups(selectedMeetups);
+        if (enrichedTrail !== selected) void saveSelectedTrail(enrichedTrail);
       } catch (loadError) {
         if (active) setError(loadError instanceof Error ? loadError.message : 'Trail details are unavailable.');
       } finally {
@@ -91,6 +131,100 @@ export default function TrailDetailsScreen() {
     return () => { active = false; };
   }, [trailId]);
 
+  const trailDestination = useMemo(
+    () => trail ? getTrailDestinationCoordinate(trail) : null,
+    [trail],
+  );
+  const trailMapRegion = useMemo(() => trailDestination ? {
+    ...trailDestination,
+    latitudeDelta: TRAIL_MAP_DELTA,
+    longitudeDelta: TRAIL_MAP_DELTA,
+  } : null, [trailDestination]);
+  const providerTrailCoordinates = useMemo(
+    () => getValidLineCoordinates(trail?.geometry),
+    [trail?.geometry],
+  );
+  const directionsCoordinates = useMemo(
+    () => getValidLineCoordinates(route?.geometry),
+    [route?.geometry],
+  );
+  const currentGpsLocation = useMemo(
+    () => validateActiveGpsLocation(location.currentGpsLocation),
+    [location.currentGpsLocation],
+  );
+  const currentGpsCoordinate = useMemo(() => currentGpsLocation ? {
+    latitude: currentGpsLocation.latitude,
+    longitude: currentGpsLocation.longitude,
+  } : null, [currentGpsLocation]);
+  const distanceToTrailheadMeters = useMemo(
+    () => currentGpsCoordinate && trailDestination
+      ? calculateDistanceMeters(currentGpsCoordinate, trailDestination)
+      : null,
+    [currentGpsCoordinate, trailDestination],
+  );
+
+  // Continue foreground GPS updates after Explore Trails unmounts so the
+  // displayed trailhead distance follows real device movement.
+  useEffect(() => {
+    let active = true;
+    let subscription: Location.LocationSubscription | null = null;
+    void (async () => {
+      try {
+        const [servicesEnabled, permission] = await Promise.all([
+          Location.hasServicesEnabledAsync(),
+          Location.getForegroundPermissionsAsync(),
+        ]);
+        if (!active || !servicesEnabled || permission.status !== Location.PermissionStatus.GRANTED) return;
+        subscription = await Location.watchPositionAsync({
+          accuracy: Location.Accuracy.High,
+          distanceInterval: 10,
+          timeInterval: 3_000,
+        }, (position) => {
+          if (active) setGpsLocation(position);
+        });
+        if (!active) subscription.remove();
+      } catch (watchError) {
+        if (__DEV__) console.warn('[Trail details] Live GPS distance updates could not start.', watchError);
+      }
+    })();
+    return () => {
+      active = false;
+      subscription?.remove();
+    };
+  }, [setGpsLocation]);
+
+  // Routing is comparatively expensive. Refresh it only after meaningful GPS
+  // movement while the distance label itself continues updating every fix.
+  useEffect(() => {
+    if (!currentGpsCoordinate) {
+      setDirectionsOrigin(null);
+      return;
+    }
+    setDirectionsOrigin((current) => !current
+      || calculateDistanceMeters(current, currentGpsCoordinate) >= DIRECTIONS_REFRESH_DISTANCE_METERS
+      ? currentGpsCoordinate
+      : current);
+  }, [currentGpsCoordinate]);
+
+  // Reverse geocodes only when the provider did not supply a usable address.
+  useEffect(() => {
+    if (!trail || !trailDestination || trail.address?.trim()) {
+      setResolvedAddress(null);
+      setIsAddressLoading(false);
+      return;
+    }
+    let active = true;
+    setResolvedAddress(null);
+    setIsAddressLoading(true);
+    void reverseGeocodeTrailLocation(trailDestination)
+      .then((address) => { if (active) setResolvedAddress(address); })
+      .catch((addressError: unknown) => {
+        if (__DEV__) console.warn('[Trail details] Trail address could not be resolved.', addressError);
+      })
+      .finally(() => { if (active) setIsAddressLoading(false); });
+    return () => { active = false; };
+  }, [trail, trailDestination]);
+
   // Recalculates directions when the selected trail changes.
   useEffect(() => {
     if (!trail) return;
@@ -98,32 +232,42 @@ export default function TrailDetailsScreen() {
     let active = true;
     // Uses an already-granted location for directions without prompting while
     // the user is only browsing the trail details.
+    // Important note: Loads route.
     async function loadRoute() {
       setIsRouteLoading(true);
+      setRoute(null);
+      setRouteMessage(null);
       try {
-        if (!(await Location.hasServicesEnabledAsync())) throw new Error('Location is off. The saved trail preview is still available.');
-        const permission = await Location.getForegroundPermissionsAsync();
-        if (permission.status !== Location.PermissionStatus.GRANTED) {
-          throw new Error('Start Navigation to enable foreground location and verified GPS trail tracking.');
+        if (!directionsOrigin) {
+          throw new Error('Current location is unavailable, so directions to the trailhead cannot be calculated. The selected trail remains centered.');
         }
-        const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        const start = { latitude: location.coords.latitude, longitude: location.coords.longitude };
-        if (active) setOrigin(start);
+        if (!trailDestination) throw new Error('The selected trailhead coordinates are unavailable.');
         try {
-          const hikingRoute = await getHikingRoute(start, { latitude: selectedTrail.latitude, longitude: selectedTrail.longitude });
+          const hikingRoute = await getHikingRoute(directionsOrigin, trailDestination);
           if (active) setRoute(hikingRoute);
-        } catch {
-          if (active) setRouteMessage('Live hiking directions are unavailable. Showing the saved public trail route.');
+        } catch (routeError) {
+          if (__DEV__) console.warn('[Trail details] Directions to trailhead could not load.', routeError);
+          const routeFailure = routeError instanceof HikingRouteError
+            ? routeError.message
+            : 'Directions unavailable.';
+          if (active) setRouteMessage(providerTrailCoordinates.length > 1
+            ? `${routeFailure} Showing ${trailGeometryLabel(selectedTrail)}.`
+            : routeFailure);
         }
       } catch (locationError) {
-        if (active) setRouteMessage(locationError instanceof Error ? locationError.message : 'Current location is unavailable.');
+        if (active) {
+          const message = locationError instanceof Error ? locationError.message : 'Current location is unavailable.';
+          setRouteMessage(providerTrailCoordinates.length > 1
+            ? `${message} Showing ${trailGeometryLabel(selectedTrail)}.`
+            : message);
+        }
       } finally {
         if (active) setIsRouteLoading(false);
       }
     }
     void loadRoute();
     return () => { active = false; };
-  }, [trail]);
+  }, [directionsOrigin, providerTrailCoordinates.length, trail, trailDestination]);
 
   // Fetches today's forecast for the trail and cancels stale screen requests.
   useEffect(() => {
@@ -150,15 +294,12 @@ export default function TrailDetailsScreen() {
     return () => controller.abort();
   }, [trail]);
 
-  const previewGeometry = route?.geometry ?? trail?.geometry;
-  // Converts GeoJSON longitude/latitude pairs into the map library's coordinate shape.
-  const routeCoordinates = useMemo(() => previewGeometry?.coordinates.map(([longitude, latitude]) => ({ latitude, longitude })) ?? [], [previewGeometry]);
-
-  // Zooms the map so the full route is visible after its coordinates load.
+  // Reasserts the trailhead as the primary camera target. Directions remain an
+  // overlay and never take control of the camera.
   useEffect(() => {
-    if (routeCoordinates.length < 2 || Platform.OS === 'web') return;
-    mapRef.current?.fitToCoordinates(routeCoordinates, { edgePadding: { top: 45, right: 45, bottom: 45, left: 45 }, animated: true });
-  }, [routeCoordinates]);
+    if (!trailMapRegion || Platform.OS === 'web') return;
+    mapRef.current?.animateToRegion(trailMapRegion, 350);
+  }, [trail, trailMapRegion]);
 
   // Scrolls directly to meetups when the user tapped "View Meetups" on a card.
   useEffect(() => {
@@ -168,34 +309,60 @@ export default function TrailDetailsScreen() {
   }, [meetupSectionY, section]);
 
   // Opens turn-by-turn walking directions to the selected trailhead.
-  async function startNavigation() {
+  // Important note: Starts navigation.
+  async function startNavigation(replaceExisting = false) {
     if (!trail || isStarting) return;
-    if (
-      !Number.isFinite(trail.latitude)
-      || trail.latitude < -90
-      || trail.latitude > 90
-      || !Number.isFinite(trail.longitude)
-      || trail.longitude < -180
-      || trail.longitude > 180
-    ) {
-      Alert.alert('Directions unavailable', 'This trail does not have valid destination coordinates.');
+    const navigationPlan = createTrailNavigationPlan(trail, currentGpsCoordinate);
+    if (!navigationPlan) {
+      Alert.alert(
+        'Directions unavailable',
+        'This trail does not have valid trailhead coordinates. Use its available address or another location method.',
+      );
       return;
     }
-    if (trail.status !== 'open' || !trail.publicAccess) {
+    if (trail.status === 'closed' || trail.publicAccess === false) {
       Alert.alert('Trail unavailable', 'This trail cannot be started while it is closed or restricted.');
       return;
     }
     setIsStarting(true);
     try {
+      if (!replaceExisting) {
+        const existing = await loadActiveTrailActivity();
+        if (existing && isActiveTrailCurrent(existing) && existing.trail.id !== trail.id) {
+          setActiveTrailToReplace(existing);
+          return;
+        }
+      }
       // Save the destination before Maps backgrounds this app. Mission step
       // credit can then remain paused until the user reaches the trailhead.
-      await startTrailActivity(trail, origin ?? undefined);
-      await Linking.openURL(getTrailNavigationUrl(trail));
+      const trailhead = { ...trail, ...navigationPlan.destination };
+      const navigationUrl = getTrailNavigationUrl(
+        Platform.OS === 'ios' ? 'ios' : 'other',
+        trail.name,
+        navigationPlan.destination,
+        navigationPlan.origin,
+      );
+      if (!navigationUrl) {
+        throw new Error('The selected trail destination could not be validated.');
+      }
+      await startTrailActivity(
+        trailhead,
+        navigationPlan.origin ?? undefined,
+        undefined,
+        { replaceExisting },
+      );
+      await Linking.openURL(navigationUrl);
     } catch (navigationError) {
+      if (navigationError instanceof ActiveTrailConflictError) {
+        setActiveTrailToReplace(navigationError.activeActivity);
+        return;
+      }
       if (__DEV__) console.warn('[Trail details] Maps navigation could not open.', navigationError);
       Alert.alert(
         'Navigation unavailable',
-        'A maps app could not be opened. Please use the trail address shown above.',
+        displayTrailAddress(trail.address, resolvedAddress, false)
+          ? 'A maps app could not be opened. Use the trail address shown above with another location method.'
+          : 'A maps app could not be opened, and no trail address is available. Try another location method.',
       );
     } finally {
       setIsStarting(false);
@@ -203,6 +370,7 @@ export default function TrailDetailsScreen() {
   }
 
   // Records a join request and updates the button so it cannot be sent repeatedly.
+  // Important note: Requests join.
   async function requestJoin(meetup: TrailMeetup) {
     await requestToJoinMeetup(meetup.id);
     setRequestedMeetupIds((current) => [...new Set([...current, meetup.id])]);
@@ -210,6 +378,7 @@ export default function TrailDetailsScreen() {
   }
 
   // Confirms a safety report before calling the future moderation service placeholder.
+  // Important note: Reports host.
   function reportHost(meetup: TrailMeetup) {
     Alert.alert('Report unsafe behavior?', 'A future moderated backend will securely review this report.', [
       { text: 'Cancel', style: 'cancel' },
@@ -218,6 +387,7 @@ export default function TrailDetailsScreen() {
   }
 
   // Confirms a block and immediately hides that host's meetup from this screen.
+  // Important note: Blocks host.
   function blockHost(meetup: TrailMeetup) {
     Alert.alert(`Block ${meetup.hostName}?`, 'Their meetup will be hidden from this screen.', [
       { text: 'Cancel', style: 'cancel' },
@@ -226,10 +396,13 @@ export default function TrailDetailsScreen() {
   }
 
   // Adds the newly created local meetup to the visible meetup section.
+  // Important note: Creates meetup.
   async function createMeetup(input: CreateMeetupInput) {
     const meetup = await createTrailMeetup(input);
     setMeetups((current) => [meetup, ...current]);
   }
+
+  const detailStats = trail ? getTrailStats(trail, distanceToTrailheadMeters) : [];
 
   return (
     <View style={styles.screen}>
@@ -247,11 +420,20 @@ export default function TrailDetailsScreen() {
           <ScrollView ref={scrollRef} contentContainerStyle={[styles.content, { paddingBottom: safeArea.bottom + 112 }]}>
             <View style={styles.mapWrap}>
               {Platform.OS === 'web' ? <View style={styles.mapState}><Text style={styles.muted}>Route preview maps are available on iOS and Android.</Text></View> : (
-                <MapView ref={mapRef} provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined} style={StyleSheet.absoluteFill} userInterfaceStyle="dark" initialRegion={{ latitude: trail.latitude, longitude: trail.longitude, latitudeDelta: 0.08, longitudeDelta: 0.08 }}>
-                  {origin ? <Marker coordinate={origin} title="Your approximate location" pinColor={C.cyan} /> : null}
-                  <Marker coordinate={{ latitude: trail.latitude, longitude: trail.longitude }} title={trail.startLocation} pinColor={C.magenta} />
-                  {routeCoordinates.length > 1 ? <Polyline coordinates={routeCoordinates} strokeColor={C.cyan} strokeWidth={5} /> : null}
-                </MapView>
+                trailMapRegion && trailDestination ? <MapView
+                  key={`${trail.id}:${trailDestination.latitude}:${trailDestination.longitude}`}
+                  ref={mapRef}
+                  provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                  style={StyleSheet.absoluteFill}
+                  userInterfaceStyle="dark"
+                  initialRegion={trailMapRegion}
+                  onMapReady={() => mapRef.current?.animateToRegion(trailMapRegion, 0)}
+                >
+                  {currentGpsCoordinate ? <Marker coordinate={currentGpsCoordinate} title="Your current location" pinColor={C.cyan} /> : null}
+                  <Marker coordinate={trailDestination} title={trail.name} description="Trailhead" pinColor={C.magenta} />
+                  {providerTrailCoordinates.length > 1 ? <Polyline coordinates={providerTrailCoordinates} strokeColor={C.magenta} strokeWidth={5} /> : null}
+                  {directionsCoordinates.length > 1 ? <Polyline coordinates={directionsCoordinates} strokeColor={C.cyan} strokeWidth={4} /> : null}
+                </MapView> : <View style={styles.mapState}><Text style={styles.muted}>Trail map coordinates are unavailable.</Text></View>
               )}
               <View style={styles.routeBadge}><Ionicons name="navigate-outline" size={14} color={C.cyan} /><Text style={styles.routeBadgeText}>ROUTE PREVIEW</Text></View>
             </View>
@@ -259,35 +441,24 @@ export default function TrailDetailsScreen() {
             <View style={styles.mainContent}>
               <Text style={styles.eyebrow}>{trail.activityType.toUpperCase()} • {trail.status.toUpperCase()}</Text>
               <Text style={styles.title}>{trail.name}</Text>
-              <Text style={styles.address}>{trail.startLocation} · {trail.address ?? 'Address not provided'}</Text>
-              <Text style={styles.description}>{trail.description ?? 'Not provided.'}</Text>
+              <Text style={styles.address}>{displayTrailAddress(trail.address, resolvedAddress, isAddressLoading) ?? 'Address unavailable'}</Text>
+              {trail.description ? <Text style={styles.description}>{trail.description}</Text> : null}
 
               <View style={styles.statsRow}>
-                <Stat
-                  label="Length"
-                  value={route
-                    ? `${route.distanceMiles.toFixed(1)} mi`
-                    : trail.lengthMiles > 0 ? `${trail.lengthMiles.toFixed(1)} mi` : 'Not provided'}
-                />
-                <Stat
-                  label="Est. time"
-                  value={route
-                    ? `${Math.round(route.durationMinutes)} min`
-                    : trail.estimatedDurationMinutes > 0 ? `${trail.estimatedDurationMinutes} min` : 'Not provided'}
-                />
-                <Stat label="Elevation" value={trail.elevationGainFeet !== undefined ? `${trail.elevationGainFeet} ft` : 'Not provided'} />
+                {detailStats.map((stat, index) => <Stat key={`${stat.label}:${index}`} label={stat.label} value={stat.value} />)}
               </View>
 
               {isRouteLoading ? <View style={styles.loadingRow}><ActivityIndicator color={C.cyan} /><Text style={styles.muted}>Calculating hike directions…</Text></View> : null}
-              {route ? <Text style={styles.routeInfo}>Directions to start: {route.distanceMiles.toFixed(1)} mi · {Math.round(route.durationMinutes)} min</Text> : null}
+              {providerTrailCoordinates.length > 1 ? <Text style={styles.routeInfo}>{capitalize(trailGeometryLabel(trail))} shown in magenta.</Text> : null}
+              {route ? <Text style={styles.routeInfo}>Directions to start shown in cyan: {route.distanceMiles.toFixed(1)} mi · {Math.round(route.durationMinutes)} min</Text> : null}
               {routeMessage ? <Text style={styles.warning}>{routeMessage}</Text> : null}
 
               <Section title="Trail Intel">
                 <Detail icon="speedometer-outline" label="Difficulty" value={capitalize(trail.difficulty)} />
                 <Detail icon="layers-outline" label="Terrain / surface" value={trail.terrain} />
-                <Detail icon="accessibility-outline" label="Accessibility" value={trail.accessibility || 'Not provided.'} />
-                <Detail icon="paw-outline" label="Pet rules" value={trail.petRules || 'Not provided.'} />
-                <Detail icon="people-outline" label="Public access" value={trail.publicAccess ? 'Public access is listed.' : 'Access is restricted.'} />
+                {trail.accessibility ? <Detail icon="accessibility-outline" label="Accessibility" value={trail.accessibility} /> : null}
+                {trail.petRules ? <Detail icon="paw-outline" label="Pet rules" value={trail.petRules} /> : null}
+                <Detail icon="people-outline" label="Public access" value={trail.publicAccess === true ? 'Public access is listed.' : trail.publicAccess === false ? 'Access is restricted.' : 'Access information is unavailable.'} />
               </Section>
 
               <Section title="Amenities">
@@ -314,40 +485,58 @@ export default function TrailDetailsScreen() {
           </ScrollView>
 
           <View style={[styles.footer, { paddingBottom: safeArea.bottom + 12 }]}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Start GPS navigation for this trail" disabled={trail.status !== 'open' || isStarting} onPress={() => void startNavigation()} style={[styles.startButton, (trail.status !== 'open' || isStarting) && styles.disabled]}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Start GPS navigation for this trail" disabled={trail.status === 'closed' || trail.publicAccess === false || isStarting} onPress={() => void startNavigation()} style={[styles.startButton, (trail.status === 'closed' || trail.publicAccess === false || isStarting) && styles.disabled]}>
               <Ionicons name="navigate" size={19} color={C.text} /><Text style={styles.startText}>{isStarting ? 'Opening Maps…' : trail.status === 'closed' ? 'Trail Closed' : 'Start Navigation'}</Text>
             </Pressable>
-            <Text style={styles.verificationText}>Opens walking directions. Mission steps count once you are within 0.31 mi of the trailhead.</Text>
+            <Text style={styles.verificationText}>{trailheadDistanceMessage(distanceToTrailheadMeters)}</Text>
           </View>
 
           <CreateMeetupModal visible={showCreateMeetup} trail={trail} onClose={() => setShowCreateMeetup(false)} onCreate={createMeetup} />
         </>
       )}
+      <TrailSessionConfirmModal
+        visible={Boolean(activeTrailToReplace && trail)}
+        title="You already have an active trail"
+        message={`${activeTrailToReplace?.trail.name ?? 'Another trail'} is currently being tracked.\n\nWould you like to end it and start ${trail?.name ?? 'this trail'}?`}
+        cancelLabel="Keep Current Trail"
+        confirmLabel="Switch Trails"
+        busy={isStarting}
+        onCancel={() => setActiveTrailToReplace(null)}
+        onConfirm={() => {
+          setActiveTrailToReplace(null);
+          void startNavigation(true);
+        }}
+      />
     </View>
   );
 }
 
 // Gives related detail rows a consistent heading and spacing.
+// Important note: Displays a labeled section of trail information.
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return <View style={styles.section}><Text style={styles.sectionTitle}>{title}</Text>{children}</View>;
 }
 
 // Displays one quick trail measurement such as length, time, or elevation.
+// Important note: Displays the stat UI.
 function Stat({ label, value }: { label: string; value: string }) {
   return <View style={styles.stat}><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></View>;
 }
 
 // Displays one labeled trail fact with an icon for easier scanning.
+// Important note: Displays the detail UI.
 function Detail({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
   return <View style={styles.detail}><Ionicons name={icon} size={18} color={C.cyan} /><View style={styles.detailCopy}><Text style={styles.detailLabel}>{label}</Text><Text style={styles.detailValue}>{value}</Text></View></View>;
 }
 
 // Converts an amenity code into a readable availability badge.
+// Important note: Displays the amenity UI.
 function Amenity({ amenity, available }: { amenity: TrailAmenity; available: boolean }) {
   const label = ({ parking: 'Parking', restrooms: 'Restrooms', water: 'Water', pet_friendly: 'Pet friendly' } as const)[amenity];
-  return <View style={[styles.amenity, !available && styles.unavailableAmenity]}><Ionicons name={available ? 'checkmark-circle' : 'remove-circle-outline'} size={16} color={available ? C.green : C.textMuted} /><Text style={styles.amenityText}>{label}: {available ? 'Yes' : 'Not provided'}</Text></View>;
+  return <View style={[styles.amenity, !available && styles.unavailableAmenity]}><Ionicons name={available ? 'checkmark-circle' : 'remove-circle-outline'} size={16} color={available ? C.green : C.textMuted} /><Text style={styles.amenityText}>{label}: {available ? 'Yes' : 'No'}</Text></View>;
 }
 
+// Important note: Displays the daily forecast UI.
 function DailyForecast({
   forecast,
   isLoading,
@@ -394,6 +583,7 @@ function DailyForecast({
   );
 }
 
+// Important note: Chooses an icon that matches the forecast.
 function weatherIcon(code: number): keyof typeof Ionicons.glyphMap {
   if (code === 0 || code === 1) return 'sunny-outline';
   if (code === 2) return 'partly-sunny-outline';
@@ -403,21 +593,90 @@ function weatherIcon(code: number): keyof typeof Ionicons.glyphMap {
   return 'rainy-outline';
 }
 
+// Important note: Formats forecast date for display.
 function formatForecastDate(date: string) {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
     .format(new Date(`${date}T12:00:00`));
 }
 
 // Capitalizes stored lowercase labels before showing them to the user.
+// Important note: Makes the first letter of a text value uppercase.
 function capitalize(value: string) { return value.charAt(0).toUpperCase() + value.slice(1); }
 
-// Uses native Apple Maps on iOS and Google Maps directions everywhere else.
-function getTrailNavigationUrl(trail: Trail) {
-  const destination = `${trail.latitude},${trail.longitude}`;
-  if (Platform.OS === 'ios') {
-    return `http://maps.apple.com/?daddr=${destination}&q=${encodeURIComponent(trail.name)}&dirflg=w`;
+function displayTrailAddress(
+  providerAddress: string | undefined,
+  geocoded: TrailAddressResult | null,
+  loading: boolean,
+) {
+  const supplied = providerAddress?.trim();
+  if (supplied) return supplied;
+  if (loading) return 'Looking up trail location…';
+  if (!geocoded) return null;
+
+  const locality = [geocoded.locality, geocoded.stateCode ?? geocoded.state]
+    .filter(Boolean)
+    .join(', ');
+  const lines = [geocoded.street, locality].filter(Boolean);
+  return lines.join('\n') || geocoded.formatted?.trim() || null;
+}
+
+function trailLengthMiles(trail: Trail) {
+  if (Number.isFinite(trail.lengthMiles) && trail.lengthMiles > 0) return trail.lengthMiles;
+  if (typeof trail.routeDistanceMiles === 'number' && Number.isFinite(trail.routeDistanceMiles) && trail.routeDistanceMiles > 0) {
+    return trail.routeDistanceMiles;
   }
-  return `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=walking&dir_action=navigate`;
+  return calculateTrailGeometryLengthMiles(trail.geometry);
+}
+
+function getTrailStats(trail: Trail, distanceToTrailheadMeters: number | null) {
+  const length = trailLengthMiles(trail);
+  const duration = Number.isFinite(trail.estimatedDurationMinutes) && trail.estimatedDurationMinutes > 0
+    ? Math.round(trail.estimatedDurationMinutes)
+    : null;
+  const elevation = typeof trail.elevationGainFeet === 'number'
+    && Number.isFinite(trail.elevationGainFeet)
+    && trail.elevationGainFeet >= 0
+    ? Math.round(trail.elevationGainFeet)
+    : null;
+  const estimatedPrefix = trail.metricSource === 'geometry_estimate' ? '~' : '';
+
+  return [
+    length !== null
+      ? { label: 'Length', value: `${estimatedPrefix}${length.toFixed(1)} mi` }
+      : distanceToTrailheadMeters !== null
+        ? { label: 'Distance away', value: formatGeographicDistance(distanceToTrailheadMeters) }
+        : { label: 'Type', value: trailCategoryLabel(trail) },
+    duration !== null
+      ? { label: 'Est. time', value: `${estimatedPrefix}${duration} min` }
+      : { label: 'Activity', value: capitalize(trail.activityType) },
+    elevation !== null
+      ? { label: 'Elevation', value: `${elevation} ft` }
+      : trail.difficulty !== 'unknown'
+        ? { label: 'Difficulty', value: capitalize(trail.difficulty) }
+        : { label: 'Type', value: trailCategoryLabel(trail) },
+  ];
+}
+
+function trailCategoryLabel(trail: Trail) {
+  return ({
+    trail: 'Trail',
+    trailhead: 'Trailhead',
+    park: 'Park',
+    nature_reserve: 'Nature reserve',
+    nature_area: 'Nature area',
+    walking_path: 'Walking path',
+  } as const)[trail.category];
+}
+
+function trailGeometryLabel(trail: Trail) {
+  return trail.source === 'mission_trails' ? 'saved trail route' : 'provider trail geometry';
+}
+
+function trailheadDistanceMessage(distanceMeters: number | null) {
+  if (distanceMeters === null || !Number.isFinite(distanceMeters)) {
+    return 'Opens walking directions. GPS distance to the trailhead is unavailable.';
+  }
+  return `Opens walking directions. You are ${formatGeographicDistance(distanceMeters)} from the trailhead. Mission steps activate within ${formatTrailheadProximityRadius()}.`;
 }
 
 const styles = StyleSheet.create({

@@ -7,6 +7,7 @@ import { ThemedView } from './themed-view';
 
 import { Spacing } from '@/constants/theme';
 
+// Important note: Displays the web badge UI.
 export function WebBadge() {
   const scheme = useColorScheme();
 

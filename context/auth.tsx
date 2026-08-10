@@ -11,6 +11,7 @@ const AuthContext = createContext<{ session: Session | null; loading: boolean }>
   loading: true,
 });
 
+// Important note: Shares sign-in and user information with the rest of the app.
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,4 +59,5 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Important note: Gives a component access to the current user and sign-in tools.
 export const useAuth = () => useContext(AuthContext);

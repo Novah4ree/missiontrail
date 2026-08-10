@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MissionTrailColors as C } from '@/constants/theme';
 
 // This state distinguishes missing GPS from a nearby search with no matches.
+// Important note: Displays the trails empty state UI.
 export function TrailsEmptyState({
   locationRequired,
   isRefreshing,

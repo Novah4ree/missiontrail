@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 
 import { supabase } from '../../lib/supabase';
 
+// Important note: Builds and controls the forgot password screen.
 export default function ForgotPasswordScreen() {
 
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function ForgotPasswordScreen() {
   const [loading, setLoading] = useState(false);
 
   // Returns safely even when this screen was opened as the first route.
+  // Important note: Takes the user back to login.
   const returnToLogin = () => {
     if (router.canGoBack()) {
       router.back();
@@ -31,6 +33,7 @@ export default function ForgotPasswordScreen() {
     router.replace('/login');
   };
 
+  // Important note: Handles the reset password action.
   const handleResetPassword = async () => {
 
     if (!email.trim()) {

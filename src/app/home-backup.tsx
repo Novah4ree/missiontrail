@@ -7,73 +7,82 @@ import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
+    Easing,
+    useAnimatedStyle,
+    useReducedMotion,
+    useSharedValue,
+    withRepeat,
+    withSequence,
+    withTiming,
 } from 'react-native-reanimated';
 
 import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from 'react';
 
 import {
-  Dimensions,
-  Image,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
+    Dimensions,
+    Image,
+    Modal,
+    Platform,
+    Pressable,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Chatbot popup component
 import {
-  Circle,
-  MapView,
-  Marker,
-  Polyline,
-  PROVIDER_GOOGLE,
+    Circle,
+    MapView,
+    Marker,
+    Polyline,
+    PROVIDER_GOOGLE,
 } from '@/components/maps/map-components';
 import { MeetupMapMarker } from '@/components/meetups/MeetupMapMarker';
 import { MeetupMapPreview } from '@/components/meetups/MeetupMapPreview';
 import { MeetupsTodaySection } from '@/components/meetups/MeetupsTodaySection';
+import { TrailSessionConfirmModal } from '@/components/trails/trail-session-confirm-modal';
 import { RelicAwakening } from '@/components/relic-awakening';
 import { SecureRelicCard } from '@/components/secure-relic-card';
 import { RELICS, type Relic } from '@/constants/relics';
 import { useDailyProgress } from '@/hooks/use-daily-progress';
 import { useSecureRelicField } from '@/hooks/use-secure-relic-field';
 import { useDailyActivity } from '@/providers/activity-progress-provider';
-import { getDevelopmentMeetupsToday } from '@/services/development-meetup-data';
-import { loadActiveTrailActivity } from '@/services/trail-activity-service';
+import { useLocationState } from '@/providers/location-provider';
+import {
+  cancelActiveTrail,
+  loadActiveTrailActivity,
+  subscribeToActiveTrailActivity,
+} from '@/services/trail-activity-service';
 import { queueGpsLocation } from '@/services/verified-distance';
 import type { Meetup } from '@/types/meetups';
 import type { MysteryZone } from '@/types/relic-proximity';
 import type { ActiveTrailActivity } from '@/types/trails';
 import {
-  calculateDistanceMeters,
-  feetToMeters,
-  formatDistanceFeetAndInches,
-  getCoordinateOffsetByFeet,
-  type Coordinate,
+    calculateDistanceMeters,
+    feetToMeters,
+    formatDistanceFeetAndInches,
+    getCoordinateOffsetByFeet,
+    type Coordinate,
 } from '@/utils/distance';
 import {
-  calculateFriendsAttending,
-  filterMeetupsForMap,
-  MEETUP_RADIUS_OPTIONS,
-  type MeetupRadiusMiles,
+    calculateFriendsAttending,
+    filterMeetupsForMap,
+    MEETUP_RADIUS_OPTIONS,
+    type MeetupRadiusMiles,
 } from '@/utils/meetup-discovery';
 import { collectRelic, getPlayerProgress } from '@/utils/player-progress';
+import {
+    validateActiveGpsLocation,
+    validateGpsPosition,
+} from '@/utils/location-validation';
 import { useAuth } from '../../context/auth';
 import MissionTrailBot from './MissionTrailBot';
 
@@ -92,6 +101,14 @@ type PlacedRelic = {
   relic: Relic;
   coordinate: Coordinate;
 };
+
+type HomeGpsStatus =
+  | 'idle'
+  | 'requesting'
+  | 'ready'
+  | 'denied'
+  | 'unavailable'
+  | 'error';
 
 type NeonIconName =
   React.ComponentProps<typeof Ionicons>['name'];
@@ -239,14 +256,6 @@ const mapButtons = [
 const speedLimitMetersPerSecond =
   20 * 0.44704;
 
-const startingMapRegion: Region = {
-  latitude: 37.7749,
-  longitude: -122.4194,
-
-  latitudeDelta: 0.012,
-  longitudeDelta: 0.012,
-};
-
 const RELIC_COLLECTION_RADIUS_FEET = 10;
 
 // Both checks must pass. __DEV__ is false in production bundles, so this UI is removed there.
@@ -375,7 +384,14 @@ const darkMapStyle = [
 // HOME SCREEN
 // =======================
 
+// Important note: Builds and controls the home screen.
 export default function HomeScreen() {
+  const {
+    location,
+    requestCurrentLocation,
+    setGpsLocation,
+    updateGpsAddress,
+  } = useLocationState();
   const router = useRouter();
   const { session } = useAuth();
   const dailyActivity = useDailyActivity();
@@ -383,10 +399,15 @@ export default function HomeScreen() {
 
   const mapRef =
     useRef<any>(null);
+  const homeLocationRequestRef = useRef(0);
+  const homeRecenterRequestRef = useRef(0);
+  const hasCenteredOnGpsRef = useRef(false);
+  const latestHomeGpsTimestampRef = useRef(
+    validateActiveGpsLocation(location.currentGpsLocation)?.timestamp ?? 0,
+  );
 
   const safeArea =
     useSafeAreaInsets();
-
   // =====================
   // CHATBOT STATE
   // =====================
@@ -410,8 +431,11 @@ export default function HomeScreen() {
     ? cachedTotalXp
     : sharedProgress?.totalXp ?? 0;
   const [activeTrailActivity, setActiveTrailActivity] = useState<ActiveTrailActivity | null>(null);
+  const [isCancelTrailOpen, setIsCancelTrailOpen] = useState(false);
+  const [isCancelingTrail, setIsCancelingTrail] = useState(false);
+  const [showTrailCanceledPrompt, setShowTrailCanceledPrompt] = useState(false);
   const [selectedMeetupId, setSelectedMeetupId] = useState<string | null>(null);
-  const [joinedMeetupIds, setJoinedMeetupIds] = useState<string[]>([]);
+  const [, setJoinedMeetupIds] = useState<string[]>([]);
   const [joiningMeetupId, setJoiningMeetupId] = useState<string | null>(null);
   const [isMeetupListOpen, setIsMeetupListOpen] = useState(false);
   const [meetupRadiusMiles, setMeetupRadiusMiles] = useState<MeetupRadiusMiles>(10);
@@ -421,15 +445,27 @@ export default function HomeScreen() {
   // =====================
 
   const [mapRegion, setMapRegion] =
-    useState<Region>(
-      startingMapRegion,
-    );
+    useState<Region | null>(() => {
+      const initialGpsLocation = validateActiveGpsLocation(location.currentGpsLocation);
+      if (!initialGpsLocation) return null;
+      hasCenteredOnGpsRef.current = true;
+      return makeMapRegion(initialGpsLocation);
+    });
+
+  const [currentGpsPoint, setCurrentGpsPoint] =
+    useState<Location.LocationObject | null>(null);
 
   const [gpsPoints, setGpsPoints] =
     useState<
       Location.LocationObject[]
     >([]);
+  const [locationContentRefreshKey, setLocationContentRefreshKey] = useState(0);
 
+  const [gpsStatus, setGpsStatus] = useState<HomeGpsStatus>(() => (
+    validateActiveGpsLocation(location.currentGpsLocation) ? 'ready' : 'idle'
+  ));
+
+  // Important note: Handles the secure collection action.
   const handleSecureCollection = useCallback((relic: Relic, serverTotalXp: number) => {
     setCollectedRelicIds((current) => current.includes(relic.id) ? current : [...current, relic.id]);
     setCachedTotalXp(serverTotalXp);
@@ -439,7 +475,9 @@ export default function HomeScreen() {
 
   const secureRelicField = useSecureRelicField({
     enabled: !ENABLE_RELIC_TEST_MODE,
+    hasValidGps: gpsStatus === 'ready',
     gpsPoints,
+    locationActionKey: locationContentRefreshKey,
     onCollected: handleSecureCollection,
   });
 
@@ -460,7 +498,7 @@ export default function HomeScreen() {
   const [
     isTracking,
     setIsTracking,
-  ] = useState(true);
+  ] = useState(() => Boolean(validateActiveGpsLocation(location.currentGpsLocation)));
 
   const [trackingRestartKey, setTrackingRestartKey] = useState(0);
 
@@ -468,8 +506,20 @@ export default function HomeScreen() {
   // LIVE INFORMATION
   // =====================
 
-  const latestGpsPoint =
-    getLatestGpsPoint(gpsPoints);
+  const latestGpsPoint = currentGpsPoint ?? getLatestGpsPoint(gpsPoints);
+
+  // Always derive this from live centralized GPS state; it is not a debug-log snapshot.
+  const centralGpsLocation = useMemo(
+    () => validateActiveGpsLocation(location.currentGpsLocation),
+    [location.currentGpsLocation],
+  );
+
+  useEffect(() => {
+    const timestamp = centralGpsLocation?.timestamp;
+    if (typeof timestamp === 'number' && timestamp > latestHomeGpsTimestampRef.current) {
+      latestHomeGpsTimestampRef.current = timestamp;
+    }
+  }, [centralGpsLocation?.timestamp]);
 
   const liveStats =
     getLiveStats(
@@ -487,23 +537,17 @@ export default function HomeScreen() {
       makeMapCoordinate,
     );
 
-  const playerCoordinate = latestGpsPoint ? makeMapCoordinate(latestGpsPoint) : null;
+  const playerCoordinate = useMemo(() => centralGpsLocation
+    ? { latitude: centralGpsLocation.latitude, longitude: centralGpsLocation.longitude }
+    : latestGpsPoint
+      ? makeMapCoordinate(latestGpsPoint)
+      : null, [centralGpsLocation, latestGpsPoint]);
 
-  // Test meetups exist only in development and never write to real user accounts.
-  const developmentMeetups = useMemo(() => getDevelopmentMeetupsToday(), []);
-  const meetupViewerId = session?.user.id ?? (__DEV__ ? 'test-map-viewer' : null);
-  const meetupFriendIds = useMemo(
-    () => Array.from(new Set(developmentMeetups.flatMap((meetup) => meetup.sampleFriendIds))),
-    [developmentMeetups],
-  );
-  const mapMeetups = useMemo<Meetup[]>(
-    () => developmentMeetups.map((meetup) => (
-      meetupViewerId && joinedMeetupIds.includes(meetup.id)
-        ? { ...meetup, attendeeIds: Array.from(new Set([...meetup.attendeeIds, meetupViewerId])) }
-        : meetup
-    )),
-    [developmentMeetups, joinedMeetupIds, meetupViewerId],
-  );
+  // No hardcoded development meetup coordinates are placed on the live map.
+  // Real meetup data can populate this collection through its production service.
+  const meetupViewerId = session?.user.id ?? null;
+  const meetupFriendIds = useMemo<string[]>(() => [], []);
+  const mapMeetups = useMemo<Meetup[]>(() => [], []);
   const visibleMapMeetups = useMemo(
     () => filterMeetupsForMap(mapMeetups, {
       currentUserId: meetupViewerId,
@@ -572,6 +616,7 @@ export default function HomeScreen() {
   useEffect(() => {
     let isMounted = true;
 
+    // Important note: Loads progress.
     async function loadProgress() {
       try {
         const progress = await getPlayerProgress();
@@ -599,10 +644,43 @@ export default function HomeScreen() {
   // A selected discovery trail adds map context only. Verified GPS points below
   // still control every mission and relic update.
   useEffect(() => {
-    void loadActiveTrailActivity().then(setActiveTrailActivity);
+    let active = true;
+    let activityRevision = 0;
+    const unsubscribe = subscribeToActiveTrailActivity((activity) => {
+      activityRevision += 1;
+      setActiveTrailActivity(activity);
+      if (activity) setShowTrailCanceledPrompt(false);
+    });
+    const loadRevision = activityRevision;
+    void loadActiveTrailActivity().then((activity) => {
+      if (active && loadRevision === activityRevision) setActiveTrailActivity(activity);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
+  const confirmCancelActiveTrail = useCallback(async () => {
+    const trailId = activeTrailActivity?.trail.id;
+    if (!trailId || isCancelingTrail) return;
+    setIsCancelingTrail(true);
+    try {
+      const canceled = await cancelActiveTrail(trailId);
+      setIsCancelTrailOpen(false);
+      if (canceled) {
+        setActiveTrailActivity(null);
+        setShowTrailCanceledPrompt(true);
+      }
+    } catch (cancelError) {
+      if (__DEV__) console.warn('[Home] Active trail could not be canceled.', cancelError);
+    } finally {
+      setIsCancelingTrail(false);
+    }
+  }, [activeTrailActivity?.trail.id, isCancelingTrail]);
+
   // Step 2: Save the relic only when GPS says the player is close enough.
+  // Important note: Handles the collect relic action.
   async function handleCollectRelic(ignoreDistanceForTesting = false) {
     const isAllowedByDistance = canCollectRelic || ignoreDistanceForTesting;
     const relic = nearestRelic?.relic;
@@ -629,47 +707,75 @@ export default function HomeScreen() {
     }
   }
 
+  // Commits one validated device reading. The physical location is updated even
+  // when the player is signed out; account persistence is an optional side effect.
   const saveGoodGpsPoint = useCallback((
     point: Location.LocationObject,
+    options: { forceCenter?: boolean; recordVerifiedSample?: boolean } = {},
   ) => {
-    if (!session?.user.id) return;
-    void queueGpsLocation(point, session.user.id).catch(() => {
-      // Offline and transient failures stay in the local queue for the next sync.
-    });
+    const validated = validateGpsPosition(point);
+    if (!validated) {
+      setGpsLocation(point);
+      setGpsStatus('unavailable');
+      return false;
+    }
+
+    // A delayed watcher callback must not move the marker or proximity origin
+    // behind a newer explicit GPS fix.
+    if (validated.timestamp < latestHomeGpsTimestampRef.current) return true;
+    latestHomeGpsTimestampRef.current = validated.timestamp;
+
+    if (!setGpsLocation(point)) return false;
+
+    setCurrentGpsPoint(point);
+    setGpsStatus('ready');
+    setLocationError(null);
+    if (options.forceCenter || !hasCenteredOnGpsRef.current) {
+      const nextRegion = makeMapRegion(validated);
+      hasCenteredOnGpsRef.current = true;
+      setMapRegion(nextRegion);
+    }
+
     if (ENABLE_RELIC_TEST_MODE) {
       setRelicFieldOrigin((currentOrigin) => currentOrigin ?? makeMapCoordinate(point));
     }
 
-    setMapRegion(
-      makeMapRegion(point),
-    );
-
-    setGpsPoints(
-      (oldPoints) => [
-        ...oldPoints.slice(-59),
-        point,
-      ],
-    );
-  }, [session?.user.id]);
+    if (options.recordVerifiedSample !== false) {
+      setGpsPoints((oldPoints) => [...oldPoints.slice(-59), point]);
+      if (session?.user.id) {
+        void queueGpsLocation(point, session.user.id).catch(() => {
+          // Offline and transient failures stay in the local queue for the next sync.
+        });
+      }
+    }
+    return true;
+  }, [session?.user.id, setGpsLocation]);
 
   // =====================
   // GPS TRACKING
   // =====================
 
   useEffect(() => {
+    const requestId = ++homeLocationRequestRef.current;
+    let active = true;
     let locationWatcher:
       | Location.LocationSubscription
       | undefined;
 
+    // Important note: Starts GPS tracking.
     async function startGpsTracking() {
       try {
-        const canUseLocation =
+        setGpsStatus('requesting');
+        const permission =
           await askForLocationPermission();
 
-        if (!canUseLocation) {
-          setLocationError(
-            'Location is off. Turn it on to explore and find relics.',
-          );
+        if (!active || homeLocationRequestRef.current !== requestId) return;
+        if (!permission.granted) {
+          setGpsStatus(permission.reason === 'denied' ? 'denied' : 'unavailable');
+          setIsTracking(false);
+          setLocationError(permission.reason === 'denied'
+            ? 'Location permission is required to explore and find relics.'
+            : 'Location Services are off. Turn them on to explore and find relics.');
 
           return;
         }
@@ -677,14 +783,17 @@ export default function HomeScreen() {
         const firstLocation =
           await getFirstLocation();
 
-        setLocationError(null);
-        saveGoodGpsPoint(
-          firstLocation,
-        );
+        if (!active || homeLocationRequestRef.current !== requestId) return;
+        const acceptedFirstLocation = saveGoodGpsPoint(firstLocation, { forceCenter: true });
+        setIsTracking(acceptedFirstLocation);
+        if (!acceptedFirstLocation) {
+          setGpsStatus('unavailable');
+          setLocationError('We couldn’t validate your GPS location. Move to an open area and try again.');
+        }
 
-        locationWatcher =
-          await watchLiveLocation(
+        const watcher = await watchLiveLocation(
             (newLocation) => {
+              if (!active || homeLocationRequestRef.current !== requestId) return;
               const tooFast =
                 isOverSpeedLimit(
                   newLocation,
@@ -694,29 +803,30 @@ export default function HomeScreen() {
                 tooFast,
               );
 
-              setIsTracking(
-                !tooFast,
-              );
-
-              setMapRegion(
-                makeMapRegion(
-                  newLocation,
-                ),
-              );
-
-              if (!tooFast) {
-                saveGoodGpsPoint(
-                  newLocation,
-                );
+              const accepted = saveGoodGpsPoint(newLocation, {
+                recordVerifiedSample: !tooFast,
+              });
+              setIsTracking(accepted && !tooFast);
+              if (!accepted) {
+                setGpsStatus('unavailable');
+                setLocationError('The latest GPS reading was invalid or stale.');
               }
             },
           );
+        if (!active || homeLocationRequestRef.current !== requestId) {
+          watcher.remove();
+          return;
+        }
+        locationWatcher = watcher;
       } catch (error) {
+        if (!active || homeLocationRequestRef.current !== requestId) return;
         console.error(
           'GPS tracking error:',
           error,
         );
 
+        setGpsStatus('error');
+        setIsTracking(false);
         setLocationError(
           'We couldn’t find your location. Move to an open area and try again.',
         );
@@ -726,6 +836,7 @@ export default function HomeScreen() {
     startGpsTracking();
 
     return () => {
+      active = false;
       locationWatcher?.remove();
     };
   }, [saveGoodGpsPoint, trackingRestartKey]);
@@ -734,25 +845,68 @@ export default function HomeScreen() {
   // CENTER MAP
   // =====================
 
-  function centerMapOnUser() {
-    if (!latestGpsPoint) {
+  // Important note: Moves the map back to the user's location.
+  async function centerMapOnUser() {
+    const requestId = ++homeRecenterRequestRef.current;
+    setGpsStatus('requesting');
+    setLocationError(null);
+
+    const result = await requestCurrentLocation();
+    if (requestId !== homeRecenterRequestRef.current) return;
+    if (result.kind !== 'located') {
+      if (result.kind !== 'superseded') {
+        setGpsStatus(result.kind === 'denied' ? 'denied' : 'unavailable');
+        setLocationError(result.error);
+      }
       return;
     }
 
-    mapRef.current?.animateToRegion(
-      makeMapRegion(
-        latestGpsPoint,
-      ),
+    // Use the same native sample accepted by the centralized provider for the
+    // Home marker, verified path, meetup origin, and relic proximity pipeline.
+    if (!saveGoodGpsPoint(result.position)) {
+      setGpsStatus('unavailable');
+      setLocationError('We couldn’t validate your GPS location. Move to an open area and try again.');
+      return;
+    }
 
-      500,
-    );
+    const nextRegion = makeMapRegion(result.coordinate);
+    hasCenteredOnGpsRef.current = true;
+    setMapRegion(nextRegion);
+    mapRef.current?.animateToRegion(nextRegion, 500);
+    setGpsStatus('ready');
+    setIsTracking(true);
+    setLocationContentRefreshKey((current) => current + 1);
+
+    try {
+      const [place] = await Location.reverseGeocodeAsync(result.coordinate);
+      if (requestId !== homeRecenterRequestRef.current || !place) return;
+      const city = [place.city, place.subregion, place.district]
+        .map((value) => value?.trim())
+        .find(Boolean);
+      updateGpsAddress(result.coordinate, {
+        city,
+        state: place.region?.trim() || undefined,
+        zipCode: place.postalCode?.trim() || undefined,
+      });
+    } catch (geocodeError) {
+      // The fresh coordinate remains authoritative. Screens that show a label
+      // use their existing neutral "Current location" copy until geocoding works.
+      if (__DEV__ && requestId === homeRecenterRequestRef.current) {
+        console.warn('[LOCATION ERROR]', {
+          operation: 'home_reverse_geocode',
+          message: geocodeError instanceof Error ? geocodeError.message : 'Unknown reverse-geocode error',
+        });
+      }
+    }
   }
 
   // =====================
   // ZOOM MAP
   // =====================
 
+  // Important note: Zooms the map out to show a larger area.
   function zoomOutMap() {
+    if (!mapRegion) return;
     const zoomAmount = 1.45;
     const nextRegion = {
       ...mapRegion,
@@ -795,6 +949,7 @@ export default function HomeScreen() {
   // OPEN CHATBOT
   // =====================
 
+  // Important note: Opens mission trail bot.
   function openMissionTrailBot() {
     setBotOpen(true);
   }
@@ -803,30 +958,36 @@ export default function HomeScreen() {
   // CLOSE CHATBOT
   // =====================
 
+  // Important note: Closes mission trail bot.
   function closeMissionTrailBot() {
     setBotOpen(false);
   }
 
+  // Important note: Opens leaderboard.
   function openLeaderboard() {
     router.push('/leaderboard');
   }
 
+  // Important note: Selects aura.
   function selectAura(aura: (typeof auraOptions)[number]) {
     setSelectedAura(aura);
     setIsAuraModalOpen(false);
   }
 
+  // Important note: Selects footprint.
   function selectFootprint(footprint: (typeof footprintOptions)[number]) {
     setSelectedFootprint(footprint);
     setIsFootprintModalOpen(false);
   }
 
   // Opens one compact card while keeping the Live Map mounted.
+  // Important note: Selects meetup marker.
   const selectMeetupMarker = useCallback((meetupId: string) => {
     setSelectedMeetupId(meetupId);
   }, []);
 
   // Development joins are local previews only; production will require a server mutation.
+  // Important note: Joins the selected meetup.
   const joinMeetup = useCallback((meetup: Meetup) => {
     if (!__DEV__) return;
     setJoiningMeetupId(meetup.id);
@@ -835,9 +996,14 @@ export default function HomeScreen() {
   }, []);
 
   // Stage 4 uses the accessible meetup list as the fuller detail alternative.
+  // Important note: Opens the selected meetup's details.
   const viewMeetupDetails = useCallback((meetup: Meetup) => {
     setSelectedMeetupId(meetup.id);
     setIsMeetupListOpen(true);
+  }, []);
+
+  const handleMapCameraChange = useCallback((nextRegion: Region) => {
+    setMapRegion(nextRegion);
   }, []);
 
   // =====================
@@ -852,6 +1018,7 @@ export default function HomeScreen() {
           MAP
       =================== */}
 
+      {mapRegion ? (
       <MapView
         ref={mapRef}
         style={
@@ -878,9 +1045,7 @@ export default function HomeScreen() {
         showsScale={false}
         rotateEnabled
         pitchEnabled
-        onRegionChangeComplete={
-          setMapRegion
-        }
+        onRegionChangeComplete={handleMapCameraChange}
       >
         {activeTrailActivity?.trail.geometry ? (
           <Polyline
@@ -913,7 +1078,7 @@ export default function HomeScreen() {
         )}
 
         {renderUserGlow(
-          latestGpsPoint,
+          playerCoordinate,
           selectedAura.color,
           selectedFootprint,
         )}
@@ -936,6 +1101,11 @@ export default function HomeScreen() {
           />
         ))}
       </MapView>
+      ) : (
+        <View style={styles.locationUnavailable}>
+          <Text style={styles.locationUnavailableText}>Location unavailable</Text>
+        </View>
+      )}
 
       {/* ===================
           COSMIC OVERLAY
@@ -984,7 +1154,11 @@ export default function HomeScreen() {
             liveStats,
           )}
 
-          {activeTrailActivity ? <ActiveTrailCard activity={activeTrailActivity} /> : null}
+          {activeTrailActivity ? (
+            <ActiveTrailCard activity={activeTrailActivity} onCancel={() => setIsCancelTrailOpen(true)} />
+          ) : showTrailCanceledPrompt ? (
+            <TrailCanceledCard onFindAnother={() => router.push('/trails')} />
+          ) : null}
 
           {renderWarningCard(
             isMovingTooFast,
@@ -1014,18 +1188,21 @@ export default function HomeScreen() {
         {/* GPS BADGE */}
 
         {renderGpsStatusBadge(
+          gpsStatus,
           isTracking,
 
           currentSpeedMph,
 
           safeArea.bottom,
+
+          activeTrailActivity?.trail.name ?? null,
         )}
 
         {/* SIDE BUTTONS */}
 
         <SideMapButtons
           onZoomOut={zoomOutMap}
-          onCenterMap={centerMapOnUser}
+          onCenterMap={() => void centerMapOnUser()}
           onOpenBot={openMissionTrailBot}
           onOpenMeetups={() => setIsMeetupListOpen(true)}
         />
@@ -1122,6 +1299,17 @@ export default function HomeScreen() {
         }}
       />
 
+      <TrailSessionConfirmModal
+        visible={isCancelTrailOpen && Boolean(activeTrailActivity)}
+        title="Cancel Active Trail?"
+        message={`You're currently exploring ${activeTrailActivity?.trail.name ?? 'this trail'}.\n\nYour current trail session will end and you'll be able to choose another trail.`}
+        cancelLabel="Keep Exploring"
+        confirmLabel="Cancel Trail"
+        busy={isCancelingTrail}
+        onCancel={() => setIsCancelTrailOpen(false)}
+        onConfirm={() => void confirmCancelActiveTrail()}
+      />
+
       {/* ===================
           CHATBOT POPUP
       =================== */}
@@ -1140,29 +1328,31 @@ export default function HomeScreen() {
 // LOCATION PERMISSION
 // =======================
 
+// Important note: Asks the user for location permission.
 async function askForLocationPermission() {
-  if (!(await Location.hasServicesEnabledAsync())) return false;
+  if (!(await Location.hasServicesEnabledAsync())) {
+    return { granted: false as const, reason: 'services_off' as const };
+  }
 
   const permission =
     await Location.requestForegroundPermissionsAsync();
 
-  return (
-    permission.status ===
-    Location.PermissionStatus
-      .GRANTED
-  );
+  return permission.status === Location.PermissionStatus.GRANTED
+    ? { granted: true as const, reason: 'granted' as const, status: permission.status }
+    : { granted: false as const, reason: 'denied' as const, status: permission.status };
 }
 
 // =======================
 // FIRST LOCATION
 // =======================
 
+// Important note: Gets first location.
 async function getFirstLocation() {
   return Location.getCurrentPositionAsync(
     {
       accuracy:
         Location.Accuracy
-          .High,
+          .Highest,
     },
   );
 }
@@ -1171,6 +1361,7 @@ async function getFirstLocation() {
 // WATCH LOCATION
 // =======================
 
+// Important note: Watches live location for changes.
 function watchLiveLocation(
   onLocationChange: (
     location:
@@ -1197,6 +1388,7 @@ function watchLiveLocation(
 // SPEED LIMIT
 // =======================
 
+// Important note: Checks whether over speed limit.
 function isOverSpeedLimit(
   location:
     Location.LocationObject,
@@ -1212,6 +1404,7 @@ function isOverSpeedLimit(
 // SPEED IN MPH
 // =======================
 
+// Important note: Gets speed MPH.
 function getSpeedMph(
   location?:
     Location.LocationObject,
@@ -1233,6 +1426,7 @@ function getSpeedMph(
 // LIVE STATS
 // =======================
 
+// Important note: Gets live stats.
 function getLiveStats(
   walkedMiles: number,
   todaySteps: number,
@@ -1253,6 +1447,7 @@ function getLiveStats(
 // LATEST GPS POINT
 // =======================
 
+// Important note: Gets latest GPS point.
 function getLatestGpsPoint(
   points:
     Location.LocationObject[],
@@ -1266,16 +1461,14 @@ function getLatestGpsPoint(
 // MAKE MAP REGION
 // =======================
 
+// Important note: Creates map region.
 function makeMapRegion(
-  location:
-    Location.LocationObject,
+  location: Location.LocationObject | Coordinate,
 ): Region {
+  const coordinate = 'coords' in location ? location.coords : location;
   return {
-    latitude:
-      location.coords.latitude,
-
-    longitude:
-      location.coords.longitude,
+    latitude: coordinate.latitude,
+    longitude: coordinate.longitude,
 
     latitudeDelta: 0.012,
 
@@ -1287,6 +1480,7 @@ function makeMapRegion(
 // MAKE COORDINATE
 // =======================
 
+// Important note: Creates map coordinate.
 function makeMapCoordinate(
   location:
     Location.LocationObject,
@@ -1300,6 +1494,7 @@ function makeMapCoordinate(
   };
 }
 
+// Important note: Finds nearest uncollected relic.
 function findNearestUncollectedRelic(
   playerCoordinate: Coordinate,
   placedRelics: PlacedRelic[],
@@ -1324,6 +1519,7 @@ function findNearestUncollectedRelic(
   return nearestRelic;
 }
 
+// Important note: Gets bearing degrees.
 function getBearingDegrees(from: Coordinate, to: Coordinate) {
   const startLatitude = (from.latitude * Math.PI) / 180;
   const endLatitude = (to.latitude * Math.PI) / 180;
@@ -1337,6 +1533,7 @@ function getBearingDegrees(from: Coordinate, to: Coordinate) {
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
+// Important note: Gets cardinal direction.
 function getCardinalDirection(bearing: number) {
   const directions = [
     'north',
@@ -1356,6 +1553,7 @@ function getCardinalDirection(bearing: number) {
 // WALKED PATH
 // =======================
 
+// Important note: Builds the walked path UI.
 function renderWalkedPath(
   coordinates:
     ReturnType<
@@ -1393,6 +1591,7 @@ function renderWalkedPath(
 // FOOTPRINT MARKERS
 // =======================
 
+// Important note: Builds the footprint markers UI.
 function renderFootprintMarkers(
   coordinates:
     ReturnType<
@@ -1439,21 +1638,19 @@ function renderFootprintMarkers(
 // USER LOCATION GLOW
 // =======================
 
+// Important note: Builds the user glow UI.
 function renderUserGlow(
-  location?:
-    Location.LocationObject,
+  coordinate?: Coordinate | null,
   auraColor?: string,
   selectedFootprint?: (typeof footprintOptions)[number],
 ) {
-  if (!location || !auraColor || !selectedFootprint) {
+  if (!coordinate || !auraColor || !selectedFootprint) {
     return null;
   }
 
   return (
     <Marker
-      coordinate={makeMapCoordinate(
-        location,
-      )}
+      coordinate={coordinate}
       anchor={{
         x: 0.5,
         y: 0.5,
@@ -1480,6 +1677,7 @@ function renderUserGlow(
   );
 }
 
+// Important note: Builds the relic markers UI.
 function renderRelicMarkers(placedRelics: PlacedRelic[], collectedRelicIds: string[]) {
   return placedRelics.map(({ relic, coordinate }) => {
     const isCollected = collectedRelicIds.includes(relic.id);
@@ -1510,6 +1708,7 @@ function renderRelicMarkers(placedRelics: PlacedRelic[], collectedRelicIds: stri
   });
 }
 
+// Important note: Builds the mystery zone markers UI.
 function renderMysteryZoneMarkers(
   zones: MysteryZone[],
   selectedAssignmentId: string | null,
@@ -1547,6 +1746,7 @@ function renderMysteryZoneMarkers(
   });
 }
 
+// Important note: Displays the hidden relic marker on a map.
 function HiddenRelicMarker({
   color,
   intensity,
@@ -1602,6 +1802,7 @@ function HiddenRelicMarker({
   );
 }
 
+// Important note: Displays the relic distance card.
 function RelicDistanceCard({
   relic,
   distanceMeters,
@@ -1682,6 +1883,7 @@ function RelicDistanceCard({
   );
 }
 
+// Important note: Displays the relic compass UI.
 function RelicCompass({
   relicBearing,
   direction,
@@ -1737,10 +1939,12 @@ function RelicCompass({
   );
 }
 
+// Important note: Gets aura glow background.
 function getAuraGlowBackground(auraColor: string) {
   return `${auraColor}24`;
 }
 
+// Important note: Displays the aura button.
 function AuraButton({
   auraColor,
   onPress,
@@ -1764,6 +1968,7 @@ function AuraButton({
   );
 }
 
+// Important note: Displays the footprint button.
 function FootprintButton({
   auraColor,
   onPress,
@@ -1787,6 +1992,7 @@ function FootprintButton({
   );
 }
 
+// Important note: Displays the aura picker popup.
 function AuraPickerModal({
   visible,
   selectedAura,
@@ -1843,6 +2049,7 @@ function AuraPickerModal({
   );
 }
 
+// Important note: Displays the footprint picker popup.
 function FootprintPickerModal({
   visible,
   selectedFootprint,
@@ -1909,6 +2116,7 @@ function FootprintPickerModal({
 // HEADER
 // =======================
 
+// Important note: Builds the header UI.
 function renderHeader(openLeaderboard: () => void) {
   return (
     <View style={styles.headerBar}>
@@ -1962,6 +2170,7 @@ function renderHeader(openLeaderboard: () => void) {
 // TOP STATS
 // =======================
 
+// Important note: Builds the top stats card UI.
 function renderTopStatsCard(
   liveStats:
     ReturnType<
@@ -2066,6 +2275,7 @@ function renderTopStatsCard(
 // WARNING CARD
 // =======================
 
+// Important note: Builds the warning card UI.
 function renderWarningCard(
   isMovingTooFast: boolean,
 
@@ -2127,7 +2337,11 @@ function renderWarningCard(
   );
 }
 
-function ActiveTrailCard({ activity }: { activity: ActiveTrailActivity }) {
+// Important note: Displays the active trail card.
+function ActiveTrailCard({ activity, onCancel }: {
+  activity: ActiveTrailActivity;
+  onCancel: () => void;
+}) {
   return (
     <View style={styles.activeTrailCard}>
       <Ionicons name="trail-sign" size={18} color="#6FE7FF" />
@@ -2135,6 +2349,35 @@ function ActiveTrailCard({ activity }: { activity: ActiveTrailActivity }) {
         <Text numberOfLines={1} style={styles.activeTrailTitle}>{activity.trail.name}</Text>
         <Text style={styles.activeTrailText}>Active trail · verified GPS tracking is on</Text>
       </View>
+      <Pressable
+        accessibilityLabel={`Cancel active trail ${activity.trail.name}`}
+        accessibilityRole="button"
+        onPress={onCancel}
+        style={({ pressed }) => [styles.cancelTrailButton, pressed && styles.buttonPressed]}
+      >
+        <Ionicons name="stop-circle-outline" size={15} color="#FFD4E2" />
+        <Text style={styles.cancelTrailText}>Cancel Trail</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function TrailCanceledCard({ onFindAnother }: { onFindAnother: () => void }) {
+  return (
+    <View style={styles.trailCanceledCard}>
+      <Ionicons name="checkmark-circle-outline" size={19} color="#74F0B0" />
+      <View style={styles.activeTrailCopy}>
+        <Text style={styles.trailCanceledTitle}>Trail canceled</Text>
+        <Text style={styles.trailCanceledText}>You can choose another trail whenever you&apos;re ready.</Text>
+      </View>
+      <Pressable
+        accessibilityLabel="Find another trail"
+        accessibilityRole="button"
+        onPress={onFindAnother}
+        style={({ pressed }) => [styles.findTrailButton, pressed && styles.buttonPressed]}
+      >
+        <Text style={styles.findTrailText}>Find Another Trail</Text>
+      </Pressable>
     </View>
   );
 }
@@ -2143,13 +2386,34 @@ function ActiveTrailCard({ activity }: { activity: ActiveTrailActivity }) {
 // GPS STATUS BADGE
 // =======================
 
+// Important note: Builds the GPS status badge UI.
 function renderGpsStatusBadge(
+  gpsStatus: HomeGpsStatus,
   isTracking: boolean,
 
   currentSpeedMph: number,
 
   safeBottom: number,
+
+  activeTrailName: string | null,
 ) {
+  const title = gpsStatus === 'ready'
+    ? 'GPS ACTIVE'
+    : gpsStatus === 'requesting'
+      ? 'GPS REQUESTING'
+      : gpsStatus === 'denied'
+        ? 'GPS DENIED'
+        : 'GPS UNAVAILABLE';
+  const statusText = gpsStatus === 'ready'
+    ? isTracking
+      ? activeTrailName ? `Tracking ${activeTrailName}` : 'Location ready'
+      : activeTrailName ? 'Trail tracking paused' : 'Location paused'
+    : gpsStatus === 'requesting'
+      ? 'Finding your location'
+      : gpsStatus === 'denied'
+        ? 'Location permission required'
+        : 'Location unavailable';
+
   return (
     <View
       style={[
@@ -2169,7 +2433,7 @@ function renderGpsStatusBadge(
           styles.mapCenterTitle
         }
       >
-        GPS ACTIVE
+        {title}
       </Text>
 
       <Text
@@ -2177,14 +2441,8 @@ function renderGpsStatusBadge(
           styles.mapCenterText
         }
       >
-        {isTracking
-          ? 'Tracking footsteps'
-          : 'Tracking paused'}{' '}
-        |{' '}
-        {currentSpeedMph.toFixed(
-          1,
-        )}{' '}
-        MPH
+        {statusText}
+        {gpsStatus === 'ready' ? ` | ${currentSpeedMph.toFixed(1)} MPH` : ''}
       </Text>
     </View>
   );
@@ -2193,6 +2451,7 @@ function renderGpsStatusBadge(
 // SIDE MAP BUTTONS
 // =======================
 
+// Important note: Displays the side map buttons UI.
 function SideMapButtons({
   onZoomOut,
   onCenterMap,
@@ -2273,6 +2532,7 @@ function SideMapButtons({
 }
 
 // This modal keeps meetup markers accessible through a readable card list.
+// Important note: Displays the meetup list popup.
 function MeetupListModal({
   visible,
   meetups,
@@ -2356,6 +2616,7 @@ function MeetupListModal({
 // BOTTOM TAB BAR
 // =======================
 
+// Important note: Builds the bottom tab bar UI.
 function renderBottomTabBar(
   router: ReturnType<typeof useRouter>,
 ) {
@@ -2425,6 +2686,18 @@ const styles =
 
       backgroundColor:
         '#0a0a1a',
+    },
+
+    locationUnavailable: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    locationUnavailableText: {
+      color: '#FFFFFF',
+      fontSize: 14,
+      fontWeight: '700',
     },
 
     cosmicOverlay: {
@@ -2910,6 +3183,14 @@ const styles =
     activeTrailCopy: { flex: 1 },
     activeTrailTitle: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' },
     activeTrailText: { color: '#9DDFEF', fontSize: 9, marginTop: 2 },
+    cancelTrailButton: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10, borderWidth: 1, borderColor: '#FF477E', backgroundColor: 'rgba(143, 23, 67, 0.32)', paddingHorizontal: 9 },
+    cancelTrailText: { color: '#FFD4E2', fontSize: 9, fontWeight: '900' },
+    buttonPressed: { opacity: 0.72 },
+    trailCanceledCard: { minHeight: 52, borderRadius: 14, borderWidth: 1, borderColor: '#42CF8B', backgroundColor: 'rgba(7, 48, 39, 0.92)', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10 },
+    trailCanceledTitle: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' },
+    trailCanceledText: { color: '#B7EFD2', fontSize: 8, marginTop: 2 },
+    findTrailButton: { minHeight: 34, justifyContent: 'center', borderRadius: 10, borderWidth: 1, borderColor: '#74F0B0', paddingHorizontal: 9 },
+    findTrailText: { color: '#D6FFE9', fontSize: 8, fontWeight: '900' },
 
     warningCopy: {
       flex: 1,

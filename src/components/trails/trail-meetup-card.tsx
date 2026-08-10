@@ -5,6 +5,7 @@ import { MissionTrailColors as C } from '@/constants/theme';
 import type { TrailMeetup } from '@/types/trails';
 
 // This card shows public meetup facts and provides join and safety actions.
+// Important note: Displays the trail meetup card.
 export function TrailMeetupCard({ meetup, requested, onJoin, onReport, onBlock }: {
   meetup: TrailMeetup;
   requested: boolean;
@@ -30,6 +31,7 @@ export function TrailMeetupCard({ meetup, requested, onJoin, onReport, onBlock }
 }
 
 // Displays one meetup detail with a matching icon.
+// Important note: Displays the meetup line UI.
 function MeetupLine({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
   return <View style={styles.line}><Ionicons name={icon} size={15} color={C.cyan} /><Text style={styles.lineText}>{text}</Text></View>;
 }

@@ -27,6 +27,7 @@ import { supabase } from '../../lib/supabase';
 // SCREEN
 // ======================================================
 
+// Important note: Builds and controls the signup screen.
 export default function SignupScreen() {
 
   const [firstName, setFirstName] = useState('');
@@ -39,6 +40,7 @@ export default function SignupScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Important note: Handles the signup action.
   const handleSignup = async () => {
     // Basic structural check only
     if (!firstName || !lastName || !email || !password || !confirmPassword) {

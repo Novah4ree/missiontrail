@@ -15,6 +15,7 @@ import { ThemedView } from './themed-view';
 
 import { Colors, MaxContentWidth, Spacing } from '@/constants/theme';
 
+// Important note: Displays the app tabs UI.
 export default function AppTabs() {
   return (
     <Tabs>
@@ -33,6 +34,7 @@ export default function AppTabs() {
   );
 }
 
+// Important note: Displays the tab button.
 export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
   return (
     <Pressable {...props} style={({ pressed }) => pressed && styles.pressed}>
@@ -47,6 +49,7 @@ export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps
   );
 }
 
+// Important note: Displays the custom tab list UI.
 export function CustomTabList(props: TabListProps) {
   const scheme = useColorScheme();
   const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];

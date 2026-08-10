@@ -23,9 +23,26 @@ export function calculateDistanceMeters(from: Coordinate, to: Coordinate) {
       Math.cos(toLatitude) *
       Math.sin(longitudeDelta / 2) ** 2;
 
-  const centralAngle = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+  const clampedHaversine = Math.min(1, Math.max(0, haversine));
+  const centralAngle = 2 * Math.atan2(
+    Math.sqrt(clampedHaversine),
+    Math.sqrt(1 - clampedHaversine),
+  );
 
   return EARTH_RADIUS_METERS * centralAngle;
+}
+
+export function formatDistanceMiles(distanceMiles: number) {
+  if (!Number.isFinite(distanceMiles) || distanceMiles < 0) return 'Distance unavailable';
+  if (distanceMiles < 0.1) return '<0.1 mi';
+  return `${distanceMiles.toFixed(1)} mi`;
+}
+
+/** Formats a coordinate-to-coordinate distance without implying false precision. */
+export function formatGeographicDistance(distanceMeters: number) {
+  if (!Number.isFinite(distanceMeters) || distanceMeters < 0) return 'Distance unavailable';
+  if (distanceMeters < 160.9344) return `${Math.round(distanceMeters * FEET_PER_METER)} ft`;
+  return `${(distanceMeters / 1_609.344).toFixed(1)} mi`;
 }
 
 export function feetToMeters(feet: number) {

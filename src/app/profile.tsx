@@ -7,8 +7,10 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import * as Linking from 'expo-linking';
+import { useCallback, useEffect, useState } from 'react';
 import {
+  Alert,
   Dimensions,
   Image,
   Pressable,
@@ -68,6 +70,7 @@ const profilePlaceholder: ProfileHeaderData = {
   isOnline: false,
 };
 
+// Important note: Reads a text value from the user's profile metadata.
 function metadataText(metadata: Record<string, unknown>, ...keys: string[]) {
   for (const key of keys) {
     const value = metadata[key];
@@ -76,6 +79,7 @@ function metadataText(metadata: Record<string, unknown>, ...keys: string[]) {
   return undefined;
 }
 
+// Important note: Reads the user's aura colors from profile metadata.
 function metadataAuraColors(metadata: Record<string, unknown>) {
   const colors = metadata.aura_colors;
   const values = Array.isArray(colors)
@@ -88,6 +92,7 @@ function metadataAuraColors(metadata: Record<string, unknown>) {
   ).map((value) => value.trim()).slice(0, 4);
 }
 
+// Important note: Builds and controls the profile screen.
 export default function ProfileScreen() {
   const safeArea = useSafeAreaInsets();
   const router = useRouter();
@@ -95,64 +100,106 @@ export default function ProfileScreen() {
   const todayMiles = ((progress?.verifiedDistanceMeters ?? 0) / 1_609.344).toFixed(2);
   const playerLevel = getPlayerLevelProgress(progress?.totalXp ?? 0);
   const [profileHeader, setProfileHeader] = useState<ProfileHeaderData>(profilePlaceholder);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadProfileHeader() {
-      const { data, error } = await supabase.auth.getUser();
-      if (!isMounted) return;
-      if (error || !data.user) {
-        setProfileHeader(profilePlaceholder);
-        return;
-      }
-
-      const metadata = data.user.user_metadata as Record<string, unknown>;
-      const emailUsername = data.user.email?.split('@')[0]?.trim();
-      const firstName = metadataText(metadata, 'first_name');
-      const lastName = metadataText(metadata, 'last_name');
-      const fullName = [firstName, lastName].filter(Boolean).join(' ');
-
-      setProfileHeader({
-        displayName: metadataText(metadata, 'full_name', 'display_name', 'name')
-          ?? fullName
-          ?? emailUsername
-          ?? profilePlaceholder.displayName,
-        username: metadataText(metadata, 'username', 'handle')
-          ?? emailUsername
-          ?? profilePlaceholder.username,
-        avatarUrl: metadataText(metadata, 'avatar_url', 'picture', 'photo_url'),
-        explorerRank: metadataText(metadata, 'explorer_rank', 'rank')
-          ?? profilePlaceholder.explorerRank,
-        auraColors: metadataAuraColors(metadata),
-        bio: metadataText(metadata, 'bio', 'about', 'description')
-          ?? profilePlaceholder.bio,
-        isOnline: true,
-      });
+  // Important note: Loads profile header.
+  const loadProfileHeader = useCallback(async () => {
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data.user) {
+      setProfileHeader(profilePlaceholder);
+      return;
     }
 
-    void loadProfileHeader();
-    return () => {
-      isMounted = false;
-    };
+    const metadata = data.user.user_metadata as Record<string, unknown>;
+    const emailUsername = data.user.email?.split('@')[0]?.trim();
+    const firstName = metadataText(metadata, 'first_name');
+    const lastName = metadataText(metadata, 'last_name');
+    const fullName = [firstName, lastName].filter(Boolean).join(' ');
+
+    setProfileHeader({
+      displayName: metadataText(metadata, 'full_name', 'display_name', 'name')
+        ?? fullName
+        ?? emailUsername
+        ?? profilePlaceholder.displayName,
+      username: metadataText(metadata, 'username', 'handle')
+        ?? emailUsername
+        ?? profilePlaceholder.username,
+      avatarUrl: metadataText(metadata, 'avatar_url', 'picture', 'photo_url'),
+      explorerRank: metadataText(metadata, 'explorer_rank', 'rank')
+        ?? profilePlaceholder.explorerRank,
+      auraColors: metadataAuraColors(metadata),
+      bio: metadataText(metadata, 'bio', 'about', 'description')
+        ?? profilePlaceholder.bio,
+      isOnline: true,
+    });
   }, []);
+
+  useEffect(() => {
+    void loadProfileHeader().catch((error) => {
+      if (__DEV__) console.warn('[Profile] Could not load profile header:', error);
+      setProfileHeader(profilePlaceholder);
+    });
+  }, [loadProfileHeader]);
 
   const auraDots: (string | null)[] = profileHeader.auraColors.length
     ? profileHeader.auraColors
     : [null, null, null];
 
   // Handle Logout & Redirect
-  const handleSignOut = async () => {
+  // Important note: Handles the sign out action.
+  const openAppSettings = useCallback(() => {
+    void Linking.openSettings().catch((settingsError) => {
+      if (__DEV__) console.warn('[Profile] Device settings could not be opened:', settingsError);
+      Alert.alert('Settings unavailable', 'Open your device Settings and select MissionTrail to manage its permissions.');
+    });
+  }, []);
+
+  const openSecurityPrivacy = useCallback(() => {
+    Alert.alert(
+      'Security & Privacy',
+      'Your live location is only used to verify activity and find nearby trails. Manage device permissions in your system settings.',
+      [
+        { text: 'Manage permissions', onPress: openAppSettings },
+        { text: 'Done', style: 'cancel' },
+      ],
+    );
+  }, [openAppSettings]);
+
+  const openProfileMenu = useCallback(() => {
+    Alert.alert('Operator Profile', 'Choose an action for your profile.', [
+      {
+        text: 'Refresh profile',
+        onPress: () => {
+          void Promise.all([loadProfileHeader(), refresh()]);
+        },
+      },
+      { text: 'Security & Privacy', onPress: openSecurityPrivacy },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [loadProfileHeader, openSecurityPrivacy, refresh]);
+
+  const handleSignOut = useCallback(async () => {
+    if (isSigningOut) return;
+
+    setIsSigningOut(true);
     try {
-      // 1. Terminate active Supabase session
-      await supabase.auth.signOut();
-      
-      // 2. Clear route state and force direct login redirect
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
       router.replace('/login');
     } catch (error) {
-      console.error('Error signing out:', error);
+      if (__DEV__) console.warn('[Profile] Could not sign out:', error);
+      Alert.alert('Could not disconnect', 'Your session is still active. Please try again.');
+    } finally {
+      setIsSigningOut(false);
     }
-  };
+  }, [isSigningOut, router]);
+
+  const confirmSignOut = useCallback(() => {
+    Alert.alert('Disconnect session?', 'You will need to sign in again to continue.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Disconnect', style: 'destructive', onPress: () => void handleSignOut() },
+    ]);
+  }, [handleSignOut]);
 
   return (
     <View style={styles.screen}>
@@ -187,7 +234,7 @@ export default function ProfileScreen() {
             <Pressable
               accessibilityLabel="Open profile menu"
               accessibilityRole="button"
-              disabled
+              onPress={openProfileMenu}
               hitSlop={10}
               style={({ pressed }) => ({
                 position: 'absolute',
@@ -373,13 +420,23 @@ export default function ProfileScreen() {
 
         {/* MENU OPTIONS */}
         <View style={styles.menuContainer}>
-          <Pressable style={styles.menuItem}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open MissionTrail system settings"
+            onPress={openAppSettings}
+            style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}
+          >
             <Ionicons name="settings-outline" size={20} color="#ffffff" />
             <Text style={styles.menuText}>System Settings</Text>
             <Ionicons name="chevron-forward" size={16} color="#767676" />
           </Pressable>
 
-          <Pressable style={styles.menuItem}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open security and privacy options"
+            onPress={openSecurityPrivacy}
+            style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}
+          >
             <MaterialCommunityIcons name="shield-check-outline" size={20} color="#ffffff" />
             <Text style={styles.menuText}>Security & Privacy</Text>
             <Ionicons name="chevron-forward" size={16} color="#767676" />
@@ -389,11 +446,15 @@ export default function ProfileScreen() {
 
           {/* SIGN OUT BUTTON */}
           <Pressable 
-            style={({ pressed }) => [styles.logoutButton, pressed && styles.pressed]} 
-            onPress={handleSignOut}
+            accessibilityRole="button"
+            accessibilityLabel="Disconnect session"
+            accessibilityState={{ disabled: isSigningOut }}
+            disabled={isSigningOut}
+            style={({ pressed }) => [styles.logoutButton, isSigningOut && styles.disabled, pressed && styles.pressed]}
+            onPress={confirmSignOut}
           >
             <Ionicons name="log-out-outline" size={20} color="#ff2d75" />
-            <Text style={styles.logoutText}>DISCONNECT SESSION</Text>
+            <Text style={styles.logoutText}>{isSigningOut ? 'DISCONNECTING…' : 'DISCONNECT SESSION'}</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -407,8 +468,11 @@ export default function ProfileScreen() {
             return (
               <Pressable 
                 key={tab.key} 
+                accessibilityRole="tab"
+                accessibilityLabel={`Open ${tab.label}`}
+                accessibilityState={{ selected: isActiveTab }}
                 style={({ pressed }) => [styles.tabButton, pressed && styles.pressed]}
-                onPress={() => router.push(tab.route)}
+                onPress={() => router.navigate(tab.route)}
               >
                 <View style={[styles.tabIconWrap, isActiveTab && styles.activeTabIconWrap]}>
                   <Image source={tab.image} style={styles.tabIcon} resizeMode="contain" />
@@ -645,5 +709,8 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.75,
     transform: [{ scale: 0.98 }],
+  },
+  disabled: {
+    opacity: 0.55,
   },
 });

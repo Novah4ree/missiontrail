@@ -11,6 +11,7 @@ type HintRowProps = {
   hint?: ReactNode;
 };
 
+// Important note: Displays one hint row.
 export function HintRow({ title = 'Try editing', hint = 'app/index.tsx' }: HintRowProps) {
   return (
     <View style={styles.stepRow}>

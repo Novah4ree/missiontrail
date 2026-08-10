@@ -51,6 +51,7 @@ const PARTICLES = [
   { x: 0.66, y: 0.61, size: 3, delay: 280 },
 ] as const;
 
+// Important note: Displays the relic awakening UI.
 export function RelicAwakening({ relic, totalXp, onClose }: RelicAwakeningProps) {
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
@@ -140,6 +141,7 @@ export function RelicAwakening({ relic, totalXp, onClose }: RelicAwakeningProps)
 
   const artworkSize = Math.min(width * 0.62, height * 0.34, 290);
 
+  // Important note: Opens the awakened relic in the vault.
   const viewInVault = () => {
     onClose();
     router.push('/vault');

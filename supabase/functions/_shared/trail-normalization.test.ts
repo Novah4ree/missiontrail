@@ -5,6 +5,7 @@ import {
   normalizeGeoapifyPlaces,
   normalizeGeoapifyRoute,
   normalizeOverpassPlaces,
+  normalizeOverpassTrailDetails,
 } from './trail-normalization.ts';
 
 test('OpenStreetMap nodes and area centers are normalized and sorted by distance', () => {
@@ -41,6 +42,23 @@ test('OpenStreetMap trails require a name and valid coordinates', () => {
   assert.equal(trails[0].category, 'trail');
 });
 
+test('a valid OpenStreetMap response with zero places stays an empty result', () => {
+  assert.deepEqual(
+    normalizeOverpassPlaces([], { latitude: 37.785834, longitude: -122.406417 }),
+    [],
+  );
+});
+
+test('nature areas and running routes retain useful outdoor categories', () => {
+  const trails = normalizeOverpassPlaces([
+    { type: 'way', id: 7, center: { lat: 37.001, lon: -122 }, tags: { name: 'Community Woods', natural: 'wood' } },
+    { type: 'relation', id: 8, center: { lat: 37.002, lon: -122 }, tags: { name: 'River Run', route: 'running' } },
+  ], { latitude: 37, longitude: -122 });
+
+  assert.equal(trails.find(({ id }) => id === 'way:7')?.category, 'nature_area');
+  assert.equal(trails.find(({ id }) => id === 'relation:8')?.category, 'walking_path');
+});
+
 test('repeated OpenStreetMap segments become one nearby trail result', () => {
   const trails = normalizeOverpassPlaces([
     { type: 'way', id: 1, center: { lat: 37.02, lon: -122 }, tags: { name: 'Loop Trail', highway: 'path' } },
@@ -72,6 +90,59 @@ test('OpenStreetMap accessibility, address, and explicit hiking grade are preser
   assert.equal(trail.accessibility, 'Wheelchair access: yes');
   assert.equal(trail.address, 'Park Road, Fairfield');
   assert.equal(trail.difficulty, 'moderate');
+});
+
+test('OpenStreetMap access is preserved only when the provider states it', () => {
+  const trails = normalizeOverpassPlaces([
+    { type: 'node', id: 45, lat: 37, lon: -122, tags: { name: 'Unknown Access', leisure: 'park' } },
+    { type: 'node', id: 46, lat: 37.001, lon: -122, tags: { name: 'Private Access', leisure: 'park', access: 'private' } },
+    { type: 'node', id: 47, lat: 37.002, lon: -122, tags: { name: 'Public Access', leisure: 'park', access: 'yes' } },
+  ], { latitude: 37, longitude: -122 });
+
+  assert.equal(trails.find(({ id }) => id === 'node:45')?.publicAccess, undefined);
+  assert.equal(trails.find(({ id }) => id === 'node:46')?.publicAccess, false);
+  assert.equal(trails.find(({ id }) => id === 'node:47')?.publicAccess, true);
+});
+
+test('OpenStreetMap place photos are preserved for trail cards', () => {
+  const [trail] = normalizeOverpassPlaces([
+    {
+      type: 'node',
+      id: 99,
+      lat: 37,
+      lon: -122,
+      tags: { name: 'Photo Park', leisure: 'park', image: 'File:Photo Park.jpg' },
+    },
+  ], { latitude: 37, longitude: -122 });
+
+  assert.equal(trail.imageUrl, 'https://commons.wikimedia.org/wiki/Special:FilePath/Photo_Park.jpg?width=960');
+});
+
+test('ordered OpenStreetMap path geometry supplies calculated length and time', () => {
+  const details = normalizeOverpassTrailDetails({
+    type: 'way',
+    id: 123,
+    tags: { name: 'Measured Path', highway: 'path' },
+    geometry: [
+      { lat: 38.4, lon: -121.8 },
+      { lat: 38.41, lon: -121.8 },
+    ],
+  });
+  assert.equal(details?.id, 'way:123');
+  assert.ok(details?.routeDistanceMiles && details.routeDistanceMiles > 0.68);
+  assert.ok(details?.estimatedDurationMinutes && details.estimatedDurationMinutes > 10);
+  assert.equal(details?.metricSource, 'geometry_estimate');
+  assert.equal(details?.geometry?.coordinates.length, 2);
+});
+
+test('park perimeter and unordered relation geometry do not become trail length', () => {
+  assert.deepEqual(normalizeOverpassTrailDetails({
+    type: 'way', id: 5, tags: { name: 'Park', leisure: 'park' },
+    geometry: [{ lat: 38.4, lon: -121.8 }, { lat: 38.41, lon: -121.8 }],
+  }), { id: 'way:5' });
+  assert.deepEqual(normalizeOverpassTrailDetails({
+    type: 'relation', id: 6, tags: { name: 'Route', route: 'hiking' },
+  }), { id: 'relation:6' });
 });
 
 test('places are normalized and sorted by calculated user distance', () => {

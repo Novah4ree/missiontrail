@@ -7,6 +7,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 const INITIAL_SCALE_FACTOR = Dimensions.get('screen').height / 90;
 const DURATION = 600;
 
+// Important note: Displays the animated splash overlay UI.
 export function AnimatedSplashOverlay() {
   const [visible, setVisible] = useState(true);
 
@@ -80,6 +81,7 @@ const glowKeyframe = new Keyframe({
   },
 });
 
+// Important note: Displays the animated icon UI.
 export function AnimatedIcon() {
   return (
     <View style={styles.iconContainer}>

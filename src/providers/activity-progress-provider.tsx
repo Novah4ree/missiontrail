@@ -43,9 +43,13 @@ import { useAuth } from '../../context/auth';
 import { LevelUpCelebration } from '@/components/level-up-celebration';
 import { getPlayerLevelProgress } from '@/utils/player-level';
 import {
+  formatTrailheadProximityRadius,
   isActiveTrailCurrent,
   isWithinMissionStepRange,
 } from '@/utils/trail-proximity';
+import { getTrailDestinationCoordinate } from '@/utils/trail-location';
+import { validateGpsPosition } from '@/utils/location-validation';
+import { useLocationState } from '@/providers/location-provider';
 
 type SensorAvailability = 'checking' | 'available' | 'unavailable';
 type ActivityPermissionStatus = 'undetermined' | 'granted' | 'denied';
@@ -104,6 +108,7 @@ let pedometerModulePromise: Promise<PedometerModule | null> | null = null;
  * not contain ExponentPedometer. Returning null lets every route keep rendering
  * while the activity card explains that step tracking is unavailable.
  */
+// Important note: Loads pedometer module.
 function loadPedometerModule() {
   pedometerModulePromise ??= import('expo-sensors/build/Pedometer')
     .then((loadedModule) => {
@@ -132,10 +137,12 @@ function loadPedometerModule() {
   return pedometerModulePromise;
 }
 
+// Important note: Creates the storage key used for one day of step data.
 function dailyStepStorageKey(userId: string, localDate: string) {
   return getUserDailyStorageKey(STORAGE_PREFIX, userId, localDate);
 }
 
+// Important note: Loads daily steps.
 async function loadDailySteps(userId: string, localDate: string) {
   const value = await AsyncStorage.getItem(dailyStepStorageKey(userId, localDate));
   if (!value) return null;
@@ -153,10 +160,12 @@ async function loadDailySteps(userId: string, localDate: string) {
   }
 }
 
+// Important note: Creates the storage key used for mission-eligible steps.
 function missionStepStorageKey(userId: string, localDate: string) {
   return getUserDailyStorageKey(MISSION_STEP_STORAGE_PREFIX, userId, localDate);
 }
 
+// Important note: Loads mission eligible steps.
 async function loadMissionEligibleSteps(userId: string, localDate: string) {
   const value = await AsyncStorage.getItem(missionStepStorageKey(userId, localDate));
   if (!value) return 0;
@@ -168,8 +177,10 @@ async function loadMissionEligibleSteps(userId: string, localDate: string) {
   }
 }
 
+// Important note: Shares step and mission progress with child components.
 export function ActivityProgressProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
+  const { setGpsLocation } = useLocationState();
   const userId = session?.user.id ?? null;
   const [progress, setProgress] = useState<VerifiedDailyProgress | null>(null);
   const [isProgressLoading, setIsProgressLoading] = useState(false);
@@ -195,6 +206,7 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
   const previousLevelRef = useRef<number | null>(null);
   const [levelUp, setLevelUp] = useState<{ fromLevel: number; toLevel: number } | null>(null);
 
+  // Important note: Saves daily steps.
   const saveDailySteps = useCallback((
     recordUserId: string,
     localDate: string,
@@ -216,6 +228,7 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
     return persistenceQueueRef.current;
   }, []);
 
+  // Important note: Saves mission eligible steps.
   const saveMissionEligibleSteps = useCallback((
     recordUserId: string,
     localDate: string,
@@ -237,6 +250,7 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
     return persistenceQueueRef.current;
   }, []);
 
+  // Important note: Reloads progress with the newest data.
   const refreshProgress = useCallback(async () => {
     if (!userId) {
       setProgress(null);
@@ -280,6 +294,7 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
     }
   }, [userId]);
 
+  // Important note: Restarts pedometer.
   const restartPedometer = useCallback(async () => {
     pedometerSubscriptionRef.current?.remove();
     pedometerSubscriptionRef.current = null;
@@ -390,6 +405,7 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
     }
   }, [saveDailySteps, saveMissionEligibleSteps, userId]);
 
+  // Important note: Reloads activity with the newest data.
   const refreshActivity = useCallback(async () => {
     await restartPedometer();
     if (!userId) return;
@@ -405,6 +421,7 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
     }
   }, [restartPedometer, userId]);
 
+  // Important note: Claims reward.
   const claimReward = useCallback(async (missionId: string) => {
     setIsProgressLoading(true);
     try {
@@ -423,11 +440,16 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
 
   useEffect(() => {
     let active = true;
-    void loadActiveTrailActivity().then((activity) => {
-      if (active) setActiveTrailActivity(isActiveTrailCurrent(activity) ? activity : null);
-    });
+    let activityRevision = 0;
     const unsubscribe = subscribeToActiveTrailActivity((activity) => {
+      activityRevision += 1;
       setActiveTrailActivity(isActiveTrailCurrent(activity) ? activity : null);
+    });
+    const loadRevision = activityRevision;
+    void loadActiveTrailActivity().then((activity) => {
+      if (active && loadRevision === activityRevision) {
+        setActiveTrailActivity(isActiveTrailCurrent(activity) ? activity : null);
+      }
     });
     return () => {
       active = false;
@@ -445,19 +467,31 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
 
     let active = true;
     let subscription: Location.LocationSubscription | null = null;
-    const destination = {
-      latitude: activeTrailActivity.trail.latitude,
-      longitude: activeTrailActivity.trail.longitude,
-    };
+    const destination = getTrailDestinationCoordinate(activeTrailActivity.trail);
+    if (!destination) {
+      setDestinationStepWarning('Mission steps are paused because this trail has no valid trailhead coordinates.');
+      return;
+    }
+    // Important note: Updates proximity.
     const updateProximity = (location: Location.LocationObject) => {
       if (!active) return;
-      const isNear = isWithinMissionStepRange(location.coords, destination);
+      const validated = validateGpsPosition(location);
+      if (!validated) {
+        isNearDestinationRef.current = false;
+        setDestinationStepWarning('Mission steps are paused until a valid, current GPS distance can be verified.');
+        return;
+      }
+      // The centralized provider records this physical GPS sample separately;
+      // it does not replace an explicitly selected ZIP search center.
+      setGpsLocation(location);
+      const isNear = isWithinMissionStepRange(validated, destination, validated.accuracy);
       isNearDestinationRef.current = isNear;
       setDestinationStepWarning(isNear
         ? null
-        : `Mission steps are paused until you are within 0.31 mi of ${activeTrailActivity.trail.name}.`);
+        : `Mission steps are paused until GPS confirms you are within ${formatTrailheadProximityRadius()} of ${activeTrailActivity.trail.name}.`);
     };
 
+    // Important note: Watches destination proximity for changes.
     async function watchDestinationProximity() {
       try {
         const [servicesEnabled, permission] = await Promise.all([
@@ -499,7 +533,7 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
       active = false;
       subscription?.remove();
     };
-  }, [activeTrailActivity]);
+  }, [activeTrailActivity, setGpsLocation]);
 
   useEffect(() => subscribeToVerifiedProgress(setProgress), []);
 
@@ -629,16 +663,19 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
   );
 }
 
+// Important note: Gives a component access to the shared activity progress tools.
 function useActivityProgressContext() {
   const context = useContext(ActivityProgressContext);
   if (!context) throw new Error('ActivityProgressProvider is missing from the app layout.');
   return context;
 }
 
+// Important note: Provides the shared step and mission progress for today.
 export function useSharedDailyProgress() {
   return useActivityProgressContext().dailyProgress;
 }
 
+// Important note: Provides today's activity totals and refresh tools.
 export function useDailyActivity() {
   return useActivityProgressContext().activity;
 }

@@ -3,8 +3,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   ActivityIndicator,
+  Alert,
   FlatList,
   Linking,
   Platform,
@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { MapView, PROVIDER_GOOGLE } from '@/components/maps/map-components';
+import { Circle, MapView, Marker, PROVIDER_GOOGLE } from '@/components/maps/map-components';
 import { MissionBottomTabBar } from '@/components/mission-bottom-tab-bar';
 import { TrailCard } from '@/components/trails/trail-card';
 import { TrailFiltersView } from '@/components/trails/trail-filters';
@@ -27,10 +27,16 @@ import { MissionTrailColors as C } from '@/constants/theme';
 import { useNearbyTrails } from '@/hooks/use-nearby-trails';
 import { saveSelectedTrail } from '@/services/selected-trail-service';
 import type { Trail } from '@/types/trails';
+import { formatDistanceMiles } from '@/utils/distance';
+import { getTrailAreaSummary } from '@/utils/nearby-location-policy';
 
 type ViewMode = 'list' | 'map';
 
+const GPS_MAP_DELTA = 0.02;
+const ZIP_MAP_DELTA = 0.2;
+
 // This screen coordinates trail search, filters, map markers, and navigation.
+// note: Builds and controls the trails screen.
 export default function TrailsScreen() {
   const router = useRouter();
   const { focus } = useLocalSearchParams<{ focus?: string }>();
@@ -38,44 +44,105 @@ export default function TrailsScreen() {
   const discovery = useNearbyTrails();
   const mapRef = useRef<any>(null);
   const shownLocationAlertRef = useRef<'denied' | 'services_off' | null>(null);
+  const intentionalCameraCoordinateRef = useRef<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedTrailId, setSelectedTrailId] = useState<string | null>(null);
-  const isBusy = discovery.isLoading || discovery.isRefreshing;
+  const [searchInput, setSearchInput] = useState('');
+  const isCatalogBusy = discovery.isLoadingCatalog
+    || discovery.isRefreshingCatalog
+    || discovery.isSearchingZip;
+  const activeCoordinate = useMemo(
+    () => discovery.activeLocation
+      ? { latitude: discovery.activeLocation.latitude, longitude: discovery.activeLocation.longitude }
+      : null,
+    [discovery.activeLocation],
+  );
+  const currentGpsCoordinate = useMemo(
+    () => discovery.currentUserLocation
+      ? { latitude: discovery.currentUserLocation.latitude, longitude: discovery.currentUserLocation.longitude }
+      : null,
+    [discovery.currentUserLocation],
+  );
+  const gpsAccuracyMeters = Number.isFinite(discovery.currentUserLocation?.accuracy)
+    && (discovery.currentUserLocation?.accuracy ?? 0) > 0
+    ? discovery.currentUserLocation?.accuracy ?? null
+    : null;
+  const activeMapDelta = discovery.locationSource === 'gps' ? GPS_MAP_DELTA : ZIP_MAP_DELTA;
+  const areaSummary = getTrailAreaSummary({
+    source: discovery.locationSource,
+    areaLabel: discovery.areaLabel,
+    zipCode: discovery.activeLocation?.source === 'zip'
+      ? discovery.activeLocation.zipCode
+      : undefined,
+  });
 
-  // Reuses the selected marker, or safely falls back to the first visible trail.
+  // Shows the first result only before a selection exists. A stale selected ID
+  // never silently changes identity to a different trail.
   const selectedTrail = useMemo(
-    () => discovery.trails.find((trail) => trail.id === selectedTrailId) ?? discovery.trails[0],
+    () => selectedTrailId
+      ? discovery.trails.find((trail) => trail.id === selectedTrailId) ?? null
+      : discovery.trails[0] ?? null,
     [discovery.trails, selectedTrailId],
   );
 
   // Mission's explore action asks this screen to highlight the first GPS-sorted trail.
   useEffect(() => {
     const nearestTrail = discovery.trails[0];
-    if (focus !== 'nearest' || discovery.locationStatus !== 'granted' || !nearestTrail) return;
+    if (focus !== 'nearest' || discovery.locationSource !== 'gps' || !nearestTrail) return;
     setSelectedTrailId((currentTrailId) => currentTrailId ?? nearestTrail.id);
-  }, [discovery.locationStatus, discovery.trails, focus]);
+  }, [discovery.locationSource, discovery.trails, focus]);
 
-  // Moves the camera to a valid device or simulator GPS fix.
-  // initialRegion only controls the first map render, so animation is required.
+  // initialRegion only controls the first map render, so every active-location
+  // search change also gets an explicit camera update. Passive GPS watcher
+  // updates only move the user marker and do not pull the camera.
   useEffect(() => {
-    if (Platform.OS === 'web' || viewMode !== 'map' || !discovery.locationCenter) return;
+    if (Platform.OS === 'web' || viewMode !== 'map' || !activeCoordinate) return;
+    const coordinateKey = `${activeCoordinate.latitude}:${activeCoordinate.longitude}`;
+    if (intentionalCameraCoordinateRef.current !== coordinateKey) return;
+    intentionalCameraCoordinateRef.current = null;
     mapRef.current?.animateToRegion({
-      ...discovery.locationCenter,
-      latitudeDelta: 0.012,
-      longitudeDelta: 0.012,
+      ...activeCoordinate,
+      latitudeDelta: activeMapDelta,
+      longitudeDelta: activeMapDelta,
     }, 650);
-  }, [discovery.locationCenter, viewMode]);
+  }, [activeCoordinate, activeMapDelta, viewMode]);
+
+  // A list selection can intentionally switch to the map and center the
+  // selected destination without changing the underlying nearby result set.
+  useEffect(() => {
+    if (Platform.OS === 'web' || viewMode !== 'map' || !selectedTrailId || !selectedTrail) return;
+    mapRef.current?.animateToRegion({
+      latitude: selectedTrail.latitude,
+      longitude: selectedTrail.longitude,
+      latitudeDelta: 0.08,
+      longitudeDelta: 0.08,
+    }, 450);
+  }, [selectedTrail, selectedTrailId, viewMode]);
 
   // Retries GPS and alerts once only for physical-device permission settings.
+  // note: Finds my exact location.
   const findMyExactLocation = useCallback(async () => {
-    const result = await discovery.refresh(true);
+    // "Near Me" is deliberately an unfiltered map search: it should reveal
+    // every nearby trail and park, not only a previous category or text match.
+    discovery.setQuery('');
+    discovery.setFilters({ selected: ['near_me'] });
+    setSearchInput('');
+    setSelectedTrailId(null);
+    setViewMode('map');
+    intentionalCameraCoordinateRef.current = 'pending-gps';
+    const result = await discovery.useMyLocation(true);
     if (result.kind === 'located') {
+      intentionalCameraCoordinateRef.current = `${result.coordinate.latitude}:${result.coordinate.longitude}`;
       shownLocationAlertRef.current = null;
+      mapRef.current?.animateToRegion({
+        ...result.coordinate,
+        latitudeDelta: GPS_MAP_DELTA,
+        longitudeDelta: GPS_MAP_DELTA,
+      }, 650);
       return;
     }
     if (
-      discovery.isPhysicalDevice
-      && (result.kind === 'denied' || result.kind === 'services_off')
+      (result.kind === 'denied' || result.kind === 'services_off')
       && shownLocationAlertRef.current !== result.kind
     ) {
       shownLocationAlertRef.current = result.kind;
@@ -88,7 +155,19 @@ export default function TrailsScreen() {
     }
   }, [discovery]);
 
+  const recenterMap = useCallback(() => {
+    if (!currentGpsCoordinate) return;
+    if (__DEV__) console.info('[GPS] Manual recenter', currentGpsCoordinate);
+    discovery.setMapCameraLocation(currentGpsCoordinate);
+    mapRef.current?.animateToRegion({
+      ...currentGpsCoordinate,
+      latitudeDelta: GPS_MAP_DELTA,
+      longitudeDelta: GPS_MAP_DELTA,
+    }, 450);
+  }, [currentGpsCoordinate, discovery.setMapCameraLocation]);
+
   // Saves the selected trail so the details screen can load its full typed data.
+  // important note: Opens trail.
   const openTrail = useCallback(async (trail: Trail, section?: 'meetups') => {
     try {
       setSelectedTrailId(trail.id);
@@ -101,11 +180,41 @@ export default function TrailsScreen() {
   }, [router]);
 
   // Restores the complete trail list by clearing search text and active filters.
+  // important note: Clears the current trail search.
   const clearSearch = useCallback(() => {
     discovery.setQuery('');
     discovery.setFilters({ selected: [] });
+    setSearchInput('');
   }, [discovery]);
 
+  const changeSearchText = useCallback((value: string) => {
+    setSearchInput(value);
+    discovery.setQuery(value);
+  }, [discovery]);
+
+  const searchCityOrArea = useCallback(async () => {
+    const location = await discovery.searchLocation(searchInput);
+    if (!location) return;
+    intentionalCameraCoordinateRef.current = `${location.latitude}:${location.longitude}`;
+    mapRef.current?.animateToRegion({
+      latitude: location.latitude,
+      longitude: location.longitude,
+      latitudeDelta: ZIP_MAP_DELTA,
+      longitudeDelta: ZIP_MAP_DELTA,
+    }, 650);
+    // The city lookup determines the search center; it is not also treated as
+    // a trail-name filter that could hide all of the nearby results.
+    discovery.setQuery('');
+    setSelectedTrailId(null);
+    setViewMode('map');
+  }, [discovery, searchInput]);
+
+  const showTrailOnMap = useCallback((trail: Trail) => {
+    setSelectedTrailId(trail.id);
+    setViewMode('map');
+  }, []);
+
+  // important note: Opens location settings.
   const openLocationSettings = useCallback(() => {
     void Linking.openSettings().catch((settingsError) => {
       if (__DEV__) console.warn('[Trails] Device settings could not be opened:', settingsError);
@@ -113,6 +222,7 @@ export default function TrailsScreen() {
     });
   }, []);
 
+  // important note: Switches favorite on or off.
   const toggleFavorite = useCallback(async (trail: Trail) => {
     try {
       await discovery.toggleFavorite(trail.id);
@@ -123,6 +233,7 @@ export default function TrailsScreen() {
   }, [discovery]);
 
   // Builds one optimized FlatList row and connects its buttons to screen actions.
+  // important note: Builds the trail UI.
   const renderTrail = useCallback(({ item }: { item: Trail }) => (
     <TrailCard
       trail={item}
@@ -135,9 +246,10 @@ export default function TrailsScreen() {
       onViewDetails={() => void openTrail(item)}
       onStartTrail={() => void openTrail(item)}
       onViewMeetups={() => void openTrail(item, 'meetups')}
+      onViewOnMap={() => showTrailOnMap(item)}
       onToggleFavorite={() => void toggleFavorite(item)}
     />
-  ), [discovery, openTrail, selectedTrailId, toggleFavorite]);
+  ), [discovery, openTrail, selectedTrailId, showTrailOnMap, toggleFavorite]);
 
   return (
     <View style={styles.screen}>
@@ -152,12 +264,16 @@ export default function TrailsScreen() {
           <ViewToggle value={viewMode} onChange={setViewMode} />
         </View>
         <TrailSearchBar
-          value={discovery.query}
-          onChangeText={discovery.setQuery}
-          isLocating={isBusy}
+          value={searchInput}
+          onChangeText={changeSearchText}
+          onSubmitSearch={() => void searchCityOrArea()}
+          isLocating={discovery.isLocating}
           onUseLocation={() => void findMyExactLocation()}
         />
-        <TrailFiltersView filters={discovery.filters} onChange={discovery.setFilters} />
+        <TrailFiltersView
+          filters={discovery.filters}
+          onChange={discovery.setFilters}
+        />
       </View>
 
       {discovery.locationStatus === 'denied' || discovery.locationStatus === 'services_off' ? (
@@ -165,7 +281,7 @@ export default function TrailsScreen() {
           <Ionicons name="location-outline" size={18} color={C.warning} />
           <Text style={styles.permissionText}>
             {discovery.locationStatus === 'denied'
-              ? 'Location denied. Enable permission to see trails within 25 miles of you.'
+              ? 'Location access is off. Turn on location access to find trails near you.'
               : 'Location Services are off. Turn them on to see trails within 25 miles of you.'}
           </Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Open location settings" onPress={openLocationSettings} style={({ pressed }) => [styles.bannerButton, pressed && styles.pressed]}>
@@ -181,11 +297,11 @@ export default function TrailsScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Try loading nearby trails again"
-            disabled={isBusy}
+            disabled={isCatalogBusy}
             onPress={() => void discovery.refresh(true)}
-            style={({ pressed }) => [styles.bannerButton, isBusy && styles.disabled, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.bannerButton, isCatalogBusy && styles.disabled, pressed && styles.pressed]}
           >
-            {isBusy ? <ActivityIndicator size="small" color={C.warning} /> : <Text style={styles.bannerButtonText}>Try Again</Text>}
+            {isCatalogBusy ? <ActivityIndicator size="small" color={C.warning} /> : <Text style={styles.bannerButtonText}>Try Again</Text>}
           </Pressable>
         </View>
       ) : null}
@@ -197,31 +313,31 @@ export default function TrailsScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Try finding my location again"
-            disabled={isBusy}
+            disabled={isCatalogBusy}
             onPress={() => void discovery.refresh(true)}
-            style={({ pressed }) => [styles.bannerButton, isBusy && styles.disabled, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.bannerButton, isCatalogBusy && styles.disabled, pressed && styles.pressed]}
           >
-            {isBusy ? <ActivityIndicator size="small" color={C.warning} /> : <Text style={styles.bannerButtonText}>Try Again</Text>}
+            {isCatalogBusy ? <ActivityIndicator size="small" color={C.warning} /> : <Text style={styles.bannerButtonText}>Try Again</Text>}
           </Pressable>
         </View>
       ) : null}
 
       {viewMode === 'list' ? (
-        discovery.isLoading && discovery.trails.length === 0 ? <TrailsLoadingState /> : (
+        discovery.isLoadingCatalog && discovery.trails.length === 0 ? <TrailsLoadingState /> : (
           <FlatList
             data={discovery.trails}
             keyExtractor={(trail) => trail.id}
             renderItem={renderTrail}
             contentInsetAdjustmentBehavior="automatic"
             keyboardShouldPersistTaps="handled"
-            refreshing={discovery.isRefreshing}
+            refreshing={discovery.isRefreshingCatalog}
             onRefresh={() => void discovery.refresh(true)}
             contentContainerStyle={[styles.list, { paddingBottom: safeArea.bottom + 112 }]}
-            ListHeaderComponent={<View style={styles.resultsRow}><Text style={styles.resultsTitle}>{discovery.trails.length} trails found</Text><Text style={styles.resultsMeta}>{discovery.locationStatus === 'granted' ? 'Within 25 mi · nearest first' : 'Location required'}</Text></View>}
+            ListHeaderComponent={<View style={styles.resultsRow}><Text style={styles.resultsTitle}>{discovery.trails.length} trails & parks found</Text><Text style={styles.resultsMeta}>{areaSummary}</Text></View>}
             ListEmptyComponent={discovery.error ? null : (
               <TrailsEmptyState
                 locationRequired={discovery.locationStatus !== 'granted'}
-                isRefreshing={discovery.isRefreshing}
+                isRefreshing={discovery.isRefreshingCatalog}
                 onClear={clearSearch}
                 onRefresh={() => void discovery.refresh(true)}
                 onUseLocation={() => void findMyExactLocation()}
@@ -234,25 +350,40 @@ export default function TrailsScreen() {
         <View style={styles.mapWrap}>
           {Platform.OS === 'web' ? (
             <View style={styles.mapState}><Ionicons name="map-outline" size={34} color={C.cyan} /><Text style={styles.mapStateText}>Interactive trail markers are available on iOS and Android.</Text></View>
-          ) : !discovery.locationCenter ? (
+          ) : !activeCoordinate ? (
             <View style={styles.mapState}><Ionicons name="location-outline" size={34} color={C.cyan} /><Text style={styles.mapStateText}>Your location is needed to display nearby trail markers.</Text></View>
           ) : (
             <MapView
               ref={mapRef}
               provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
               style={StyleSheet.absoluteFill}
-              initialRegion={{ ...discovery.locationCenter, latitudeDelta: 0.18, longitudeDelta: 0.18 }}
-              showsUserLocation={discovery.locationStatus === 'granted'}
+              initialRegion={{ ...activeCoordinate, latitudeDelta: activeMapDelta, longitudeDelta: activeMapDelta }}
+              showsUserLocation={false}
               showsMyLocationButton={false}
               userInterfaceStyle="dark"
-              onRegionChangeComplete={(region: { latitude: number; longitude: number }) => discovery.setMapCenter({ latitude: region.latitude, longitude: region.longitude })}
+              onRegionChangeComplete={(region: { latitude: number; longitude: number }) => discovery.setMapCameraLocation({ latitude: region.latitude, longitude: region.longitude })}
             >
+              {currentGpsCoordinate ? (
+                <Marker
+                  coordinate={currentGpsCoordinate}
+                  title="You are here"
+                  description={gpsAccuracyMeters ? `GPS accuracy: about ${Math.round(gpsAccuracyMeters)} m` : undefined}
+                  pinColor={C.cyan}
+                />
+              ) : null}
+              <Circle
+                center={activeCoordinate}
+                radius={25 * 1_609.344}
+                strokeColor="rgba(0, 229, 255, 0.55)"
+                fillColor="rgba(0, 229, 255, 0.08)"
+              />
+              {discovery.locationSource === 'zip' ? <Marker coordinate={activeCoordinate} title="Search area" pinColor={C.cyan} /> : null}
               {discovery.trails.map((trail) => <TrailMapMarker key={trail.id} trail={trail} selected={trail.id === selectedTrail?.id} onPress={() => setSelectedTrailId(trail.id)} />)}
             </MapView>
           )}
 
           {discovery.hasPendingAreaSearch ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Return map to my nearby trail area" disabled={isBusy} onPress={() => void discovery.searchThisArea()} style={({ pressed }) => [styles.searchAreaButton, isBusy && styles.disabled, pressed && styles.pressed]}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Recenter map on my current location" onPress={recenterMap} style={({ pressed }) => [styles.searchAreaButton, pressed && styles.pressed]}>
               <Ionicons name="locate" size={16} color={C.text} /><Text style={styles.searchAreaText}>Return to My Area</Text>
             </Pressable>
           ) : null}
@@ -262,7 +393,7 @@ export default function TrailsScreen() {
               <View style={styles.mapCardCopy}>
                 <Text numberOfLines={1} style={styles.mapCardName}>{selectedTrail.name}</Text>
                 <Text style={styles.mapCardMeta}>
-                  {selectedTrail.distanceMiles.toFixed(1)} mi away · {selectedTrail.difficulty}
+                  {formatDistanceMiles(selectedTrail.distanceMiles)} away · {selectedTrail.difficulty}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={21} color={C.cyan} />
@@ -278,7 +409,8 @@ export default function TrailsScreen() {
   );
 }
 
-// This small control lets the student switch between list and map presentations.
+// This small control lets the important switch between list and map presentations.
+// important note: Displays the view toggle UI.
 function ViewToggle({ value, onChange }: { value: ViewMode; onChange: (value: ViewMode) => void }) {
   return (
     <View style={styles.toggle} accessibilityLabel="Trail view selector">

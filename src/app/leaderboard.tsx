@@ -32,6 +32,7 @@ const rankedPlayers: LeaderboardPlayer[] = [
 ];
 
 // This shows the full Global Rankings screen.
+// Important note: Builds and controls the leaderboard screen.
 export default function LeaderboardScreen() {
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
@@ -41,6 +42,7 @@ export default function LeaderboardScreen() {
     `${((progress?.verifiedDistanceMeters ?? 0) / 1_000).toFixed(2)} km today`;
 
   // Returns to the previous screen or the Live Map when no history exists.
+  // Important note: Takes the user back to live map.
   function returnToLiveMap() {
     if (router.canGoBack()) {
       router.back();
@@ -94,6 +96,7 @@ export default function LeaderboardScreen() {
 }
 
 // This shows one top-three player card.
+// Important note: Builds the top player card UI.
 function renderTopPlayerCard(player: LeaderboardPlayer) {
   const isFirstPlace = player.rank === 1;
 
@@ -116,6 +119,7 @@ function renderTopPlayerCard(player: LeaderboardPlayer) {
 }
 
 // This shows one player row in the leaderboard list.
+// Important note: Builds the player row UI.
 function renderPlayerRow(player: LeaderboardPlayer) {
   return (
     <View key={player.rank} style={styles.playerRow}>
@@ -130,6 +134,7 @@ function renderPlayerRow(player: LeaderboardPlayer) {
 }
 
 // This shows the current user's rank card at the bottom.
+// Important note: Builds the user progress card UI.
 function renderUserProgressCard(level: number, distance: string) {
   return (
     <View style={styles.userCard}>
@@ -147,6 +152,7 @@ function renderUserProgressCard(level: number, distance: string) {
 }
 
 // This picks a bright medal color for each top rank.
+// Important note: Gets rank color.
 function getRankColor(rank: number) {
   if (rank === 1) return '#facc15';
   if (rank === 2) return '#d9ddff';

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
+// Important note: Displays the level up celebration UI.
 export function LevelUpCelebration({
   fromLevel,
   toLevel,

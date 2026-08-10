@@ -5,6 +5,7 @@ import Animated, { Keyframe, Easing } from 'react-native-reanimated';
 import classes from './animated-icon.module.css';
 const DURATION = 300;
 
+// Important note: Displays the animated splash overlay UI.
 export function AnimatedSplashOverlay() {
   return null;
 }
@@ -54,6 +55,7 @@ const glowKeyframe = new Keyframe({
   },
 });
 
+// Important note: Displays the animated icon UI.
 export function AnimatedIcon() {
   return (
     <View style={styles.iconContainer}>

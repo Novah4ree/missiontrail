@@ -19,15 +19,30 @@ const options: { value: TrailFilterKey; label: string }[] = [
 ];
 
 // This row displays every available trail filter as a selectable chip.
+// Important note: Displays the trail filters view UI.
 export function TrailFiltersView({ filters, onChange }: {
   filters: TrailFilters;
   onChange: (filters: TrailFilters) => void;
 }) {
-  // Adds or removes one filter without changing the other selected filters.
+  // Activity, difficulty, and length are alternative choices within their own
+  // groups; parks, accessibility, and meetups can be combined with them.
   function toggleFilter(value: TrailFilterKey) {
+    if (value === 'near_me') {
+      const selected: TrailFilterKey[] = filters.selected.includes('near_me')
+        ? filters.selected.filter((item) => item !== 'near_me')
+        : [...filters.selected, 'near_me'];
+      onChange({ selected });
+      return;
+    }
+    const exclusiveGroups: TrailFilterKey[][] = [
+      ['walking', 'hiking'],
+      ['easy', 'moderate', 'challenging'],
+      ['under_3', '3_5', '5_plus'],
+    ];
+    const group = exclusiveGroups.find((items) => items.includes(value));
     const selected = filters.selected.includes(value)
       ? filters.selected.filter((item) => item !== value)
-      : [...filters.selected, value];
+      : [...filters.selected.filter((item) => !group?.includes(item)), value];
     onChange({ selected });
   }
 

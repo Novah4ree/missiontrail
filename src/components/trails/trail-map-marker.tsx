@@ -10,6 +10,7 @@ if (Platform.OS !== 'web') {
 }
 
 // This component draws one public trail location as a selectable map marker.
+// Important note: Displays the trail map marker on a map.
 export function TrailMapMarker({ trail, selected, onPress }: {
   trail: Trail;
   selected: boolean;
@@ -19,7 +20,7 @@ export function TrailMapMarker({ trail, selected, onPress }: {
   return (
     <Marker coordinate={{ latitude: trail.latitude, longitude: trail.longitude }} onPress={onPress} title={trail.name}>
       <View style={[styles.marker, selected && styles.selected]}>
-        <Ionicons name={trail.category === 'park' ? 'leaf' : 'trail-sign'} size={16} color="#FFFFFF" />
+        <Ionicons name={['park', 'nature_reserve', 'nature_area'].includes(trail.category) ? 'leaf' : 'trail-sign'} size={16} color="#FFFFFF" />
       </View>
     </Marker>
   );

@@ -1,5 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import {
+  searchNearbyTrails,
+  TRAIL_SEARCH_RADIUS_METERS,
+} from '@/services/trail-discovery-service';
 import type {
   MeetupPace,
   NearbyTrail,
@@ -7,10 +11,6 @@ import type {
   TrailMeetup,
   TrailSearchCoordinate,
 } from '@/types/trails';
-import {
-  searchNearbyTrails,
-  TRAIL_SEARCH_RADIUS_METERS,
-} from '@/services/trail-discovery-service';
 
 const FAVORITES_KEY = 'mission-trails:favorite-trails:v1';
 
@@ -39,7 +39,7 @@ export const DEVELOPMENT_TRAILS: Trail[] = __DEV__ ? [
     xpReward: 320,
     relicsPossible: true,
     accessible: false,
-    accessibility: 'Uneven grades and rocky sections; wheelchair access is not provided.',
+    accessibility: 'Uneven grades and rocky sections; wheelchair access is unavailable.',
     startLocation: 'Public visitor center trailhead',
     amenities: ['parking', 'restrooms', 'water'],
     petRules: 'Leashed pets are allowed where posted.',
@@ -104,7 +104,7 @@ export const DEVELOPMENT_TRAILS: Trail[] = __DEV__ ? [
     xpReward: 560,
     relicsPossible: true,
     accessible: false,
-    accessibility: 'Steep and uneven trail; accessible route is not provided.',
+    accessibility: 'Steep and uneven trail; accessible route is unavailable.',
     startLocation: 'Public East Fortuna staging area',
     amenities: ['parking'],
     petRules: 'Leashed pets only; avoid hot afternoon conditions.',
@@ -165,10 +165,10 @@ export const DEVELOPMENT_TRAILS: Trail[] = __DEV__ ? [
     xpReward: 700,
     relicsPossible: true,
     accessible: false,
-    accessibility: 'Not provided.',
+    accessibility: '',
     startLocation: 'Public north staging area',
     amenities: ['parking'],
-    petRules: 'Not provided.',
+    petRules: '',
     safetyNotes: ['Do not enter while the route is marked closed.'],
     geometry: { type: 'LineString', coordinates: [[-117.0671, 32.8704], [-117.0619, 32.8748], [-117.0557, 32.8782]] },
     source: 'mission_trails',
@@ -194,7 +194,7 @@ function toAppTrail(trail: NearbyTrail): Trail {
   return {
     ...trail,
     activityType: isWalking ? 'walking' : 'hiking',
-    city: trail.address ?? 'Nearby',
+    city: undefined,
     imageKey: 'mission-landscape',
     lengthMiles: routeLength,
     estimatedDurationMinutes: trail.estimatedDurationMinutes ?? 0,
@@ -204,29 +204,30 @@ function toAppTrail(trail: NearbyTrail): Trail {
       trailhead: 'Trailhead',
       park: 'Park paths',
       nature_reserve: 'Nature reserve trails',
+      nature_area: 'Nature area trails',
       walking_path: 'Walking path',
     } as const)[trail.category],
     rating: 0,
-    publicAccess: true,
-    status: 'open',
+    publicAccess: trail.publicAccess,
+    status: 'unknown',
     xpReward: 0,
     relicsPossible: false,
     accessible: Boolean(trail.accessibility?.toLowerCase().includes('yes')),
-    accessibility: trail.accessibility ?? 'Not provided by the trail data source.',
-    startLocation: trail.address ?? `${trail.name} entrance`,
+    accessibility: trail.accessibility ?? '',
+    startLocation: trail.address,
     amenities: [],
-    petRules: 'Not provided by the trail data source.',
+    petRules: '',
     safetyNotes: ['Confirm posted access conditions and trail notices before entering.'],
   };
 }
 
 /** Queries the live nearby provider using the device coordinate and returns nearest first. */
 export async function getTrails(
-  userLocation?: TrailSearchCoordinate | null,
+  activeLocation?: TrailSearchCoordinate | null,
   options: { forceRefresh?: boolean } = {},
 ) {
-  if (!userLocation) return [];
-  const trails = await searchNearbyTrails(userLocation, {
+  if (!activeLocation) return [];
+  const trails = await searchNearbyTrails(activeLocation, {
     radiusMeters: TRAIL_SEARCH_RADIUS_METERS,
     forceRefresh: options.forceRefresh,
   });

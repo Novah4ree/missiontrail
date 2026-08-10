@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { MissionTrailColors as C } from '@/constants/theme';
 import type { Trail } from '@/types/trails';
+import { formatDistanceMiles } from '@/utils/distance';
 
 type Props = {
   trail: Trail;
@@ -17,10 +18,12 @@ type Props = {
   onViewDetails: () => void;
   onStartTrail: () => void;
   onViewMeetups: () => void;
+  onViewOnMap: () => void;
   onToggleFavorite: () => void;
 };
 
 // This memoized card summarizes a trail and exposes its main user actions.
+// Important note: Displays the trail card.
 export const TrailCard = memo(function TrailCard({
   trail,
   meetupCount,
@@ -32,25 +35,20 @@ export const TrailCard = memo(function TrailCard({
   onViewDetails,
   onStartTrail,
   onViewMeetups,
+  onViewOnMap,
   onToggleFavorite,
 }: Props) {
-  const canStart = trail.publicAccess && trail.status === 'open';
+  const canStart = trail.publicAccess !== false && trail.status !== 'closed';
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${trail.name}. ${trail.distanceMiles.toFixed(1)} miles away.`}
+      accessibilityLabel={`${trail.name}. ${formatDistanceMiles(trail.distanceMiles)} away.`}
       onPress={onSelect}
       style={({ pressed }) => [styles.card, selected && styles.selected, pressed && styles.pressed]}
     >
       <View style={styles.imageWrap}>
-        <Image
-          source={require('../../../assets/images/background_image.png')}
-          contentFit="cover"
-          transition={180}
-          style={styles.image}
-          accessibilityLabel={`Scenic preview for ${trail.name}`}
-        />
+        <TrailPreview trail={trail} />
         <View style={styles.imageShade} />
         <View style={[styles.status, trail.status === 'closed' && styles.closedStatus]}>
           <Text style={styles.statusText}>{trail.status.toUpperCase()}</Text>
@@ -70,7 +68,7 @@ export const TrailCard = memo(function TrailCard({
         </Pressable>
         <View style={styles.imageCopy}>
           <Text style={styles.name}>{trail.name}</Text>
-          <Text style={styles.distance}>{showDistance ? `${trail.distanceMiles.toFixed(1)} mi away` : `${trail.city} · distance unavailable`}</Text>
+          <Text style={styles.distance}>{showDistance ? `${formatDistanceMiles(trail.distanceMiles)} away` : `${trail.city ?? 'Location unavailable'} · distance unavailable`}</Text>
         </View>
       </View>
 
@@ -81,7 +79,7 @@ export const TrailCard = memo(function TrailCard({
           <Fact icon="speedometer-outline" value={capitalize(trail.difficulty)} />
           <Fact icon="star" value={trail.rating > 0 ? trail.rating.toFixed(1) : 'Unrated'} accent />
         </View>
-        <Text style={styles.terrain}>{trail.terrain} · {trail.publicAccess ? 'Public access' : 'Access restricted'}</Text>
+        <Text style={styles.terrain}>{trail.terrain} · {trail.publicAccess === true ? 'Public access' : trail.publicAccess === false ? 'Access restricted' : 'Access not listed'}</Text>
         <View style={styles.rewardRow}>
           <Text style={styles.xp}>{trail.xpReward > 0 ? `POSSIBLE +${trail.xpReward} XP` : 'GPS-VERIFIED TRAIL'}</Text>
           <Text style={[styles.relic, !trail.relicsPossible && styles.muted]}>
@@ -92,6 +90,7 @@ export const TrailCard = memo(function TrailCard({
 
         <View style={styles.actions}>
           <Action label="View Details" onPress={onViewDetails} />
+          <Action label="Map" onPress={onViewOnMap} />
           <Action label="Start Trail" onPress={onStartTrail} primary disabled={!canStart} />
           <Action label="View Meetups" onPress={onViewMeetups} />
         </View>
@@ -100,12 +99,56 @@ export const TrailCard = memo(function TrailCard({
   );
 });
 
+// Renders a provider-supplied place photo when OpenStreetMap includes one. If
+// it does not, the fallback is a map image centered on that exact trail/park,
+// so every card still has its own useful visual instead of a repeated stock art.
+function TrailPreview({ trail }: { trail: Trail }) {
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const [mapPreviewFailed, setMapPreviewFailed] = useState(false);
+  const hasPlacePhoto = Boolean(trail.imageUrl && !photoFailed);
+  const hasMapPreview = !hasPlacePhoto && !mapPreviewFailed;
+  const source = hasPlacePhoto
+    ? { uri: trail.imageUrl }
+    : hasMapPreview
+      ? { uri: locationPreviewUrl(trail.latitude, trail.longitude) }
+      : require('../../../assets/images/background_image.png');
+
+  return (
+    <Image
+      source={source}
+      contentFit="cover"
+      transition={180}
+      style={styles.image}
+      accessibilityLabel={hasPlacePhoto
+        ? `Photo of ${trail.name}`
+        : hasMapPreview
+          ? `Map preview of ${trail.name}`
+          : `Scenic preview for ${trail.name}`}
+      onError={() => {
+        if (hasPlacePhoto) setPhotoFailed(true);
+        else if (hasMapPreview) setMapPreviewFailed(true);
+      }}
+    />
+  );
+}
+
+function locationPreviewUrl(latitude: number, longitude: number) {
+  const zoom = 15;
+  const tileCount = 2 ** zoom;
+  const x = Math.floor((longitude + 180) / 360 * tileCount);
+  const latitudeRadians = latitude * Math.PI / 180;
+  const y = Math.floor((1 - Math.asinh(Math.tan(latitudeRadians)) / Math.PI) / 2 * tileCount);
+  return `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
+}
+
 // Displays a compact icon-and-value fact inside the trail card.
+// Important note: Displays the fact UI.
 function Fact({ icon, value, accent }: { icon: keyof typeof Ionicons.glyphMap; value: string; accent?: boolean }) {
   return <View style={styles.fact}><Ionicons name={icon} size={14} color={accent ? C.warning : C.cyan} /><Text style={styles.factText}>{value}</Text></View>;
 }
 
 // Creates a consistent card button and stops its tap from selecting the whole card.
+// Important note: Displays the action UI.
 function Action({ label, onPress, primary, disabled }: { label: string; onPress: () => void; primary?: boolean; disabled?: boolean }) {
   return (
     <Pressable
@@ -121,6 +164,7 @@ function Action({ label, onPress, primary, disabled }: { label: string; onPress:
 }
 
 // Converts a stored lowercase label into display text.
+// Important note: Makes the first letter of a text value uppercase.
 function capitalize(value: string) { return value.charAt(0).toUpperCase() + value.slice(1); }
 
 const styles = StyleSheet.create({

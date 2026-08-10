@@ -3,6 +3,7 @@ export type TrailCategory =
   | 'trailhead'
   | 'park'
   | 'nature_reserve'
+  | 'nature_area'
   | 'walking_path';
 
 export type TrailDifficulty = 'easy' | 'moderate' | 'challenging' | 'unknown';
@@ -11,7 +12,7 @@ export type TrailAmenity = 'parking' | 'restrooms' | 'water' | 'pet_friendly';
 
 export type MeetupPace = 'relaxed' | 'moderate' | 'fast';
 
-export type TrailStatus = 'open' | 'closed';
+export type TrailStatus = 'open' | 'closed' | 'unknown';
 
 export type TrailActivityType = 'walking' | 'hiking';
 
@@ -25,36 +26,42 @@ export type NearbyTrail = {
   name: string;
   latitude: number;
   longitude: number;
+  trailheadLatitude?: number;
+  trailheadLongitude?: number;
   distanceMiles: number;
   category: TrailCategory;
   address?: string;
   description?: string;
+  /** A place photo supplied by the discovery provider, when one is available. */
+  imageUrl?: string;
   accessibility?: string;
+  publicAccess?: boolean;
   difficulty?: TrailDifficulty;
   estimatedDurationMinutes?: number;
   routeDistanceMiles?: number;
   elevationGainFeet?: number;
   geometry?: GeoJsonLineString;
+  metricSource?: 'provider' | 'geometry_estimate';
   source: 'geoapify' | 'openstreetmap' | 'mission_trails';
 };
 
 /** Rich app-facing trail data. API providers can be normalized into this shape later. */
 export type Trail = NearbyTrail & {
   activityType: TrailActivityType;
-  city: string;
+  city?: string;
   imageKey: 'mission-landscape';
   lengthMiles: number;
   estimatedDurationMinutes: number;
   difficulty: TrailDifficulty;
   terrain: string;
   rating: number;
-  publicAccess: boolean;
+  publicAccess?: boolean;
   status: TrailStatus;
   xpReward: number;
   relicsPossible: boolean;
   accessible: boolean;
   accessibility: string;
-  startLocation: string;
+  startLocation?: string;
   amenities: TrailAmenity[];
   petRules: string;
   safetyNotes: string[];

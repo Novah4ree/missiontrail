@@ -28,6 +28,7 @@ const CATEGORY_VISUALS: Readonly<Record<MeetupCategory, CategoryVisual>> = {
 };
 
 /** Draws one social landmark pin without showing any attendee coordinates. */
+// Important note: Displays the meetup map marker component UI.
 function MeetupMapMarkerComponent({ meetup, friendsAttending, onPress }: Props) {
   if (Platform.OS === 'web') return null;
   const visual = CATEGORY_VISUALS[meetup.category];
@@ -73,6 +74,7 @@ function MeetupMapMarkerComponent({ meetup, friendsAttending, onPress }: Props) 
 }
 
 /** Prevents unrelated map state changes from redrawing an unchanged marker. */
+// Important note: Checks whether a map marker can skip an unnecessary rerender.
 function markerPropsAreEqual(previous: Props, next: Props): boolean {
   return previous.meetup.id === next.meetup.id
     && previous.meetup.latitude === next.meetup.latitude
@@ -86,6 +88,7 @@ function markerPropsAreEqual(previous: Props, next: Props): boolean {
     && previous.onPress === next.onPress;
 }
 
+// Important note: Displays the meetup map marker on a map.
 export const MeetupMapMarker = memo(MeetupMapMarkerComponent, markerPropsAreEqual);
 
 const styles = StyleSheet.create({

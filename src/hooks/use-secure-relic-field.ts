@@ -15,12 +15,24 @@ import type { MysteryZone, RelicProximityStatus, RevealedRelic } from '@/types/r
 
 type Options = {
   enabled: boolean;
+  hasValidGps: boolean;
   gpsPoints: LocationObject[];
+  locationActionKey: number;
   onCollected: (relic: Relic, totalXp: number) => void;
 };
 
-export function useSecureRelicField({ enabled, gpsPoints, onCollected }: Options) {
+export function useSecureRelicField({
+  enabled,
+  hasValidGps,
+  gpsPoints,
+  locationActionKey,
+  onCollected,
+}: Options) {
   const gpsPointsRef = useRef(gpsPoints);
+  const locationActionKeyRef = useRef(locationActionKey);
+  const fieldRequestIdRef = useRef(0);
+  const scanRequestIdRef = useRef(0);
+  const refreshedLocationActionRef = useRef(0);
   const [zones, setZones] = useState<MysteryZone[]>([]);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
   const [status, setStatus] = useState<RelicProximityStatus>('mystery_zone_visible');
@@ -36,19 +48,33 @@ export function useSecureRelicField({ enabled, gpsPoints, onCollected }: Options
   useEffect(() => {
     gpsPointsRef.current = gpsPoints;
   }, [gpsPoints]);
+  locationActionKeyRef.current = locationActionKey;
+
+  useEffect(() => {
+    fieldRequestIdRef.current += 1;
+    scanRequestIdRef.current += 1;
+    setIsBusy(false);
+  }, [locationActionKey]);
 
   const selectedZone = useMemo(
     () => zones.find((zone) => zone.assignmentId === selectedAssignmentId) ?? zones[0] ?? null,
     [selectedAssignmentId, zones],
   );
   const finalSamples = gpsPoints.filter((point) => point.timestamp > revealLastSampleAt).slice(-3);
+  const latestGpsTimestamp = gpsPoints.at(-1)?.timestamp;
 
   const refreshField = useCallback(async () => {
     const currentGpsPoints = gpsPointsRef.current;
     if (!enabled || currentGpsPoints.length < 3) return;
+    const requestId = ++fieldRequestIdRef.current;
+    const requestLocationActionKey = locationActionKeyRef.current;
     setIsBusy(true);
     try {
       const field = await getMysteryZones(locationsToProximitySamples(currentGpsPoints));
+      if (
+        requestId !== fieldRequestIdRef.current
+        || requestLocationActionKey !== locationActionKeyRef.current
+      ) return;
       setZones(field.zones);
       setSelectedAssignmentId((current) => (
         field.zones.some((zone) => zone.assignmentId === current)
@@ -66,16 +92,35 @@ export function useSecureRelicField({ enabled, gpsPoints, onCollected }: Options
         : field.zones.length ? 'A Hidden Relic Area is nearby. Follow the clues!' : 'No Hidden Relic Areas are nearby right now. Keep exploring!');
       setStatus('mystery_zone_visible');
     } catch (error) {
+      if (
+        requestId !== fieldRequestIdRef.current
+        || requestLocationActionKey !== locationActionKeyRef.current
+      ) return;
       setStatus('offline_retry');
       setMessage(error instanceof RelicProximityError ? error.message : 'The map is offline. Tap retry when connected.');
     } finally {
-      setIsBusy(false);
+      if (
+        requestId === fieldRequestIdRef.current
+        && requestLocationActionKey === locationActionKeyRef.current
+      ) setIsBusy(false);
     }
   }, [enabled]);
 
   useEffect(() => {
     if (enabled && gpsPoints.length === 3 && zones.length === 0) void refreshField();
   }, [enabled, gpsPoints.length, refreshField, zones.length]);
+
+  // A deliberate recenter invalidates older field responses and refreshes as
+  // soon as three verified samples (including the new fix) are available.
+  useEffect(() => {
+    if (
+      !enabled
+      || locationActionKey <= refreshedLocationActionRef.current
+      || gpsPoints.length < 3
+    ) return;
+    refreshedLocationActionRef.current = locationActionKey;
+    void refreshField();
+  }, [enabled, gpsPoints.length, latestGpsTimestamp, locationActionKey, refreshField]);
 
   useEffect(() => {
     if (!enabled || refreshAfterSeconds === null) return;
@@ -89,7 +134,9 @@ export function useSecureRelicField({ enabled, gpsPoints, onCollected }: Options
   const scan = useCallback(async () => {
     if (gpsPoints.length < 3) {
       setStatus('improving_accuracy');
-      setMessage('Finding your location… Move to an open area.');
+      setMessage(!hasValidGps && gpsPoints.length === 0
+        ? 'Finding your location… Move to an open area.'
+        : `GPS is ready. Collecting ${3 - gpsPoints.length} more verification reading${gpsPoints.length === 2 ? '' : 's'}…`);
       return;
     }
     const minimumSearchFeedback = new Promise<void>((resolve) => {
@@ -99,11 +146,17 @@ export function useSecureRelicField({ enabled, gpsPoints, onCollected }: Options
     setDistanceFeet(null);
     setBearingDegrees(null);
     setIsBusy(true);
+    const requestId = ++scanRequestIdRef.current;
+    const requestLocationActionKey = locationActionKeyRef.current;
     try {
       const [result] = await Promise.all([
         findNearestRelic(locationsToProximitySamples(gpsPoints)),
         minimumSearchFeedback,
       ]);
+      if (
+        requestId !== scanRequestIdRef.current
+        || requestLocationActionKey !== locationActionKeyRef.current
+      ) return;
       setStatus(result.status);
       setMessage(result.message);
       setClueStrength(result.clueStrength ?? 0);
@@ -116,17 +169,26 @@ export function useSecureRelicField({ enabled, gpsPoints, onCollected }: Options
       }
     } catch (error) {
       await minimumSearchFeedback;
+      if (
+        requestId !== scanRequestIdRef.current
+        || requestLocationActionKey !== locationActionKeyRef.current
+      ) return;
       setStatus('offline_retry');
       setMessage(error instanceof RelicProximityError ? error.message : 'We lost the connection. Tap Try Again.');
     } finally {
-      setIsBusy(false);
+      if (
+        requestId === scanRequestIdRef.current
+        && requestLocationActionKey === locationActionKeyRef.current
+      ) setIsBusy(false);
     }
-  }, [gpsPoints]);
+  }, [gpsPoints, hasValidGps]);
 
   const placeTestRelic = useCallback(async () => {
     if (gpsPoints.length < 3) {
       setStatus('improving_accuracy');
-      setMessage('Finding your location… Move to an open area.');
+      setMessage(!hasValidGps && gpsPoints.length === 0
+        ? 'Finding your location… Move to an open area.'
+        : `GPS is ready. Collecting ${3 - gpsPoints.length} more verification reading${gpsPoints.length === 2 ? '' : 's'}…`);
       return;
     }
     setIsBusy(true);
@@ -146,7 +208,7 @@ export function useSecureRelicField({ enabled, gpsPoints, onCollected }: Options
     } finally {
       setIsBusy(false);
     }
-  }, [gpsPoints, refreshField]);
+  }, [gpsPoints, hasValidGps, refreshField]);
 
   const collect = useCallback(async () => {
     if (!selectedZone || !revealed) return;

@@ -50,6 +50,7 @@ import { useAuth } from '../../context/auth';
 
 const WEATHER_LOCATION_TIMEOUT_MS = 8_000;
 
+// Important note: Checks whether a weather coordinate can be used safely.
 function validWeatherCoordinate(location: Location.LocationObject | null) {
   if (!location) return null;
   const { latitude, longitude } = location.coords;
@@ -58,6 +59,7 @@ function validWeatherCoordinate(location: Location.LocationObject | null) {
   return { latitude, longitude };
 }
 
+// Important note: Chooses the coordinate used to load the current weather.
 async function currentWeatherCoordinate() {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -72,6 +74,7 @@ async function currentWeatherCoordinate() {
   }
 }
 
+// Important note: Chooses the instruction text for a mission.
 function missionInstruction(mission: VerifiedMissionProgress) {
   switch (mission.requirementType) {
     case 'distance':
@@ -91,6 +94,7 @@ function missionInstruction(mission: VerifiedMissionProgress) {
   }
 }
 
+// Important note: Chooses the icon shown for a mission.
 function missionIcon(requirementType: VerifiedMissionProgress['requirementType']) {
   switch (requirementType) {
     case 'distance':
@@ -110,6 +114,7 @@ function missionIcon(requirementType: VerifiedMissionProgress['requirementType']
   }
 }
 
+// Important note: Creates the progress label shown for a mission.
 function missionProgressLabel(
   requirementType: VerifiedMissionProgress['requirementType'],
   progress: number,
@@ -133,6 +138,7 @@ function missionProgressLabel(
   }
 }
 
+// Important note: Builds and controls the mission screen.
 export default function MissionScreen() {
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
@@ -155,6 +161,7 @@ export default function MissionScreen() {
   const weatherRequestIdRef = useRef(0);
   const weatherAbortRef = useRef<AbortController | null>(null);
 
+  // Important note: Reloads weather with the newest data.
   const refreshWeather = useCallback(async () => {
     const requestId = ++weatherRequestIdRef.current;
     weatherAbortRef.current?.abort();
@@ -187,7 +194,6 @@ export default function MissionScreen() {
       if (!coordinate) {
         throw new Error('Local weather is unavailable until GPS can determine your location.');
       }
-      if (__DEV__) console.log('[Mission weather] Forecast coordinate:', coordinate);
       const forecast = await getTrailDailyForecast(
         coordinate.latitude,
         coordinate.longitude,
@@ -415,6 +421,7 @@ export default function MissionScreen() {
   );
 }
 
+// Important note: Displays the mission details popup.
 function MissionDetailsModal({
   mission,
   isBusy,

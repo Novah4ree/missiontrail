@@ -1,6 +1,6 @@
 # Mission Trails relic backend
 
-For the complete student-friendly architecture, security review checklist, deployment
+For the complete important-friendly architecture, security review checklist, deployment
 commands, and physical-device test plan, see `../docs/relic-system.md`.
 
 This directory contains the server-authoritative foundation for rotating relics.

@@ -5,6 +5,7 @@ import { type ComponentProps } from 'react';
 type LinkHref = ComponentProps<typeof Link>['href'];
 type Props = Omit<ComponentProps<typeof Link>, 'href'> & { href: string };
 
+// Important note: Displays the external link UI.
 export function ExternalLink({ href, ...rest }: Props) {
   return (
     <Link

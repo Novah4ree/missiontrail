@@ -1,123 +1,180 @@
-import * as Device from 'expo-device';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform } from 'react-native';
 
+import { useLocationState } from '@/providers/location-provider';
 import {
   getFavoriteTrailIds,
   getTrailMeetups,
   getTrails,
   setTrailFavorite,
 } from '@/services/trail-data-service';
-import { TrailDiscoveryError } from '@/services/trail-discovery-service';
+import { searchZipLocation, TrailDiscoveryError } from '@/services/trail-discovery-service';
 import type { Trail, TrailFilters, TrailSearchCoordinate } from '@/types/trails';
 import { calculateDistanceMeters } from '@/utils/distance';
+import { normalizeUsZipCode } from '@/utils/location-validation';
+import {
+  getActiveSearchCoordinate,
+  getNearbyLocationAction,
+} from '@/utils/nearby-location-policy';
 import { EMPTY_TRAIL_FILTERS, filterTrails } from '@/utils/trail-filters';
 
 const SEARCH_AREA_MOVEMENT_METERS = 250;
-const CATALOG_REFRESH_MOVEMENT_METERS = 500;
-const CURRENT_LOCATION_TIMEOUT_MS = 10_000;
-const LAST_KNOWN_MAX_AGE_MS = 5 * 60 * 1_000;
-const LAST_KNOWN_REQUIRED_ACCURACY_METERS = 1_000;
-
-export type TrailLocationStatus =
-  | 'checking'
-  | 'not_requested'
-  | 'granted'
-  | 'denied'
-  | 'services_off'
-  | 'simulator_fallback'
-  | 'unavailable';
-
+const REVERSE_GEOCODE_MIN_INTERVAL_MS = 5 * 60 * 1_000;
+const US_STATE_ABBREVIATIONS: Record<string, string> = {
+  Alabama: 'AL', Alaska: 'AK', Arizona: 'AZ', Arkansas: 'AR', California: 'CA', Colorado: 'CO', Connecticut: 'CT', Delaware: 'DE',
+  Florida: 'FL', Georgia: 'GA', Hawaii: 'HI', Idaho: 'ID', Illinois: 'IL', Indiana: 'IN', Iowa: 'IA', Kansas: 'KS', Kentucky: 'KY',
+  Louisiana: 'LA', Maine: 'ME', Maryland: 'MD', Massachusetts: 'MA', Michigan: 'MI', Minnesota: 'MN', Mississippi: 'MS', Missouri: 'MO',
+  Montana: 'MT', Nebraska: 'NE', Nevada: 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ', 'New Mexico': 'NM', 'New York': 'NY',
+  'North Carolina': 'NC', 'North Dakota': 'ND', Ohio: 'OH', Oklahoma: 'OK', Oregon: 'OR', Pennsylvania: 'PA', 'Rhode Island': 'RI',
+  'South Carolina': 'SC', 'South Dakota': 'SD', Tennessee: 'TN', Texas: 'TX', Utah: 'UT', Vermont: 'VT', Virginia: 'VA', Washington: 'WA',
+  'West Virginia': 'WV', Wisconsin: 'WI', Wyoming: 'WY', 'District of Columbia': 'DC',
+};
 export type TrailLocationResult =
-  | { kind: 'located'; coordinate: TrailSearchCoordinate; isPhysicalDevice: boolean }
-  | { kind: 'simulator_fallback' }
-  | { kind: 'denied' | 'services_off' | 'unavailable' };
-
-// Makes sure a GPS object contains finite coordinates inside the Earth's bounds.
-function readValidCoordinate(location: Location.LocationObject | null): TrailSearchCoordinate | null {
-  if (!location) return null;
-  const { latitude, longitude } = location.coords;
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
-  return { latitude, longitude };
-}
-
-// Stops the screen from waiting forever when the operating system cannot provide GPS.
-async function getBalancedPositionWithTimeout(): Promise<Location.LocationObject | null> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-      new Promise<null>((resolve) => {
-        timeoutId = setTimeout(() => resolve(null), CURRENT_LOCATION_TIMEOUT_MS);
-      }),
-    ]);
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
-}
+  | { kind: 'located'; coordinate: TrailSearchCoordinate; source: 'gps' }
+  | { kind: 'denied' | 'services_off' | 'unavailable' }
+  | { kind: 'superseded' };
 
 // Prints technical details only during development, keeping user messages simple.
 function logLocationProblem(message: string, error?: unknown) {
-  if (__DEV__) console.warn(`[Trails location] ${message}`, error ?? '');
-}
-
-function logTrailDebug(message: string, details?: unknown) {
-  if (__DEV__) console.info(`[Trails discovery] ${message}`, details ?? '');
+  if (!__DEV__) return;
+  const diagnostic = error instanceof TrailDiscoveryError
+    ? {
+      name: error.name,
+      code: error.code,
+      operation: error.operation ?? null,
+      status: error.status ?? null,
+      technicalCode: error.technicalCode ?? null,
+      message: error.message,
+    }
+    : error instanceof Error
+      ? { name: error.name, message: error.message }
+      : error ?? null;
+  console.warn('[LOCATION ERROR]', { message, error: diagnostic });
 }
 
 export function useNearbyTrails() {
-  const [userLocation, setUserLocation] = useState<TrailSearchCoordinate | null>(null);
-  const [locationCenter, setLocationCenter] = useState<TrailSearchCoordinate | null>(null);
-  const [searchCenter, setSearchCenter] = useState<TrailSearchCoordinate | null>(null);
-  const [mapCenter, setMapCenter] = useState<TrailSearchCoordinate | null>(null);
+  const {
+    location,
+    requestCurrentLocation,
+    setGpsLocation,
+    setZipLocation,
+    updateGpsAddress,
+    beginLocationSearch,
+  } = useLocationState();
+  const [mapCameraLocation, setMapCameraLocation] = useState<TrailSearchCoordinate | null>(null);
   const [allTrails, setAllTrails] = useState<Trail[]>([]);
   const [meetups, setMeetups] = useState<Awaited<ReturnType<typeof getTrailMeetups>>>([]);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [favoriteBusyIds, setFavoriteBusyIds] = useState<string[]>([]);
   const [filters, setFilters] = useState<TrailFilters>(EMPTY_TRAIL_FILTERS);
   const [query, setQuery] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [locationStatus, setLocationStatus] = useState<TrailLocationStatus>('not_requested');
-  const [locationWarning, setLocationWarning] = useState<string | null>(null);
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
+  const [isRefreshingCatalog, setIsRefreshingCatalog] = useState(false);
+  const [isSearchingZip, setIsSearchingZip] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
   const locationRequestRef = useRef<Promise<TrailLocationResult> | null>(null);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
-  const locationSubscriptionStartingRef = useRef(false);
+  const locationActionRef = useRef(0);
   const catalogRequestIdRef = useRef(0);
-  const searchCenterRef = useRef<TrailSearchCoordinate | null>(null);
+  const geocodeRequestIdRef = useRef(0);
+  const loadedLocationRef = useRef<TrailSearchCoordinate | null>(null);
+  const loadedLocationSourceRef = useRef<'gps' | 'zip' | null>(null);
+  const reverseGeocodeRef = useRef<{ coordinate: TrailSearchCoordinate; requestedAt: number } | null>(null);
+  const loggedInitialGpsRef = useRef(false);
+  // Tracks the center represented by the currently displayed result set.
+  // This is intentionally separate from loadedLocationRef, which reserves a
+  // center while an async request is in flight to prevent duplicate loads.
+  const catalogLocationRef = useRef<TrailSearchCoordinate | null>(null);
   const favoriteMutationIdsRef = useRef(new Set<string>());
+
+  const startLiveLocationUpdates = useCallback(async (actionId: number) => {
+    locationSubscriptionRef.current?.remove();
+    locationSubscriptionRef.current = null;
+    try {
+      const subscription = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          distanceInterval: 25,
+          timeInterval: 5_000,
+        },
+        (position) => {
+          if (mountedRef.current && actionId === locationActionRef.current) {
+            setGpsLocation(position);
+          }
+        },
+      );
+      if (!mountedRef.current || actionId !== locationActionRef.current) {
+        subscription.remove();
+        return;
+      }
+      locationSubscriptionRef.current = subscription;
+    } catch (watchError) {
+      logLocationProblem('Foreground GPS updates could not start.', watchError);
+    }
+  }, [setGpsLocation]);
+
+  // Uses the device's reverse-geocoder only for readable UI copy. Coordinates
+  // remain the source of truth for all nearby searches and distance math.
+  const updateAreaLabel = useCallback(async (center: TrailSearchCoordinate) => {
+    const requestId = ++geocodeRequestIdRef.current;
+    try {
+      const [place] = await Location.reverseGeocodeAsync(center);
+      if (!mountedRef.current || requestId !== geocodeRequestIdRef.current || !place) return;
+      const city = [place.city, place.subregion, place.district]
+        .map((value) => value?.trim())
+        .find(Boolean);
+      const region = place.region?.trim();
+      const state = region
+        ? US_STATE_ABBREVIATIONS[region] ?? region
+        : undefined;
+      updateGpsAddress(center, {
+        city,
+        state,
+        zipCode: place.postalCode?.trim() || undefined,
+      });
+    } catch (geocodeError) {
+      logLocationProblem('Reverse geocoding was unavailable.', geocodeError);
+    }
+  }, [updateGpsAddress]);
 
   // Loads trail cards for one coordinate and ignores responses from stale searches.
   const loadCatalog = useCallback(async (
-    center?: TrailSearchCoordinate | null,
-    options: { forceRefresh?: boolean } = {},
+    activeLocation?: TrailSearchCoordinate | null,
+    options: { forceRefresh?: boolean; source?: 'gps' | 'zip' } = {},
   ) => {
     const requestId = ++catalogRequestIdRef.current;
-    if (!center) {
+    if (!activeLocation) {
       if (!mountedRef.current) return;
       setAllTrails([]);
+      loadedLocationRef.current = null;
+      loadedLocationSourceRef.current = null;
+      catalogLocationRef.current = null;
       setError(null);
       setMeetups(await getTrailMeetups());
       setFavoriteIds(await getFavoriteTrailIds());
-      setIsLoading(false);
-      setIsRefreshing(false);
-      logTrailDebug('No fallback/mock catalog used because no device coordinate is available.');
+      setIsLoadingCatalog(false);
+      setIsRefreshingCatalog(false);
       return;
     }
 
-    logTrailDebug('Coordinates sent to nearby trail search.', {
-      latitude: center.latitude,
-      longitude: center.longitude,
-      radiusMiles: 25,
-      forceRefresh: Boolean(options.forceRefresh),
-    });
+    const displayedCenter = catalogLocationRef.current;
+    const isDifferentSearchArea = !displayedCenter
+      || displayedCenter.latitude !== activeLocation.latitude
+      || displayedCenter.longitude !== activeLocation.longitude;
+    if (isDifferentSearchArea && mountedRef.current) {
+      // Never present trails from the previous GPS/ZIP area beneath a newly
+      // active location while its request is pending or after it fails.
+      setAllTrails([]);
+      catalogLocationRef.current = null;
+      setIsLoadingCatalog(true);
+      setIsRefreshingCatalog(false);
+    } else if (mountedRef.current) {
+      setIsRefreshingCatalog(true);
+    }
     try {
       const [trails, trailMeetups, favorites] = await Promise.all([
-        getTrails(center, options),
+        getTrails(activeLocation, options),
         getTrailMeetups(),
         getFavoriteTrailIds(),
       ]);
@@ -125,203 +182,83 @@ export function useNearbyTrails() {
       setAllTrails(trails);
       setMeetups(trailMeetups);
       setFavoriteIds(favorites);
-      searchCenterRef.current = center;
-      setSearchCenter(center);
-      setMapCenter(center);
+      loadedLocationRef.current = activeLocation;
+      loadedLocationSourceRef.current = options.source ?? null;
+      catalogLocationRef.current = activeLocation;
       setError(null);
-      logTrailDebug('Nearby trail search completed.', {
-        resultCount: trails.length,
-        closestDistanceMiles: trails[0]?.distanceMiles ?? null,
-        fallbackOrMockUsed: false,
-      });
+      if (__DEV__) {
+        console.info('[TRAIL SEARCH COORDINATES]', {
+          source: options.source ?? 'unknown',
+          latitude: activeLocation.latitude,
+          longitude: activeLocation.longitude,
+          radiusMiles: 25,
+          resultCount: trails.length,
+        });
+      }
     } catch (catalogError) {
       logLocationProblem('Trail catalog loading failed.', catalogError);
       if (mountedRef.current && requestId === catalogRequestIdRef.current) {
         setError(
           catalogError instanceof TrailDiscoveryError
             ? catalogError.message
-            : 'The nearby trail service is temporarily unavailable. Try again shortly.',
+            : "Couldn't load nearby trails right now. Check your connection and try again.",
         );
       }
     } finally {
       if (mountedRef.current && requestId === catalogRequestIdRef.current) {
-        setIsLoading(false);
-        setIsRefreshing(false);
+        setIsLoadingCatalog(false);
+        setIsRefreshingCatalog(false);
       }
     }
   }, []);
 
-  // Gives simulators a clear no-location state without inventing GPS coordinates.
-  const activateSimulatorPreview = useCallback(async (): Promise<TrailLocationResult> => {
-    // Development preview only: this coordinate is never saved as the user's location.
-    if (!__DEV__ || Platform.OS !== 'ios' || Device.isDevice) return { kind: 'unavailable' };
-    if (mountedRef.current) {
-      setUserLocation(null);
-      setLocationCenter(null);
-      setLocationStatus('simulator_fallback');
-      setLocationWarning('Simulator location unavailable. Choose a simulated location from Xcode Features > Location.');
-    }
-    await loadCatalog(null);
-    return { kind: 'simulator_fallback' };
-  }, [loadCatalog]);
-
-  // Keeps the foreground map pin current after the first GPS fix is found.
-  const startLiveLocationUpdates = useCallback(async () => {
-    if (locationSubscriptionRef.current || locationSubscriptionStartingRef.current) return;
-    locationSubscriptionStartingRef.current = true;
-    try {
-      const subscription = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.High,
-          distanceInterval: 2,
-          timeInterval: 2_000,
-        },
-        (nextLocation) => {
-          const coordinate = readValidCoordinate(nextLocation);
-          if (!coordinate || !mountedRef.current) return;
-
-          setUserLocation(coordinate);
-          setLocationStatus('granted');
-          setLocationWarning(null);
-          logTrailDebug('Foreground device coordinate updated.', coordinate);
-
-          if (
-            !searchCenterRef.current
-            || calculateDistanceMeters(coordinate, searchCenterRef.current)
-              >= CATALOG_REFRESH_MOVEMENT_METERS
-          ) {
-            // Reserve this coordinate before starting the async request so a
-            // burst of watch updates cannot issue duplicate nearby searches.
-            searchCenterRef.current = coordinate;
-            void loadCatalog(coordinate);
-          }
-        },
-      );
-      if (!mountedRef.current) {
-        subscription.remove();
-        return;
-      }
-      locationSubscriptionRef.current = subscription;
-    } catch (watchError) {
-      logLocationProblem('Live foreground location updates could not start.', watchError);
-    } finally {
-      locationSubscriptionStartingRef.current = false;
-    }
-  }, [loadCatalog]);
-
-  // Checks permission once, uses cached GPS immediately, then tries for a fresh fix.
+  // Requests a fresh GPS fix from the centralized foreground-location provider.
   const runLocationRequest = useCallback(async (forceRefresh = false): Promise<TrailLocationResult> => {
-    const isIosSimulator = Platform.OS === 'ios' && !Device.isDevice;
+    const actionId = ++locationActionRef.current;
+    const preserveZipOnFailure = location.activeLocation?.source === 'zip';
+    locationSubscriptionRef.current?.remove();
+    locationSubscriptionRef.current = null;
     if (mountedRef.current) {
-      setIsRefreshing(true);
-      setLocationStatus('checking');
-      setLocationWarning(null);
       setError(null);
+      setIsSearchingZip(false);
     }
 
     try {
-      const servicesEnabled = await Location.hasServicesEnabledAsync();
-      logTrailDebug('Location services status checked.', { servicesEnabled });
-      if (!servicesEnabled) {
-        if (isIosSimulator) return activateSimulatorPreview();
-        if (mountedRef.current) {
-          setLocationStatus('services_off');
-          setLocationWarning('Turn on Location Services to explore trails and parks near you.');
-        }
-        await loadCatalog(null);
-        return { kind: 'services_off' };
+      const result = await requestCurrentLocation();
+      if (result.kind === 'superseded' || actionId !== locationActionRef.current) return { kind: 'superseded' };
+      if (result.kind !== 'located') {
+        if (!preserveZipOnFailure) await loadCatalog(null);
+        return { kind: result.kind };
       }
 
-      let permission = await Location.getForegroundPermissionsAsync();
-      logTrailDebug('Foreground location permission status.', {
-        status: permission.status,
-        canAskAgain: permission.canAskAgain,
-      });
-      if (
-        permission.status !== Location.PermissionStatus.GRANTED
-        && permission.canAskAgain
-      ) {
-        permission = await Location.requestForegroundPermissionsAsync();
-        logTrailDebug('Foreground location permission request completed.', {
-          status: permission.status,
-          canAskAgain: permission.canAskAgain,
-        });
+      if (__DEV__ && !loggedInitialGpsRef.current) {
+        loggedInitialGpsRef.current = true;
+        console.info('[GPS] First accepted position', result.coordinate);
       }
-      if (permission.status !== Location.PermissionStatus.GRANTED) {
-        if (isIosSimulator) return activateSimulatorPreview();
-        if (mountedRef.current) {
-          setLocationStatus('denied');
-          setLocationWarning('Mission Trails needs location access to find trails and parks near you.');
-        }
-        await loadCatalog(null);
-        return { kind: 'denied' };
-      }
-
-      let lastKnownCoordinate: TrailSearchCoordinate | null = null;
-      try {
-        const lastKnown = await Location.getLastKnownPositionAsync({
-          maxAge: LAST_KNOWN_MAX_AGE_MS,
-          requiredAccuracy: LAST_KNOWN_REQUIRED_ACCURACY_METERS,
-        });
-        lastKnownCoordinate = readValidCoordinate(lastKnown);
-        if (lastKnownCoordinate && mountedRef.current) {
-          logTrailDebug('Recent cached device coordinate accepted.', lastKnownCoordinate);
-          setLocationCenter(lastKnownCoordinate);
-          // A simulator cache may be stale, so only a fresh simulator fix becomes its blue pin.
-          if (!isIosSimulator) {
-            setUserLocation(lastKnownCoordinate);
-            setLocationStatus('granted');
-          }
-          await loadCatalog(lastKnownCoordinate);
-        }
-      } catch (lastKnownError) {
-        logLocationProblem('Last-known location was unavailable.', lastKnownError);
-      }
-
-      const freshLocation = await getBalancedPositionWithTimeout();
-      const freshCoordinate = readValidCoordinate(freshLocation);
-      if (isIosSimulator && !freshCoordinate) return activateSimulatorPreview();
-      const coordinate = freshCoordinate ?? lastKnownCoordinate;
-
-      if (!coordinate) {
-        logLocationProblem('No valid location arrived before the timeout.');
-        if (mountedRef.current) {
-          setLocationStatus('unavailable');
-          setLocationWarning('We couldn’t determine your location. Move to an open area and try again.');
-        }
-        await loadCatalog(null);
-        return { kind: 'unavailable' };
-      }
-
+      loadedLocationRef.current = result.coordinate;
       if (mountedRef.current) {
-        setUserLocation(coordinate);
-        setLocationCenter(coordinate);
-        setLocationStatus('granted');
-        setLocationWarning(null);
+        setMapCameraLocation(result.coordinate);
       }
-      logTrailDebug('Current device coordinate accepted.', coordinate);
-      await loadCatalog(coordinate, { forceRefresh });
-      await startLiveLocationUpdates();
-      return { kind: 'located', coordinate, isPhysicalDevice: Device.isDevice };
+      await loadCatalog(result.coordinate, { forceRefresh, source: 'gps' });
+      if (!mountedRef.current || actionId !== locationActionRef.current) {
+        return { kind: 'superseded' };
+      }
+      void startLiveLocationUpdates(actionId);
+      return result;
     } catch (locationError) {
       logLocationProblem('Location request failed.', locationError);
-      if (isIosSimulator) return activateSimulatorPreview();
-      if (mountedRef.current) {
-        setLocationStatus('unavailable');
-        setLocationWarning('We couldn’t determine your location. Move to an open area and try again.');
-      }
-      await loadCatalog(null);
+      if (actionId === locationActionRef.current && !preserveZipOnFailure) await loadCatalog(null);
       return { kind: 'unavailable' };
     } finally {
-      if (mountedRef.current) {
-        setIsLoading(false);
-        setIsRefreshing(false);
+      if (mountedRef.current && actionId === locationActionRef.current) {
+        setIsLoadingCatalog(false);
+        setIsRefreshingCatalog(false);
       }
     }
-  }, [activateSimulatorPreview, loadCatalog, startLiveLocationUpdates]);
+  }, [loadCatalog, location.activeLocation?.source, requestCurrentLocation, startLiveLocationUpdates]);
 
   // Shares one request promise so fast repeated taps cannot start overlapping GPS work.
-  const refresh = useCallback((forceRefresh = false): Promise<TrailLocationResult> => {
+  const requestGpsLocation = useCallback((forceRefresh = false): Promise<TrailLocationResult> => {
     if (locationRequestRef.current) return locationRequestRef.current;
     const request = runLocationRequest(forceRefresh).finally(() => {
       if (locationRequestRef.current === request) locationRequestRef.current = null;
@@ -332,13 +269,91 @@ export function useNearbyTrails() {
 
   useEffect(() => {
     mountedRef.current = true;
-    void refresh();
     return () => {
       mountedRef.current = false;
       locationSubscriptionRef.current?.remove();
       locationSubscriptionRef.current = null;
     };
-  }, [refresh]);
+  }, []);
+
+  // Live centralized state decides the mount behavior. Existing GPS/ZIP
+  // locations are loaded by the active-location effect below; only NONE asks
+  // for GPS, and the stable dependency prevents a request loop.
+  const activeLocationSource = location.activeLocation?.source ?? 'none';
+  useEffect(() => {
+    if (activeLocationSource === 'none') {
+      void requestGpsLocation();
+      return;
+    }
+    if (activeLocationSource !== 'gps') return;
+    // A request that just activated GPS owns watcher startup after its catalog
+    // finishes. This branch is only for a remount with pre-existing GPS state.
+    if (locationRequestRef.current) return;
+
+    const actionId = ++locationActionRef.current;
+    void startLiveLocationUpdates(actionId);
+    return () => {
+      if (actionId !== locationActionRef.current) return;
+      locationActionRef.current += 1;
+      locationSubscriptionRef.current?.remove();
+      locationSubscriptionRef.current = null;
+    };
+  }, [activeLocationSource, requestGpsLocation, startLiveLocationUpdates]);
+
+  // Any validated active-location coordinate update moves the camera and
+  // refreshes nearby results. The service cache absorbs same-area requests.
+  useEffect(() => {
+    const active = location.activeLocation;
+    const center = getActiveSearchCoordinate(active);
+    if (!active || !center || !mountedRef.current) return;
+    const lastReverseGeocode = reverseGeocodeRef.current;
+    const shouldReverseGeocode = active.source === 'gps'
+      && !active.city
+      && !active.state
+      && (!lastReverseGeocode
+        || Date.now() - lastReverseGeocode.requestedAt >= REVERSE_GEOCODE_MIN_INTERVAL_MS
+        || calculateDistanceMeters(lastReverseGeocode.coordinate, center) >= SEARCH_AREA_MOVEMENT_METERS);
+    if (shouldReverseGeocode) {
+      reverseGeocodeRef.current = { coordinate: center, requestedAt: Date.now() };
+      void updateAreaLabel(center);
+    }
+
+    const previousLoadedLocation = loadedLocationRef.current;
+    const movedEnough = !previousLoadedLocation
+      || calculateDistanceMeters(previousLoadedLocation, center) >= SEARCH_AREA_MOVEMENT_METERS;
+    const sourceChanged = active.source !== loadedLocationSourceRef.current;
+    if (
+      sourceChanged || movedEnough
+    ) {
+      loadedLocationRef.current = center;
+      void loadCatalog(center, { source: active.source === 'zip' ? 'zip' : 'gps' });
+    }
+  }, [
+    loadCatalog,
+    location.activeLocation,
+    updateAreaLabel,
+  ]);
+
+  // Pull-to-refresh and retry reload the active search area. They must not
+  // convert an explicit ZIP search back into GPS mode.
+  const refresh = useCallback(async (forceRefresh = false) => {
+    const active = location.activeLocation;
+    if (getNearbyLocationAction(active) === 'load_zip' && active) {
+      if (mountedRef.current) {
+        setError(null);
+      }
+      await loadCatalog(
+        { latitude: active.latitude, longitude: active.longitude },
+        { forceRefresh, source: 'zip' },
+      );
+      return;
+    }
+    await requestGpsLocation(forceRefresh);
+  }, [
+    loadCatalog,
+    location.activeLocation,
+    requestGpsLocation,
+  ]);
 
   const trails = useMemo(
     () => filterTrails(allTrails, filters, meetups, query),
@@ -350,18 +365,90 @@ export function useNearbyTrails() {
     return counts;
   }, {}), [meetups]);
 
+  const activeLocation = location.activeLocation;
+  const currentUserLocation = location.currentGpsLocation;
+
+  const locationStatus = activeLocation
+    ? 'granted'
+    : location.permissionStatus === 'granted'
+      ? 'unavailable'
+      : location.permissionStatus === 'unknown'
+        ? 'not_requested'
+        : location.permissionStatus;
+  const activeCoordinate = getActiveSearchCoordinate(activeLocation);
   const hasPendingAreaSearch = Boolean(
-    locationStatus === 'granted' && mapCenter && searchCenter
-      && calculateDistanceMeters(mapCenter, searchCenter) >= SEARCH_AREA_MOVEMENT_METERS,
+    mapCameraLocation && activeCoordinate
+      && calculateDistanceMeters(mapCameraLocation, activeCoordinate) >= SEARCH_AREA_MOVEMENT_METERS,
   );
 
-  // Re-centers discovery on the real user; remote map panning must not expose
-  // trails outside the nearby radius.
-  const searchThisArea = useCallback(async () => {
-    if (mountedRef.current) setIsRefreshing(true);
-    if (userLocation && mountedRef.current) setMapCenter(userLocation);
-    await loadCatalog(userLocation);
-  }, [loadCatalog, userLocation]);
+  // Resolves a US ZIP into an active search area. Non-numeric text continues
+  // to act only as the existing trail/park name filter.
+  const searchLocation = useCallback(async (query: string) => {
+    const search = query.trim();
+    if (mountedRef.current) {
+      setIsSearchingZip(true);
+      setError(null);
+    }
+    if (!search) {
+      if (mountedRef.current) {
+        setError('Enter a five-digit US ZIP code or a trail or park name.');
+        setIsSearchingZip(false);
+      }
+      return null;
+    }
+    if (!/^\d/.test(search)) {
+      if (mountedRef.current) setIsSearchingZip(false);
+      return null;
+    }
+    const zipCode = normalizeUsZipCode(search);
+    if (!zipCode) {
+      if (mountedRef.current) {
+        setError('Enter a five-digit US ZIP code.');
+        setIsSearchingZip(false);
+      }
+      return null;
+    }
+    const actionId = ++locationActionRef.current;
+    geocodeRequestIdRef.current += 1;
+    locationSubscriptionRef.current?.remove();
+    locationSubscriptionRef.current = null;
+    beginLocationSearch();
+    locationRequestRef.current = null;
+    try {
+      const zipLocation = await searchZipLocation(zipCode);
+      if (actionId !== locationActionRef.current) return null;
+      const center = { latitude: zipLocation.latitude, longitude: zipLocation.longitude };
+      if (!mountedRef.current) return null;
+      loadedLocationRef.current = center;
+      if (!setZipLocation(center, zipCode)) {
+        setError('That ZIP code did not resolve to a valid search location.');
+        return null;
+      }
+      if (__DEV__) {
+        console.info('[ZIP SEARCH RESULT]', {
+          zipCode,
+          latitude: center.latitude,
+          longitude: center.longitude,
+        });
+      }
+      setMapCameraLocation(center);
+      await loadCatalog(center, { forceRefresh: true, source: 'zip' });
+      if (!mountedRef.current || actionId !== locationActionRef.current) return null;
+      return zipLocation;
+    } catch (searchError) {
+      logLocationProblem('City/area search failed.', searchError);
+      if (mountedRef.current && actionId === locationActionRef.current) {
+        setError(searchError instanceof TrailDiscoveryError
+          ? searchError.message
+          : "Couldn't load nearby trails right now. Check your connection and try again.");
+      }
+      return null;
+    } finally {
+      if (mountedRef.current && actionId === locationActionRef.current) {
+        setIsSearchingZip(false);
+      }
+    }
+  }, [beginLocationSearch, loadCatalog, setZipLocation]);
 
   // Saves or removes one trail favorite using the existing trail service.
   const toggleFavorite = useCallback(async (trailId: string) => {
@@ -393,12 +480,15 @@ export function useNearbyTrails() {
   }, [favoriteIds]);
 
   return {
-    isPhysicalDevice: Device.isDevice,
-    userLocation,
-    locationCenter,
-    searchCenter,
-    mapCenter,
-    setMapCenter,
+    activeLocation,
+    currentUserLocation,
+    mapCameraLocation,
+    locationSource: location.activeLocation?.source ?? 'none',
+    areaLabel: location.activeLocation?.source === 'zip'
+      ? `Search area: ${location.activeLocation.zipCode}`
+      : [location.activeLocation?.city, location.activeLocation?.state].filter(Boolean).join(', ')
+        || (location.activeLocation?.source === 'gps' ? 'Current location' : null),
+    setMapCameraLocation,
     trails,
     totalResults: allTrails.length,
     meetups,
@@ -410,13 +500,19 @@ export function useNearbyTrails() {
     favoriteIds,
     favoriteBusyIds,
     toggleFavorite,
-    isLoading,
-    isRefreshing,
+    isLoading: isLoadingCatalog,
+    isRefreshing: isRefreshingCatalog || isSearchingZip,
+    isLoadingCatalog,
+    isRefreshingCatalog,
+    isSearchingZip,
+    isLocating: location.isRequestingGps,
+    isRequestingGps: location.isRequestingGps,
     error,
     locationStatus,
-    locationWarning,
+    locationWarning: location.error,
     hasPendingAreaSearch,
-    searchThisArea,
+    searchLocation,
     refresh,
+    useMyLocation: requestGpsLocation,
   };
 }

@@ -9,6 +9,7 @@ type RelicDetailModalProps = {
   onClose: () => void;
 };
 
+// Important note: Formats collection date for display.
 function formatCollectionDate(collectedAt?: string) {
   if (!collectedAt) {
     return 'Date unavailable';
@@ -21,6 +22,7 @@ function formatCollectionDate(collectedAt?: string) {
   }).format(new Date(collectedAt));
 }
 
+// Important note: Displays the relic detail popup.
 export function RelicDetailModal({
   relic,
   isCollected,
