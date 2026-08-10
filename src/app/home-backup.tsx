@@ -32,6 +32,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -239,14 +240,6 @@ const mapButtons = [
 const speedLimitMetersPerSecond =
   20 * 0.44704;
 
-const startingMapRegion: Region = {
-  latitude: 37.7749,
-  longitude: -122.4194,
-
-  latitudeDelta: 0.012,
-  longitudeDelta: 0.012,
-};
-
 const RELIC_COLLECTION_RADIUS_FEET = 10;
 
 // Both checks must pass. __DEV__ is false in production bundles, so this UI is removed there.
@@ -386,6 +379,7 @@ export default function HomeScreen() {
 
   const safeArea =
     useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
 
   // =====================
   // CHATBOT STATE
@@ -421,9 +415,8 @@ export default function HomeScreen() {
   // =====================
 
   const [mapRegion, setMapRegion] =
-    useState<Region>(
-      startingMapRegion,
-    );
+    useState<Region | null>(null);
+  const hasCenteredOnGpsRef = useRef(false);
 
   const [gpsPoints, setGpsPoints] =
     useState<
@@ -518,6 +511,9 @@ export default function HomeScreen() {
     () => visibleMapMeetups.find((meetup) => meetup.id === selectedMeetupId) ?? null,
     [selectedMeetupId, visibleMapMeetups],
   );
+  const meetupSheetBottom = safeArea.bottom + 10 + tabBarHeight + 10;
+  const meetupSheetAvailableHeight = Math.max(0, windowHeight - safeArea.top - meetupSheetBottom - 10);
+  const meetupSheetHeight = meetupSheetAvailableHeight * 0.36;
 
   const placedRelics = useMemo<PlacedRelic[]>(
     () =>
@@ -640,9 +636,12 @@ export default function HomeScreen() {
       setRelicFieldOrigin((currentOrigin) => currentOrigin ?? makeMapCoordinate(point));
     }
 
-    setMapRegion(
-      makeMapRegion(point),
-    );
+    if (!hasCenteredOnGpsRef.current) {
+      hasCenteredOnGpsRef.current = true;
+      const firstRegion = makeMapRegion(point);
+      setMapRegion(firstRegion);
+      mapRef.current?.animateToRegion(firstRegion, 0);
+    }
 
     setGpsPoints(
       (oldPoints) => [
@@ -698,12 +697,6 @@ export default function HomeScreen() {
                 !tooFast,
               );
 
-              setMapRegion(
-                makeMapRegion(
-                  newLocation,
-                ),
-              );
-
               if (!tooFast) {
                 saveGoodGpsPoint(
                   newLocation,
@@ -753,6 +746,7 @@ export default function HomeScreen() {
   // =====================
 
   function zoomOutMap() {
+    if (!mapRegion) return;
     const zoomAmount = 1.45;
     const nextRegion = {
       ...mapRegion,
@@ -866,7 +860,7 @@ export default function HomeScreen() {
         customMapStyle={
           darkMapStyle
         }
-        region={mapRegion}
+        initialRegion={mapRegion ?? undefined}
         userInterfaceStyle="dark"
         showsUserLocation={
           false
@@ -1033,7 +1027,7 @@ export default function HomeScreen() {
         {selectedMeetup ? (
           <View
             pointerEvents="box-none"
-            style={[styles.meetupPreviewOverlay, { bottom: safeArea.bottom + tabBarHeight + 18 }]}
+            style={[styles.meetupPreviewOverlay, { bottom: meetupSheetBottom, height: meetupSheetHeight }]}
           >
             <MeetupMapPreview
               meetup={selectedMeetup}
@@ -1048,11 +1042,13 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        <RelicCompass
-          relicBearing={compassBearing}
-          direction={compassDirection}
-          distanceFeet={compassDistanceFeet}
-        />
+        {!selectedMeetup ? (
+          <RelicCompass
+            relicBearing={compassBearing}
+            direction={compassDirection}
+            distanceFeet={compassDistanceFeet}
+          />
+        ) : null}
 
         <View style={styles.mapStyleButtons}>
           <AuraButton
@@ -2469,6 +2465,9 @@ const styles =
       position: 'absolute',
       left: sidePadding,
       right: sidePadding,
+      justifyContent: 'flex-end',
+      zIndex: 70,
+      elevation: 20,
     },
 
     meetupModalBackdrop: {

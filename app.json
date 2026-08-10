@@ -12,7 +12,7 @@
       "bundleIdentifier": "com.anonymous.MissionTrail0.x2",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Allow Mission Trails to use your location to find nearby trails and track trails you choose to start.",
-        "NSMotionUsageDescription": "Allow Mission Trails to count your steps and update today’s walking progress."
+        "NSMotionUsageDescription": "Mission Trails uses motion activity to count your steps and track walking progress during missions."
       }
     },
     "android": {
@@ -51,7 +51,7 @@
       [
         "expo-sensors",
         {
-          "motionPermission": "Allow Mission Trails to count your steps and update today’s walking progress."
+          "motionPermission": "Mission Trails uses motion activity to count your steps and track walking progress during missions."
         }
       ],
       "expo-web-browser",

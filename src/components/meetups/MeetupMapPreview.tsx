@@ -5,11 +5,11 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MissionTrailColors as C } from '@/constants/theme';
 import type { Meetup, MeetupCategory } from '@/types/meetups';
 import {
-  calculateFriendsAttending,
-  calculateMeetupDistanceMiles,
-  calculateRemainingCapacity,
-  determineMeetupStatusLabel,
-  type OptionalCoordinate,
+    calculateFriendsAttending,
+    calculateMeetupDistanceMiles,
+    calculateRemainingCapacity,
+    determineMeetupStatusLabel,
+    type OptionalCoordinate,
 } from '@/utils/meetup-discovery';
 
 type Props = {
@@ -62,7 +62,7 @@ function MeetupMapPreviewComponent({
     <View accessibilityLabel={`Selected meetup: ${meetup.title}`} style={styles.card}>
       <View style={styles.topRow}>
         <View style={styles.badges}>
-          <Text style={styles.categoryBadge}>{CATEGORY_LABELS[meetup.category]}</Text>
+          <Text style={styles.categoryBadge}>{meetup.type === 'friends' ? 'Friends Gathering' : CATEGORY_LABELS[meetup.category]}</Text>
           <Text style={styles.statusBadge}>{status}</Text>
           {meetup.type === 'official' && meetup.isVerified ? (
             <View style={styles.officialBadge}>
@@ -96,16 +96,20 @@ function MeetupMapPreviewComponent({
       </View>
 
       <View style={styles.actions}>
-        <Pressable
-          accessibilityLabel={`${joinLabel}: ${meetup.title}`}
-          accessibilityRole="button"
-          accessibilityState={{ busy: joining, disabled: joinDisabled, selected: joined }}
-          disabled={joinDisabled}
-          onPress={() => void onJoin(meetup)}
-          style={({ pressed }) => [styles.joinButton, joinDisabled && styles.disabled, pressed && styles.pressed]}
-        >
-          <Text style={styles.joinText}>{joinLabel}</Text>
-        </Pressable>
+        {joined ? (
+          <View style={styles.joinedBadge}><Text style={styles.joinedText}>Joined ✓</Text></View>
+        ) : (
+          <Pressable
+            accessibilityLabel={`${joinLabel}: ${meetup.title}`}
+            accessibilityRole="button"
+            accessibilityState={{ busy: joining, disabled: joinDisabled }}
+            disabled={joinDisabled}
+            onPress={() => void onJoin(meetup)}
+            style={({ pressed }) => [styles.joinButton, joinDisabled && styles.disabled, pressed && styles.pressed]}
+          >
+            <Text style={styles.joinText}>{joinLabel}</Text>
+          </Pressable>
+        )}
         <Pressable
           accessibilityLabel={`View details for ${meetup.title}`}
           accessibilityRole="button"
@@ -164,6 +168,7 @@ export const MeetupMapPreview = memo(MeetupMapPreviewComponent);
 
 const styles = StyleSheet.create({
   card: {
+    flex: 1,
     width: '100%',
     maxWidth: 430,
     alignSelf: 'center',
@@ -171,11 +176,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.purple,
     backgroundColor: 'rgba(8, 4, 24, 0.97)',
-    padding: 14,
+    padding: 12,
     shadowColor: C.purple,
     shadowOpacity: 0.45,
     shadowRadius: 14,
     elevation: 12,
+    overflow: 'hidden',
   },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   badges: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
@@ -185,16 +191,18 @@ const styles = StyleSheet.create({
   officialText: { color: C.green, fontSize: 9, fontWeight: '900' },
   closeButton: { width: 44, height: 44, marginTop: -8, marginRight: -8, alignItems: 'center', justifyContent: 'center' },
   cancelledNotice: { color: C.danger, fontSize: 11, lineHeight: 16, fontWeight: '800', marginTop: 7 },
-  title: { color: C.text, fontSize: 18, lineHeight: 23, fontWeight: '900', marginTop: 7 },
+  title: { color: C.text, fontSize: 17, lineHeight: 21, fontWeight: '900', marginTop: 5 },
   landmarkRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
   landmark: { flex: 1, color: C.textMuted, fontSize: 12, fontWeight: '700' },
-  facts: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 11 },
+  facts: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   fact: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 9, backgroundColor: 'rgba(28, 16, 48, 0.88)', paddingHorizontal: 8 },
   factText: { color: C.text, fontSize: 10, fontWeight: '800' },
-  actions: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  joinButton: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: C.magenta, backgroundColor: '#702288', paddingHorizontal: 10 },
+  actions: { flexDirection: 'row', gap: 8, marginTop: 9 },
+  joinButton: { flex: 0.8, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: 1, borderColor: C.magenta, backgroundColor: '#702288', paddingHorizontal: 8 },
   joinText: { color: C.text, fontSize: 12, fontWeight: '900' },
-  detailsButton: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: C.cyan, backgroundColor: '#0D2431', paddingHorizontal: 10 },
+  joinedBadge: { flex: 0.8, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: C.green, backgroundColor: '#102D20', paddingHorizontal: 8 },
+  joinedText: { color: C.green, fontSize: 11, fontWeight: '900' },
+  detailsButton: { flex: 1.2, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: 1, borderColor: C.cyan, backgroundColor: '#0D2431', paddingHorizontal: 10 },
   detailsText: { color: C.cyan, fontSize: 12, fontWeight: '900' },
   disabled: { opacity: 0.48 },
   pressed: { opacity: 0.76 },

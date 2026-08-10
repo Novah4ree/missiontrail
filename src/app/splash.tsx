@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -13,6 +14,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 
+// Student note: Displays the cosmic sky glow UI.
 function CosmicSkyGlow() {
 
   const glowAnim = useRef(new Animated.Value(0)).current;
@@ -36,7 +38,8 @@ function CosmicSkyGlow() {
           useNativeDriver: true,
         }),
 
-      ])
+      ]),
+      { resetBeforeIteration: true },
     );
 
     glowLoop.start();
@@ -48,13 +51,13 @@ function CosmicSkyGlow() {
   const animatedGlowStyle = {
     opacity: glowAnim.interpolate({
       inputRange: [0, 1],
-      outputRange: [0.12, 0.28],
+      outputRange: [0.2, 0.55],
     }),
     transform: [
       {
         scale: glowAnim.interpolate({
           inputRange: [0, 1],
-          outputRange: [1, 1.05],
+          outputRange: [1, 1.1],
         }),
       },
     ],
@@ -99,6 +102,7 @@ function CosmicSkyGlow() {
   );
 }
 
+// Student note: Displays the skyline glow UI.
 function SkylineGlow() {
 
   const purplePulse = useRef(new Animated.Value(0)).current;
@@ -106,6 +110,7 @@ function SkylineGlow() {
 
   useEffect(() => {
 
+    // Student note: Creates pulse.
     const createPulse = (value: Animated.Value, duration: number) =>
       Animated.loop(
         Animated.sequence([
@@ -124,7 +129,8 @@ function SkylineGlow() {
             useNativeDriver: true,
           }),
 
-        ])
+        ]),
+        { resetBeforeIteration: true },
       );
 
     const pulses = [
@@ -138,10 +144,11 @@ function SkylineGlow() {
 
   }, [bluePulse, purplePulse]);
 
+  // Student note: Creates the opacity and movement for one skyline glow layer.
   const animatedLayerStyle = (value: Animated.Value) => ({
     opacity: value.interpolate({
       inputRange: [0, 1],
-      outputRange: [0.28, 0.72],
+      outputRange: [0.2, 0.85],
     }),
     transform: [
       {
@@ -186,6 +193,7 @@ function SkylineGlow() {
   );
 }
 
+// Student note: Displays the water aurora glow UI.
 function WaterAuroraGlow() {
 
   const leftAurora = useRef(new Animated.Value(0)).current;
@@ -194,6 +202,7 @@ function WaterAuroraGlow() {
 
   useEffect(() => {
 
+    // Student note: Creates aurora loop.
     const createAuroraLoop = (value: Animated.Value, duration: number) =>
       Animated.loop(
         Animated.sequence([
@@ -212,7 +221,8 @@ function WaterAuroraGlow() {
             useNativeDriver: true,
           }),
 
-        ])
+        ]),
+        { resetBeforeIteration: true },
       );
 
     const auroraLoops = [
@@ -227,6 +237,7 @@ function WaterAuroraGlow() {
 
   }, [centerAurora, leftAurora, rightAurora]);
 
+  // Student note: Creates the opacity and movement for one aurora layer.
   const animatedAuroraStyle = (
     value: Animated.Value,
     horizontalDrift: number,
@@ -234,7 +245,7 @@ function WaterAuroraGlow() {
   ) => ({
     opacity: value.interpolate({
       inputRange: [0, 1],
-      outputRange: [0.15, 0.35],
+      outputRange: [0.28, 0.55],
     }),
     transform: [
       {
@@ -358,6 +369,7 @@ const COSMIC_STAR_CONFIG: Star[] = [
   { x: 87, y: 5, size: 3, color: '#67e8f9', delay: 870, duration: 2700 },
 ];
 
+// Student note: Displays the cosmic stars UI.
 function CosmicStars() {
 
   const starAnimations = useRef(
@@ -386,7 +398,8 @@ function CosmicStars() {
             useNativeDriver: true,
           }),
 
-        ])
+        ]),
+        { resetBeforeIteration: true },
       )
     );
 
@@ -419,7 +432,7 @@ function CosmicStars() {
                 height: star.size,
                 opacity: animation.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0.18, 0.92],
+                  outputRange: [0.15, 1],
                 }),
                 transform: [
                   { translateX: -star.size / 2 },
@@ -427,7 +440,7 @@ function CosmicStars() {
                   {
                     scale: animation.interpolate({
                       inputRange: [0, 1],
-                      outputRange: [0.84, 1.12],
+                      outputRange: [0.65, 1.35],
                     }),
                   },
                 ],
@@ -490,26 +503,95 @@ function CosmicStars() {
 
   );
 }
-
+// 0 & 1 is for the builds on the left side of the skyline, 2 is for the right side of the skyline.
 const CITY_WINDOW_LIGHT_CONFIG = [
-  { left: 19, top: 62, size: 2, group: 0 },
-  { left: 24, top: 48, size: 2, group: 1 },
+  { left: 22, top: 62, size: 2, group: 0 },
+  { left: 23, top: 65, size: 2, group: 1 },
+  { left: 24, top: 66, size: 2, group: 0 },
+  { left: 21, top: 68, size: 2, group: 1 },
+   { left: 23, top: 56, size: 2, group: 0 },
+  { left: 22, top: 58, size: 2, group: 1 },
+  
+   { left: 22, top: 46, size: 2, group: 0 },
+  { left: 21, top: 48, size: 1.5, group: 1 },
+  { left: 21, top: 49, size: 2, group: 1 },
   { left: 29, top: 72, size: 1.5, group: 2 },
-  { left: 34, top: 38, size: 2.5, group: 0 },
-  { left: 39, top: 58, size: 2, group: 2 },
-  { left: 44, top: 27, size: 2, group: 1 },
-  { left: 48, top: 68, size: 2.5, group: 0 },
+
+  { left: 34, top: 38, size: 2, group: 0 },
+  { left: 41, top: 38, size: 1.5, group: 0 },
+  { left: 43, top: 38, size: 2, group: 2 },
+  { left: 41, top: 69, size: 1.5, group: 2},
+  { left: 55, top: 67, size: 2, group: 2},
+  { left: 54, top: 65, size: 2, group: 2},
+  { left: 43, top: 58, size: 1.5, group: 2 },
+
+  { left: 48, top: 68, size: 1.5, group: 0 },
   { left: 52, top: 43, size: 2, group: 2 },
   { left: 57, top: 76, size: 1.5, group: 1 },
-  { left: 62, top: 34, size: 2.5, group: 0 },
-  { left: 67, top: 59, size: 2, group: 1 },
-  { left: 72, top: 47, size: 1.5, group: 2 },
-  { left: 77, top: 70, size: 2, group: 0 },
-  { left: 82, top: 55, size: 2.5, group: 2 },
+  { left: 62, top: 34, size: 2, group: 0 },
+
+ 
+  { left: 51, top: 30, size: 2, group: 2 },
+  { left: 49, top: 29, size: 2, group: 2 },
+  { left: 50, top: 28, size: 1.5, group: 2 },
+  { left: 47, top: 32, size: 2, group: 2 },
+  { left: 49, top: 25, size: 1.5, group: 2 },
+
+  
+  { left: 49, top: 95, size: 2, group: 2 },
+  { left: 49, top: 89, size: 1, group: 2 },
+  { left: 49, top: 85, size: 1.5, group: 2 },
+
+  { left: 55, top: 83, size: 1, group: 2 },
+  { left: 44, top: 86, size: 2, group: 2 },
+  { left: 64, top: 29, size: 1, group: 2 },
+  
+  { left: 49, top: 82, size: 2, group: 2 },
+  { left: 63, top: 25, size: 1.5, group: 2 },
+  { left: 63, top: 26, size: 2, group: 2 },
+  { left: 63, top: 22, size: 1.5, group: 2 },
+  { left: 63, top: 20, size: 2, group: 2 },
+
+  { left: 49, top: 4, size: 2, group: 2 },
+  
+  { left: 65, top: 50, size: 1.5, group: 2 },
+  { left: 65, top: 44, size: 2, group: 2 },
+ 
+  { left: 65, top: 55, size: 2, group: 2 },
+  { left: 65, top: 67, size: 1.5, group: 2 },
+  { left: 65, top: 77, size: 2, group: 2 },
+  { left: 65, top: 82, size: 1.5, group: 2 },
+  { left: 64, top: 44, size: 2, group: 2 },
+  { left: 63, top: 60, size: 2, group: 2 },
+  { left: 61.5, top: 55, size: 1.5, group: 2 },
+  { left: 61.5, top: 51, size: 2, group: 2 },
+
+  { left: 61.5, top: 35, size: 1.5, group: 2 },
+  { left: 61.5, top: 37, size: 2, group: 2 },
+  { left: 61.5, top: 45, size: 1.5, group: 2 },
+  { left: 61.5, top: 41, size: 2, group: 2 },
+  { left: 62, top: 67, size: 1.5, group: 2 },
+  { left: 65, top: 66, size: 2, group: 2 },
+  { left: 58, top: 70, size: 1, group: 0 },
+  { left: 56, top: 55, size: 1.5, group: 2 },
+  { left: 57, top: 64, size: 2, group: 2 },
+
+  { left: 75, top: 82, size: 1.5, group: 2 },
+  { left: 71, top: 82, size: 1.5, group: 2 },
+
+
+  { left: 65, top: 50, size: 1.5, group: 2 },
+  { left: 65, top: 44, size: 1.5, group: 2},
+ 
+
+  { left: 71, top: 72, size: 2, group: 2},
+  { left: 73, top: 67, size: 2, group: 2},
+  { left: 77, top: 77, size: 2, group: 2 },
+  { left: 76, top: 72, size: 2, group: 2 },
 ] as const;
 
-const CITY_WINDOW_COLORS = ['#60a5fa', '#3b82f6', '#93c5fd'] as const;
-
+const CITY_WINDOW_COLORS = ['#60a5fa', '#3b82f6', '#93c5fd', '#c084fc'] as const;
+// Student note: Displays the city window lights UI.
 function CityWindowLights() {
 
   const windowPulses = useRef([
@@ -520,8 +602,8 @@ function CityWindowLights() {
 
   useEffect(() => {
 
-    const durations = [1200, 1500, 1800];
-    const delays = [0, 240, 500];
+    const durations = [1400, 1700, 1800, 1350];
+    const delays = [90, 340, 600, 720];
     const loops = windowPulses.map((pulse, index) =>
       Animated.loop(
         Animated.sequence([
@@ -542,7 +624,8 @@ function CityWindowLights() {
             useNativeDriver: true,
           }),
 
-        ])
+        ]),
+        { resetBeforeIteration: true },
       )
     );
 
@@ -556,17 +639,18 @@ function CityWindowLights() {
 
     <View pointerEvents="none" style={styles.cityWindowLights}>
 
-      {CITY_WINDOW_LIGHT_CONFIG.map((light) => {
+      {CITY_WINDOW_LIGHT_CONFIG.map((light, index) => {
         const pulse = windowPulses[light.group];
 
         return (
 
           <Animated.View
-            key={`${light.left}-${light.top}`}
+            key={`city-window-${index}`}
             style={[
               styles.cityWindowLight,
               {
                 left: `${light.left}%`,
+                right: `${100 - light.left}%`,
                 top: `${light.top}%`,
                 width: light.size,
                 height: light.size,
@@ -648,6 +732,7 @@ type TrailSparklePathProps = {
   height: number;
 };
 
+// Student note: Displays the trail sparkle path UI.
 function TrailSparklePath({
   positions,
   progress,
@@ -681,7 +766,7 @@ function TrailSparklePath({
               {
                 scale: progress.interpolate({
                   inputRange: [start, start + 0.033, start + 0.071, start + 0.119],
-                  outputRange: [0.75, 1.2, 1.08, 0.75],
+                  outputRange: [0.7, 1.35, 1.12, 0.7],
                   extrapolate: 'clamp',
                 }),
               },
@@ -694,14 +779,17 @@ function TrailSparklePath({
   });
 }
 
+// Student note: Displays the left trail sparkles UI.
 function LeftTrailSparkles(props: Omit<TrailSparklePathProps, 'positions'>) {
   return <TrailSparklePath {...props} positions={LEFT_TRAIL_DOTS} />;
 }
 
+// Student note: Displays the right trail sparkles UI.
 function RightTrailSparkles(props: Omit<TrailSparklePathProps, 'positions'>) {
   return <TrailSparklePath {...props} positions={RIGHT_TRAIL_DOTS} />;
 }
 
+// Student note: Displays the trail edge sparkles UI.
 function TrailEdgeSparkles() {
 
   const { width, height } = useWindowDimensions();
@@ -709,6 +797,7 @@ function TrailEdgeSparkles() {
   const rightProgress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Student note: Creates trail loop.
     const createTrailLoop = (progress: Animated.Value) =>
       Animated.loop(
         Animated.timing(progress, {
@@ -716,7 +805,8 @@ function TrailEdgeSparkles() {
         duration: TRAIL_SPARKLE_SEQUENCE_DURATION,
         easing: Easing.linear,
         useNativeDriver: true,
-        })
+        }),
+        { resetBeforeIteration: true },
       );
 
     const leftLoop = createTrailLoop(leftProgress);
@@ -743,6 +833,7 @@ function TrailEdgeSparkles() {
   );
 }
 
+// Student note: Builds and controls the splash screen.
 export default function SplashScreen() {
 
   const router = useRouter();
@@ -751,7 +842,7 @@ export default function SplashScreen() {
 
   useEffect(() => {
 
-    Animated.loop(
+    const enterLoop = Animated.loop(
       Animated.sequence([
 
         Animated.timing(fadeAnim, {
@@ -766,11 +857,17 @@ export default function SplashScreen() {
           useNativeDriver: true,
         }),
 
-      ])
-    ).start();
+      ]),
+      { resetBeforeIteration: true },
+    );
+
+    enterLoop.start();
+
+    return () => enterLoop.stop();
 
   }, [fadeAnim]);
 
+  // Student note: Handles the enter action.
   const handleEnter = () => {
 
     router.replace('/login');
@@ -843,6 +940,7 @@ const styles = StyleSheet.create({
     height: '55%',
     backgroundColor: 'transparent',
     overflow: 'hidden',
+    zIndex: 1,
   },
 
   glowLayer: {
@@ -882,6 +980,7 @@ const styles = StyleSheet.create({
     right: 0,
     height: '60%',
     overflow: 'hidden',
+    zIndex: 2,
   },
 
   cosmicStar: {
@@ -921,6 +1020,7 @@ const styles = StyleSheet.create({
     right: 0,
     height: '19%',
     overflow: 'hidden',
+    zIndex: 3,
   },
 
   skylineGlowShape: {
@@ -949,6 +1049,7 @@ const styles = StyleSheet.create({
     left: '4%',
     right: '4%',
     height: '5.5%',
+    zIndex: 4,
   },
 
   waterAuroraOval: {
@@ -985,6 +1086,7 @@ const styles = StyleSheet.create({
     right: 0,
     height: '19%',
     overflow: 'hidden',
+    zIndex: 5,
   },
 
   cityWindowLight: {
@@ -1000,6 +1102,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    zIndex: 6,
   },
 
   trailEdgeDot: {
@@ -1013,6 +1116,7 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     marginBottom: 80,
+    zIndex: 10,
   },
 
   enterButton: {
@@ -1043,3 +1147,5 @@ const styles = StyleSheet.create({
   },
 
 });
+
+
