@@ -1,5 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Location from 'expo-location';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Location from "expo-location";
 import {
   createContext,
   useCallback,
@@ -9,9 +9,15 @@ import {
   useRef,
   useState,
   type ReactNode,
-} from 'react';
-import { AppState, Platform } from 'react-native';
+} from "react";
+import { AppState } from "react-native";
 
+import { LevelUpCelebration } from "@/components/level-up-celebration";
+import { getUserDailyStorageKey } from "@/services/mission-cache-core";
+import {
+  loadActiveTrailActivity,
+  subscribeToActiveTrailActivity,
+} from "@/services/trail-activity-service";
 import {
   claimMissionReward,
   flushGpsQueue,
@@ -21,14 +27,9 @@ import {
   syncDeviceSteps,
   syncUserTimezone,
   VerifiedProgressError,
-} from '@/services/verified-distance';
-import { getUserDailyStorageKey } from '@/services/mission-cache-core';
-import {
-  loadActiveTrailActivity,
-  subscribeToActiveTrailActivity,
-} from '@/services/trail-activity-service';
-import type { VerifiedDailyProgress } from '@/types/daily-progress';
-import type { ActiveTrailActivity } from '@/types/trails';
+} from "@/services/verified-distance";
+import type { VerifiedDailyProgress } from "@/types/daily-progress";
+import type { ActiveTrailActivity } from "@/types/trails";
 import {
   clampDailySteps,
   estimateActiveCalories,
@@ -36,21 +37,19 @@ import {
   metersToMiles,
   reconcilePersistedSteps,
   selectDailyDistance,
-  startOfLocalDay,
   type ActivityDistanceSource,
-} from '@/utils/daily-activity-core';
-import { useAuth } from '../../context/auth';
-import { LevelUpCelebration } from '@/components/level-up-celebration';
-import { getPlayerLevelProgress } from '@/utils/player-level';
+} from "@/utils/daily-activity-core";
+import { getPlayerLevelProgress } from "@/utils/player-level";
 import {
   isActiveTrailCurrent,
   isWithinMissionStepRange,
-} from '@/utils/trail-proximity';
+} from "@/utils/trail-proximity";
+import { useAuth } from "../../context/auth";
 
-type SensorAvailability = 'checking' | 'available' | 'unavailable';
-type ActivityPermissionStatus = 'undetermined' | 'granted' | 'denied';
-type PedometerModule = typeof import('expo-sensors/build/Pedometer');
-type PedometerSubscription = ReturnType<PedometerModule['watchStepCount']>;
+type SensorAvailability = "checking" | "available" | "unavailable";
+type ActivityPermissionStatus = "undetermined" | "granted" | "denied";
+type PedometerModule = typeof import("expo-sensors/build/Pedometer");
+type PedometerSubscription = ReturnType<PedometerModule["watchStepCount"]>;
 
 type DailyActivityValue = {
   todaySteps: number;
@@ -92,9 +91,10 @@ type DailyStepRecord = {
   lastUpdatedAt: string;
 };
 
-const STORAGE_PREFIX = 'mission-trail:daily-activity:v1';
-const MISSION_STEP_STORAGE_PREFIX = 'mission-trail:destination-steps:v1';
-const ActivityProgressContext = createContext<ActivityProgressContextValue | null>(null);
+const STORAGE_PREFIX = "mission-trail:daily-activity:v1";
+const MISSION_STEP_STORAGE_PREFIX = "mission-trail:destination-steps:v1";
+const ActivityProgressContext =
+  createContext<ActivityProgressContextValue | null>(null);
 let pedometerModulePromise: Promise<PedometerModule | null> | null = null;
 
 /**
@@ -105,7 +105,7 @@ let pedometerModulePromise: Promise<PedometerModule | null> | null = null;
  * while the activity card explains that step tracking is unavailable.
  */
 function loadPedometerModule() {
-  pedometerModulePromise ??= import('expo-sensors/build/Pedometer')
+  pedometerModulePromise ??= import("expo-sensors/build/Pedometer")
     .then((loadedModule) => {
       // Metro can wrap a dynamically imported CommonJS module in `default`.
       // Normalize both shapes before the provider calls the sensor API.
@@ -113,17 +113,18 @@ function loadPedometerModule() {
         default?: PedometerModule;
         Pedometer?: PedometerModule;
       };
-      const candidate = typeof moduleEnvelope.isAvailableAsync === 'function'
-        ? moduleEnvelope
-        : moduleEnvelope.default ?? moduleEnvelope.Pedometer ?? null;
-      return candidate && typeof candidate.isAvailableAsync === 'function'
+      const candidate =
+        typeof moduleEnvelope.isAvailableAsync === "function"
+          ? moduleEnvelope
+          : (moduleEnvelope.default ?? moduleEnvelope.Pedometer ?? null);
+      return candidate && typeof candidate.isAvailableAsync === "function"
         ? candidate
         : null;
     })
     .catch((error) => {
       if (__DEV__) {
         console.warn(
-          '[Daily activity] This development build does not include ExponentPedometer.',
+          "[Daily activity] This development build does not include ExponentPedometer.",
           error,
         );
       }
@@ -137,7 +138,9 @@ function dailyStepStorageKey(userId: string, localDate: string) {
 }
 
 async function loadDailySteps(userId: string, localDate: string) {
-  const value = await AsyncStorage.getItem(dailyStepStorageKey(userId, localDate));
+  const value = await AsyncStorage.getItem(
+    dailyStepStorageKey(userId, localDate),
+  );
   if (!value) return null;
   try {
     const parsed = JSON.parse(value) as Partial<DailyStepRecord>;
@@ -158,7 +161,9 @@ function missionStepStorageKey(userId: string, localDate: string) {
 }
 
 async function loadMissionEligibleSteps(userId: string, localDate: string) {
-  const value = await AsyncStorage.getItem(missionStepStorageKey(userId, localDate));
+  const value = await AsyncStorage.getItem(
+    missionStepStorageKey(userId, localDate),
+  );
   if (!value) return 0;
   try {
     const parsed = JSON.parse(value) as Partial<DailyStepRecord>;
@@ -168,7 +173,11 @@ async function loadMissionEligibleSteps(userId: string, localDate: string) {
   }
 }
 
-export function ActivityProgressProvider({ children }: { children: ReactNode }) {
+export function ActivityProgressProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const { session } = useAuth();
   const userId = session?.user.id ?? null;
   const [progress, setProgress] = useState<VerifiedDailyProgress | null>(null);
@@ -177,13 +186,18 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
   const [isUsingCachedProgress, setIsUsingCachedProgress] = useState(false);
   const [distanceWarning, setDistanceWarning] = useState<string | null>(null);
   const [stepWarning, setStepWarning] = useState<string | null>(null);
-  const [destinationStepWarning, setDestinationStepWarning] = useState<string | null>(null);
+  const [destinationStepWarning, setDestinationStepWarning] = useState<
+    string | null
+  >(null);
   const [todaySteps, setTodaySteps] = useState(0);
   const [missionEligibleSteps, setMissionEligibleSteps] = useState(0);
-  const [activeTrailActivity, setActiveTrailActivity] = useState<ActiveTrailActivity | null>(null);
+  const [activeTrailActivity, setActiveTrailActivity] =
+    useState<ActiveTrailActivity | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
-  const [sensorAvailability, setSensorAvailability] = useState<SensorAvailability>('checking');
-  const [permissionStatus, setPermissionStatus] = useState<ActivityPermissionStatus>('undetermined');
+  const [sensorAvailability, setSensorAvailability] =
+    useState<SensorAvailability>("checking");
+  const [permissionStatus, setPermissionStatus] =
+    useState<ActivityPermissionStatus>("undetermined");
   const [isTracking, setIsTracking] = useState(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const pedometerSubscriptionRef = useRef<PedometerSubscription | null>(null);
@@ -193,49 +207,62 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
   const activeDateRef = useRef(getLocalDateKey());
   const persistenceQueueRef = useRef<Promise<void>>(Promise.resolve());
   const previousLevelRef = useRef<number | null>(null);
-  const [levelUp, setLevelUp] = useState<{ fromLevel: number; toLevel: number } | null>(null);
+  const [levelUp, setLevelUp] = useState<{
+    fromLevel: number;
+    toLevel: number;
+  } | null>(null);
 
-  const saveDailySteps = useCallback((
-    recordUserId: string,
-    localDate: string,
-    steps: number,
-    updatedAt: string,
-  ) => {
-    const record: DailyStepRecord = {
-      userId: recordUserId,
-      localDate,
-      steps: clampDailySteps(steps),
-      lastUpdatedAt: updatedAt,
-    };
-    persistenceQueueRef.current = persistenceQueueRef.current
-      .catch(() => undefined)
-      .then(() => AsyncStorage.setItem(
-        dailyStepStorageKey(recordUserId, localDate),
-        JSON.stringify(record),
-      ));
-    return persistenceQueueRef.current;
-  }, []);
+  const saveDailySteps = useCallback(
+    (
+      recordUserId: string,
+      localDate: string,
+      steps: number,
+      updatedAt: string,
+    ) => {
+      const record: DailyStepRecord = {
+        userId: recordUserId,
+        localDate,
+        steps: clampDailySteps(steps),
+        lastUpdatedAt: updatedAt,
+      };
+      persistenceQueueRef.current = persistenceQueueRef.current
+        .catch(() => undefined)
+        .then(() =>
+          AsyncStorage.setItem(
+            dailyStepStorageKey(recordUserId, localDate),
+            JSON.stringify(record),
+          ),
+        );
+      return persistenceQueueRef.current;
+    },
+    [],
+  );
 
-  const saveMissionEligibleSteps = useCallback((
-    recordUserId: string,
-    localDate: string,
-    steps: number,
-    updatedAt: string,
-  ) => {
-    const record: DailyStepRecord = {
-      userId: recordUserId,
-      localDate,
-      steps: clampDailySteps(steps),
-      lastUpdatedAt: updatedAt,
-    };
-    persistenceQueueRef.current = persistenceQueueRef.current
-      .catch(() => undefined)
-      .then(() => AsyncStorage.setItem(
-        missionStepStorageKey(recordUserId, localDate),
-        JSON.stringify(record),
-      ));
-    return persistenceQueueRef.current;
-  }, []);
+  const saveMissionEligibleSteps = useCallback(
+    (
+      recordUserId: string,
+      localDate: string,
+      steps: number,
+      updatedAt: string,
+    ) => {
+      const record: DailyStepRecord = {
+        userId: recordUserId,
+        localDate,
+        steps: clampDailySteps(steps),
+        lastUpdatedAt: updatedAt,
+      };
+      persistenceQueueRef.current = persistenceQueueRef.current
+        .catch(() => undefined)
+        .then(() =>
+          AsyncStorage.setItem(
+            missionStepStorageKey(recordUserId, localDate),
+            JSON.stringify(record),
+          ),
+        );
+      return persistenceQueueRef.current;
+    },
+    [],
+  );
 
   const refreshProgress = useCallback(async () => {
     if (!userId) {
@@ -261,7 +288,8 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
       // Timezone hints improve the server's local-day selection, but a failure
       // here must not prevent configured missions from loading.
       await syncUserTimezone(userId).catch((error) => {
-        if (__DEV__) console.warn('[Mission refresh] Timezone sync failed.', error);
+        if (__DEV__)
+          console.warn("[Mission refresh] Timezone sync failed.", error);
       });
 
       const freshProgress = await getVerifiedDailyProgress(userId);
@@ -269,10 +297,13 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
       setProgressMessage(null);
       setIsUsingCachedProgress(false);
     } catch (error) {
-      if (__DEV__) console.warn('[Mission refresh] Mission query failed.', error);
-      setProgressMessage(error instanceof VerifiedProgressError
-        ? 'Missions could not be loaded. Check your connection and try again.'
-        : 'Missions could not be loaded. Please try again.');
+      if (__DEV__)
+        console.warn("[Mission refresh] Mission query failed.", error);
+      setProgressMessage(
+        error instanceof VerifiedProgressError
+          ? "Missions could not be loaded. Check your connection and try again."
+          : "Missions could not be loaded. Please try again.",
+      );
       if (!restoredProgress) setProgress(null);
       setIsUsingCachedProgress(Boolean(restoredProgress));
     } finally {
@@ -290,15 +321,15 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
       setMissionEligibleSteps(0);
       missionEligibleStepsRef.current = 0;
       setLastUpdatedAt(null);
-      setSensorAvailability('unavailable');
-      setPermissionStatus('undetermined');
+      setSensorAvailability("unavailable");
+      setPermissionStatus("undetermined");
       setTrackingError(null);
       return;
     }
 
     const localDate = getLocalDateKey();
     activeDateRef.current = localDate;
-    setSensorAvailability('checking');
+    setSensorAvailability("checking");
     setTrackingError(null);
 
     try {
@@ -307,45 +338,47 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
         loadMissionEligibleSteps(userId, localDate),
         loadActiveTrailActivity(),
       ]);
-      activeTrailRef.current = isActiveTrailCurrent(activeTrail) ? activeTrail : null;
+      activeTrailRef.current = isActiveTrailCurrent(activeTrail)
+        ? activeTrail
+        : null;
       missionEligibleStepsRef.current = savedMissionSteps;
       setMissionEligibleSteps(savedMissionSteps);
       const Pedometer = await loadPedometerModule();
       if (!Pedometer) {
         setTodaySteps(saved?.steps ?? 0);
         setLastUpdatedAt(saved?.lastUpdatedAt ?? null);
-        setSensorAvailability('unavailable');
-        setTrackingError('Step tracking is unavailable on this device.');
+        setSensorAvailability("unavailable");
+        setTrackingError("Step tracking is unavailable on this device.");
         return;
       }
       const available = await Pedometer.isAvailableAsync();
       if (!available) {
         setTodaySteps(saved?.steps ?? 0);
         setLastUpdatedAt(saved?.lastUpdatedAt ?? null);
-        setSensorAvailability('unavailable');
-        setTrackingError('Step tracking is unavailable on this device.');
+        setSensorAvailability("unavailable");
+        setTrackingError("Step tracking is unavailable on this device.");
         return;
       }
-      setSensorAvailability('available');
+      setSensorAvailability("available");
 
       let permission = await Pedometer.getPermissionsAsync();
-      if (permission.status === 'undetermined' && permission.canAskAgain) {
+      if (permission.status === "undetermined" && permission.canAskAgain) {
         permission = await Pedometer.requestPermissionsAsync();
       }
       if (!permission.granted) {
-        setPermissionStatus(permission.status === 'undetermined' ? 'undetermined' : 'denied');
+        setPermissionStatus(
+          permission.status === "undetermined" ? "undetermined" : "denied",
+        );
         setTodaySteps(saved?.steps ?? 0);
         setLastUpdatedAt(saved?.lastUpdatedAt ?? null);
-        setTrackingError('Motion permission is needed to count your steps.');
+        setTrackingError("Motion permission is needed to count your steps.");
         return;
       }
-      setPermissionStatus('granted');
+      setPermissionStatus("granted");
 
-      let sessionBaseSteps = saved?.steps ?? 0;
-      if (Platform.OS === 'ios') {
-        const result = await Pedometer.getStepCountAsync(startOfLocalDay(), new Date());
-        sessionBaseSteps = clampDailySteps(result.steps);
-      }
+      // Mission Trails only continues from activity already recorded
+      // by Mission Trails. Do not import all iPhone steps since midnight.
+      const sessionBaseSteps = saved?.steps ?? 0;
 
       const startedAt = new Date().toISOString();
       const eligibleBase = activeTrailRef.current
@@ -379,14 +412,22 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
           );
           missionEligibleStepsRef.current = nextMissionSteps;
           setMissionEligibleSteps(nextMissionSteps);
-          void saveMissionEligibleSteps(userId, localDate, nextMissionSteps, updatedAt);
+          void saveMissionEligibleSteps(
+            userId,
+            localDate,
+            nextMissionSteps,
+            updatedAt,
+          );
         }
       });
       setIsTracking(true);
     } catch (error) {
-      if (__DEV__) console.warn('[Daily activity] Pedometer could not start.', error);
-      setSensorAvailability('unavailable');
-      setTrackingError('Step tracking could not start. Pull to refresh and try again.');
+      if (__DEV__)
+        console.warn("[Daily activity] Pedometer could not start.", error);
+      setSensorAvailability("unavailable");
+      setTrackingError(
+        "Step tracking could not start. Pull to refresh and try again.",
+      );
     }
   }, [saveDailySteps, saveMissionEligibleSteps, userId]);
 
@@ -398,33 +439,48 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
       if (queuedProgress) setProgress(queuedProgress);
       setDistanceWarning(null);
     } catch (error) {
-      if (__DEV__) console.warn('[Daily activity] Queued GPS sync failed.', error);
-      setDistanceWarning(error instanceof VerifiedProgressError
-        ? 'Walking activity couldn’t update.'
-        : 'Walking activity couldn’t update. Try again shortly.');
+      if (__DEV__)
+        console.warn("[Daily activity] Queued GPS sync failed.", error);
+      setDistanceWarning(
+        error instanceof VerifiedProgressError
+          ? "Walking activity couldn’t update."
+          : "Walking activity couldn’t update. Try again shortly.",
+      );
     }
   }, [restartPedometer, userId]);
 
-  const claimReward = useCallback(async (missionId: string) => {
-    setIsProgressLoading(true);
-    try {
-      if (!userId) throw new VerifiedProgressError('UNAUTHORIZED', 'Please sign in again.');
-      const result = await claimMissionReward(userId, missionId);
-      setProgress(result.progress);
-      setProgressMessage(null);
-    } catch (error) {
-      setProgressMessage(error instanceof VerifiedProgressError
-        ? error.message
-        : 'That reward is not ready to claim yet.');
-    } finally {
-      setIsProgressLoading(false);
-    }
-  }, [userId]);
+  const claimReward = useCallback(
+    async (missionId: string) => {
+      setIsProgressLoading(true);
+      try {
+        if (!userId)
+          throw new VerifiedProgressError(
+            "UNAUTHORIZED",
+            "Please sign in again.",
+          );
+        const result = await claimMissionReward(userId, missionId);
+        setProgress(result.progress);
+        setProgressMessage(null);
+      } catch (error) {
+        setProgressMessage(
+          error instanceof VerifiedProgressError
+            ? error.message
+            : "That reward is not ready to claim yet.",
+        );
+      } finally {
+        setIsProgressLoading(false);
+      }
+    },
+    [userId],
+  );
 
   useEffect(() => {
     let active = true;
     void loadActiveTrailActivity().then((activity) => {
-      if (active) setActiveTrailActivity(isActiveTrailCurrent(activity) ? activity : null);
+      if (active)
+        setActiveTrailActivity(
+          isActiveTrailCurrent(activity) ? activity : null,
+        );
     });
     const unsubscribe = subscribeToActiveTrailActivity((activity) => {
       setActiveTrailActivity(isActiveTrailCurrent(activity) ? activity : null);
@@ -453,9 +509,11 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
       if (!active) return;
       const isNear = isWithinMissionStepRange(location.coords, destination);
       isNearDestinationRef.current = isNear;
-      setDestinationStepWarning(isNear
-        ? null
-        : `Mission steps are paused until you are within 0.31 mi of ${activeTrailActivity.trail.name}.`);
+      setDestinationStepWarning(
+        isNear
+          ? null
+          : `Mission steps are paused until you are within 0.31 mi of ${activeTrailActivity.trail.name}.`,
+      );
     };
 
     async function watchDestinationProximity() {
@@ -465,9 +523,12 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
           Location.getForegroundPermissionsAsync(),
         ]);
         if (!active) return;
-        if (!servicesEnabled || permission.status !== Location.PermissionStatus.GRANTED) {
+        if (
+          !servicesEnabled ||
+          permission.status !== Location.PermissionStatus.GRANTED
+        ) {
           setDestinationStepWarning(
-            'Mission steps are paused until location is enabled near the trail destination.',
+            "Mission steps are paused until location is enabled near the trail destination.",
           );
           return;
         }
@@ -485,10 +546,14 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
         );
         if (!active) subscription.remove();
       } catch (locationError) {
-        if (__DEV__) console.warn('[Mission steps] Destination proximity unavailable.', locationError);
+        if (__DEV__)
+          console.warn(
+            "[Mission steps] Destination proximity unavailable.",
+            locationError,
+          );
         if (active) {
           setDestinationStepWarning(
-            'Mission steps are paused until your destination distance can be verified.',
+            "Mission steps are paused until your destination distance can be verified.",
           );
         }
       }
@@ -512,9 +577,13 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
   }, [refreshActivity, refreshProgress]);
 
   useEffect(() => {
-    const appStateSubscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void Promise.all([refreshProgress(), refreshActivity()]);
-    });
+    const appStateSubscription = AppState.addEventListener(
+      "change",
+      (state) => {
+        if (state === "active")
+          void Promise.all([refreshProgress(), refreshActivity()]);
+      },
+    );
     const dateTimer = setInterval(() => {
       if (activeDateRef.current !== getLocalDateKey()) {
         void Promise.all([refreshProgress(), refreshActivity()]);
@@ -527,7 +596,7 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
   }, [refreshActivity, refreshProgress]);
 
   useEffect(() => {
-    if (!userId || permissionStatus !== 'granted') return;
+    if (!userId || permissionStatus !== "granted") return;
     const localDate = getLocalDateKey();
     const syncTimer = setTimeout(() => {
       void syncDeviceSteps(userId, localDate, missionEligibleSteps)
@@ -536,8 +605,11 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
           setStepWarning(null);
         })
         .catch((error) => {
-          if (__DEV__) console.warn('[Daily activity] Step sync will retry later.', error);
-          setStepWarning('Step progress could not update. Your saved missions are still available.');
+          if (__DEV__)
+            console.warn("[Daily activity] Step sync will retry later.", error);
+          setStepWarning(
+            "Step progress could not update. Your saved missions are still available.",
+          );
         });
     }, 1_500);
     return () => clearTimeout(syncTimer);
@@ -558,62 +630,69 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
     setLevelUp(null);
   }, [userId]);
 
-  const verifiedDistanceMeters = progress?.localDate === getLocalDateKey()
-    ? progress.verifiedDistanceMeters
-    : 0;
+  const verifiedDistanceMeters =
+    progress?.localDate === getLocalDateKey()
+      ? progress.verifiedDistanceMeters
+      : 0;
   const distance = selectDailyDistance(verifiedDistanceMeters, todaySteps);
-  const activity = useMemo<DailyActivityValue>(() => ({
-    todaySteps,
-    missionEligibleSteps,
-    todayDistanceMeters: distance.meters,
-    todayDistanceMiles: metersToMiles(distance.meters),
-    activeCaloriesBurned: estimateActiveCalories(distance.meters),
-    distanceSource: distance.source,
-    lastUpdatedAt,
-    sensorAvailability,
-    permissionStatus,
-    isTracking,
-    trackingError,
-    refreshActivity,
-  }), [
-    distance.meters,
-    distance.source,
-    isTracking,
-    lastUpdatedAt,
-    missionEligibleSteps,
-    permissionStatus,
-    refreshActivity,
-    sensorAvailability,
-    todaySteps,
-    trackingError,
-  ]);
+  const activity = useMemo<DailyActivityValue>(
+    () => ({
+      todaySteps,
+      missionEligibleSteps,
+      todayDistanceMeters: distance.meters,
+      todayDistanceMiles: metersToMiles(distance.meters),
+      activeCaloriesBurned: estimateActiveCalories(distance.meters),
+      distanceSource: distance.source,
+      lastUpdatedAt,
+      sensorAvailability,
+      permissionStatus,
+      isTracking,
+      trackingError,
+      refreshActivity,
+    }),
+    [
+      distance.meters,
+      distance.source,
+      isTracking,
+      lastUpdatedAt,
+      missionEligibleSteps,
+      permissionStatus,
+      refreshActivity,
+      sensorAvailability,
+      todaySteps,
+      trackingError,
+    ],
+  );
 
-  const value = useMemo<ActivityProgressContextValue>(() => ({
-    activity,
-    dailyProgress: {
-      progress,
-      isLoading: isProgressLoading,
-      message: progressMessage,
-      isUsingCachedProgress,
-      walkingWarnings: {
-        distance: distanceWarning,
-        steps: destinationStepWarning ?? stepWarning,
+  const value = useMemo<ActivityProgressContextValue>(
+    () => ({
+      activity,
+      dailyProgress: {
+        progress,
+        isLoading: isProgressLoading,
+        message: progressMessage,
+        isUsingCachedProgress,
+        walkingWarnings: {
+          distance: distanceWarning,
+          steps: destinationStepWarning ?? stepWarning,
+        },
+        refresh: refreshProgress,
+        claimReward,
       },
-      refresh: refreshProgress,
+    }),
+    [
+      activity,
       claimReward,
-    },
-  }), [
-    activity,
-    claimReward,
-    isProgressLoading,
-    isUsingCachedProgress,
-    progress,
-    progressMessage,
-    refreshProgress,
-    distanceWarning,
-    destinationStepWarning,
-    stepWarning,
-  ]);
+      isProgressLoading,
+      isUsingCachedProgress,
+      progress,
+      progressMessage,
+      refreshProgress,
+      distanceWarning,
+      destinationStepWarning,
+      stepWarning,
+    ],
+  );
 
   return (
     <ActivityProgressContext.Provider value={value}>
@@ -631,7 +710,8 @@ export function ActivityProgressProvider({ children }: { children: ReactNode }) 
 
 function useActivityProgressContext() {
   const context = useContext(ActivityProgressContext);
-  if (!context) throw new Error('ActivityProgressProvider is missing from the app layout.');
+  if (!context)
+    throw new Error("ActivityProgressProvider is missing from the app layout.");
   return context;
 }
 

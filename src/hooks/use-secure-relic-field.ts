@@ -1,7 +1,7 @@
-import type { LocationObject } from 'expo-location';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { LocationObject } from "expo-location";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { RELICS, type Relic } from '@/constants/relics';
+import { RELICS, type Relic } from "@/constants/relics";
 import {
   collectRevealedRelic,
   findNearestRelic,
@@ -9,9 +9,16 @@ import {
   locationsToProximitySamples,
   placeDevelopmentTestRelic,
   RelicProximityError,
-} from '@/services/relic-proximity';
-import { cacheServerCollection, getPlayerProgress } from '@/utils/player-progress';
-import type { MysteryZone, RelicProximityStatus, RevealedRelic } from '@/types/relic-proximity';
+} from "@/services/relic-proximity";
+import type {
+  MysteryZone,
+  RelicProximityStatus,
+  RevealedRelic,
+} from "@/types/relic-proximity";
+import {
+  cacheServerCollection,
+  getPlayerProgress,
+} from "@/utils/player-progress";
 
 type Options = {
   enabled: boolean;
@@ -19,130 +26,291 @@ type Options = {
   onCollected: (relic: Relic, totalXp: number) => void;
 };
 
-export function useSecureRelicField({ enabled, gpsPoints, onCollected }: Options) {
+export function useSecureRelicField({
+  enabled,
+  gpsPoints,
+  onCollected,
+}: Options) {
   const gpsPointsRef = useRef(gpsPoints);
+  const initialFieldRequestRef = useRef(false);
+  const lastAutoRelicScanAtRef = useRef(0);
+
   const [zones, setZones] = useState<MysteryZone[]>([]);
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
-  const [status, setStatus] = useState<RelicProximityStatus>('mystery_zone_visible');
-  const [message, setMessage] = useState('Looking for Hidden Relic Areas…');
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<
+    string | null
+  >(null);
+  const [status, setStatus] = useState<RelicProximityStatus>(
+    "mystery_zone_visible",
+  );
+  const [message, setMessage] = useState("Looking for Hidden Relic Areas…");
   const [clueStrength, setClueStrength] = useState<0 | 1 | 2 | 3>(0);
   const [distanceFeet, setDistanceFeet] = useState<number | null>(null);
   const [bearingDegrees, setBearingDegrees] = useState<number | null>(null);
   const [revealed, setRevealed] = useState<RevealedRelic | null>(null);
   const [revealLastSampleAt, setRevealLastSampleAt] = useState(0);
   const [isBusy, setIsBusy] = useState(false);
-  const [refreshAfterSeconds, setRefreshAfterSeconds] = useState<number | null>(null);
+  const [refreshAfterSeconds, setRefreshAfterSeconds] = useState<number | null>(
+    null,
+  );
 
   useEffect(() => {
     gpsPointsRef.current = gpsPoints;
   }, [gpsPoints]);
 
   const selectedZone = useMemo(
-    () => zones.find((zone) => zone.assignmentId === selectedAssignmentId) ?? zones[0] ?? null,
+    () =>
+      zones.find((zone) => zone.assignmentId === selectedAssignmentId) ??
+      zones[0] ??
+      null,
     [selectedAssignmentId, zones],
   );
-  const finalSamples = gpsPoints.filter((point) => point.timestamp > revealLastSampleAt).slice(-3);
+  const finalSamples = gpsPoints
+    .filter((point) => point.timestamp > revealLastSampleAt)
+    .slice(-3);
 
   const refreshField = useCallback(async () => {
     const currentGpsPoints = gpsPointsRef.current;
-    if (!enabled || currentGpsPoints.length < 3) return;
+    if (!enabled) {
+      return;
+    }
+
+    if (currentGpsPoints.length < 3) {
+      setStatus("improving_accuracy");
+      setMessage(
+        "Getting an accurate GPS lock… Hold still in an open area for a moment.",
+      );
+      return;
+    }
     setIsBusy(true);
     try {
-      const field = await getMysteryZones(locationsToProximitySamples(currentGpsPoints));
+      const field = await getMysteryZones(
+        locationsToProximitySamples(currentGpsPoints),
+      );
+      if (__DEV__) {
+        console.log(
+          "[RELIC FIELD ZONES]",
+          field.zones.map((zone) => ({
+            assignmentId: zone.assignmentId,
+            availability: zone.availability,
+            status: zone.status,
+            radiusMeters: zone.radiusMeters,
+          })),
+        );
+      }
+
       setZones(field.zones);
-      setSelectedAssignmentId((current) => (
+      setSelectedAssignmentId((current) =>
         field.zones.some((zone) => zone.assignmentId === current)
           ? current
-          : field.zones[0]?.assignmentId ?? null
-      ));
+          : (field.zones[0]?.assignmentId ?? null),
+      );
       setRefreshAfterSeconds(field.refreshAfterSeconds);
       setRevealed(null);
       setRevealLastSampleAt(0);
       setClueStrength(0);
       setDistanceFeet(null);
       setBearingDegrees(null);
-      setMessage(field.limitation
-        ? 'Hidden Relic Areas are not ready here yet. Try another trail or park.'
-        : field.zones.length ? 'A Hidden Relic Area is nearby. Follow the clues!' : 'No Hidden Relic Areas are nearby right now. Keep exploring!');
-      setStatus('mystery_zone_visible');
+      setMessage(
+        field.limitation
+          ? "Hidden Relic Areas are not ready here yet. Try another trail or park."
+          : field.zones.length
+            ? "A Hidden Relic Area is nearby. Follow the clues!"
+            : "No Hidden Relic Areas are nearby right now. Keep exploring!",
+      );
+      setStatus("mystery_zone_visible");
     } catch (error) {
-      setStatus('offline_retry');
-      setMessage(error instanceof RelicProximityError ? error.message : 'The map is offline. Tap retry when connected.');
+      setStatus("offline_retry");
+      setMessage(
+        error instanceof RelicProximityError
+          ? error.message
+          : "The map is offline. Tap retry when connected.",
+      );
     } finally {
       setIsBusy(false);
     }
   }, [enabled]);
 
   useEffect(() => {
-    if (enabled && gpsPoints.length === 3 && zones.length === 0) void refreshField();
-  }, [enabled, gpsPoints.length, refreshField, zones.length]);
+  if (!enabled) {
+    initialFieldRequestRef.current = false;
+    return;
+  }
 
+  if (
+    gpsPoints.length < 3 ||
+    initialFieldRequestRef.current
+  ) {
+    return;
+  }
+
+  initialFieldRequestRef.current = true;
+
+  void refreshField();
+}, [
+  enabled,
+  gpsPoints.length,
+  refreshField,
+]);
   useEffect(() => {
     if (!enabled || refreshAfterSeconds === null) return;
-    const timer = setTimeout(() => {
-      setMessage('These relics moved! Looking for new Hidden Relic Areas…');
-      void refreshField();
-    }, Math.max(1, refreshAfterSeconds) * 1_000 + 750);
+    const timer = setTimeout(
+      () => {
+        setMessage("These relics moved! Looking for new Hidden Relic Areas…");
+        void refreshField();
+      },
+      Math.max(1, refreshAfterSeconds) * 1_000 + 750,
+    );
     return () => clearTimeout(timer);
   }, [enabled, refreshAfterSeconds, refreshField]);
 
-  const scan = useCallback(async () => {
-    if (gpsPoints.length < 3) {
-      setStatus('improving_accuracy');
-      setMessage('Finding your location… Move to an open area.');
+  const scan = useCallback(async (silent = false) => {
+    const currentGpsPoints = gpsPointsRef.current;
+
+    if (currentGpsPoints.length < 3) {
+      setStatus("improving_accuracy");
+      setMessage("Finding your location… Move to an open area.");
       return;
     }
     const minimumSearchFeedback = new Promise<void>((resolve) => {
       setTimeout(resolve, 700);
     });
-    setMessage('Searching for relics…');
-    setDistanceFeet(null);
-    setBearingDegrees(null);
+    if (!silent) {
+      setMessage("Searching for relics…");
+    }
+
+    // Keep the last known distance and direction visible while
+    // the next GPS/server reading is being checked.
     setIsBusy(true);
     try {
       const [result] = await Promise.all([
-        findNearestRelic(locationsToProximitySamples(gpsPoints)),
+        findNearestRelic(
+          locationsToProximitySamples(currentGpsPoints),
+        ),
         minimumSearchFeedback,
       ]);
+      if (__DEV__) {
+        console.log("[RELIC RADAR RESULT]", {
+          status: result.status,
+          message: result.message,
+          distanceFeet: result.distanceFeet ?? null,
+          bearingDegrees: result.bearingDegrees ?? null,
+          clueStrength: result.clueStrength ?? 0,
+          assignmentId: result.assignmentId ?? null,
+        });
+      }
+
       setStatus(result.status);
       setMessage(result.message);
       setClueStrength(result.clueStrength ?? 0);
       setDistanceFeet(result.distanceFeet ?? null);
       setBearingDegrees(result.bearingDegrees ?? null);
-      if (result.status === 'revealed' && result.relic) {
+      if (result.status === "revealed" && result.relic) {
         if (result.assignmentId) setSelectedAssignmentId(result.assignmentId);
         setRevealed(result.relic);
-        setRevealLastSampleAt(gpsPoints.at(-1)?.timestamp ?? Date.now());
+        setRevealLastSampleAt(
+          currentGpsPoints.at(-1)?.timestamp ?? Date.now(),
+        );
       }
     } catch (error) {
       await minimumSearchFeedback;
-      setStatus('offline_retry');
-      setMessage(error instanceof RelicProximityError ? error.message : 'We lost the connection. Tap Try Again.');
+      setStatus("offline_retry");
+      setMessage(
+        error instanceof RelicProximityError
+          ? error.message
+          : "We lost the connection. Tap Try Again.",
+      );
     } finally {
       setIsBusy(false);
     }
-  }, [gpsPoints]);
+  }, []);
+
+  // =====================================================
+  // AUTOMATIC NEAREST RELIC RADAR
+  // =====================================================
+  //
+  // Once the server has created Hidden Relic Areas,
+  // automatically check for the nearest relic as GPS updates.
+  //
+  // The client receives distance + bearing only.
+  // Exact relic coordinates remain server-side.
+
+  useEffect(() => {
+    if (
+      !enabled ||
+      zones.length === 0 ||
+      gpsPoints.length < 3 ||
+      isBusy ||
+      revealed
+    ) {
+      return;
+    }
+
+    const latestGpsTimestamp =
+      gpsPoints.at(-1)?.timestamp ?? 0;
+
+    if (!latestGpsTimestamp) {
+      return;
+    }
+
+    const now = Date.now();
+
+    // Maximum about 5 automatic checks per minute.
+    if (
+      now - lastAutoRelicScanAtRef.current <
+      12_000
+    ) {
+      return;
+    }
+
+    lastAutoRelicScanAtRef.current = now;
+
+    if (__DEV__) {
+      console.log(
+        "[RELIC RADAR ZONES]",
+        zones.map((zone) => ({
+          assignmentId: zone.assignmentId,
+          availability: zone.availability,
+          status: zone.status,
+          radiusMeters: zone.radiusMeters,
+        })),
+      );
+    }
+
+    void scan(true);
+  }, [
+    enabled,
+    gpsPoints.length,
+    gpsPoints.at(-1)?.timestamp,
+    isBusy,
+    revealed,
+    scan,
+    zones.length,
+  ]);
 
   const placeTestRelic = useCallback(async () => {
     if (gpsPoints.length < 3) {
-      setStatus('improving_accuracy');
-      setMessage('Finding your location… Move to an open area.');
+      setStatus("improving_accuracy");
+      setMessage("Finding your location… Move to an open area.");
       return;
     }
     setIsBusy(true);
     try {
-      const placed = await placeDevelopmentTestRelic(locationsToProximitySamples(gpsPoints));
+      const placed = await placeDevelopmentTestRelic(
+        locationsToProximitySamples(gpsPoints),
+      );
       await refreshField();
       setSelectedAssignmentId(placed.assignmentId);
-      setStatus('mystery_zone_visible');
+      setStatus("mystery_zone_visible");
       setDistanceFeet(null);
       setBearingDegrees(null);
       setMessage(placed.message);
     } catch (error) {
-      setStatus('offline_retry');
-      setMessage(error instanceof RelicProximityError
-        ? error.message
-        : 'The test relic could not be placed. Tap Try Again.');
+      setStatus("offline_retry");
+      setMessage(
+        error instanceof RelicProximityError
+          ? error.message
+          : "The test relic could not be placed. Tap Try Again.",
+      );
     } finally {
       setIsBusy(false);
     }
@@ -151,11 +319,11 @@ export function useSecureRelicField({ enabled, gpsPoints, onCollected }: Options
   const collect = useCallback(async () => {
     if (!selectedZone || !revealed) return;
     if (finalSamples.length < 3) {
-      setStatus('improving_accuracy');
-      setMessage('Checking your location… Hold still for a moment.');
+      setStatus("improving_accuracy");
+      setMessage("Checking your location… Hold still for a moment.");
       return;
     }
-    setStatus('collection_processing');
+    setStatus("collection_processing");
     setIsBusy(true);
     try {
       const result = await collectRevealedRelic(
@@ -164,12 +332,22 @@ export function useSecureRelicField({ enabled, gpsPoints, onCollected }: Options
       );
       setStatus(result.status);
       setMessage(result.message);
-      const relic = RELICS.find((item) => item.id === (result.collection?.relicId ?? result.relic?.id));
+      const relic = RELICS.find(
+        (item) => item.id === (result.collection?.relicId ?? result.relic?.id),
+      );
       if (relic && result.collection) {
-        await cacheServerCollection(relic, result.collection.collectedAt, result.collection.xpAwarded);
+        await cacheServerCollection(
+          relic,
+          result.collection.collectedAt,
+          result.collection.xpAwarded,
+        );
         const progress = await getPlayerProgress();
         onCollected(relic, progress.totalXp);
-        setZones((current) => current.filter((zone) => zone.assignmentId !== selectedZone.assignmentId));
+        setZones((current) =>
+          current.filter(
+            (zone) => zone.assignmentId !== selectedZone.assignmentId,
+          ),
+        );
         setRevealed(null);
         setRevealLastSampleAt(0);
         setClueStrength(0);
@@ -177,17 +355,33 @@ export function useSecureRelicField({ enabled, gpsPoints, onCollected }: Options
         setBearingDegrees(null);
       }
     } catch (error) {
-      setStatus('offline_retry');
-      setMessage(error instanceof RelicProximityError ? error.message : 'We lost the connection. Tap Collect Relic again.');
+      setStatus("offline_retry");
+      setMessage(
+        error instanceof RelicProximityError
+          ? error.message
+          : "We lost the connection. Tap Collect Relic again.",
+      );
     } finally {
       setIsBusy(false);
     }
   }, [finalSamples, onCollected, revealed, selectedZone]);
 
   return {
-    zones, selectedZone, selectedAssignmentId, setSelectedAssignmentId,
-    status, message, clueStrength, distanceFeet, bearingDegrees, revealed, isBusy,
+    zones,
+    selectedZone,
+    selectedAssignmentId,
+    setSelectedAssignmentId,
+    status,
+    message,
+    clueStrength,
+    distanceFeet,
+    bearingDegrees,
+    revealed,
+    isBusy,
     freshFinalReadingCount: finalSamples.length,
-    refreshField, scan, placeTestRelic, collect,
+    refreshField,
+    scan,
+    placeTestRelic,
+    collect,
   };
 }
