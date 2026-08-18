@@ -1098,7 +1098,7 @@ export default function HomeScreen() {
         showsMyLocationButton={false}
         showsCompass={false}
         showsScale={false}
-        showsPointsOfInterest={false}
+        showsPointsOfInterests={false}
         rotateEnabled
         pitchEnabled
         onRegionChangeComplete={setMapRegion}
