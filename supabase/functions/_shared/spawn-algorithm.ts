@@ -23,14 +23,17 @@ export type MysteryZone = {
 const EARTH_RADIUS_METERS = 6_371_000;
 const GEOHASH_ALPHABET = '0123456789bcdefghjkmnpqrstuvwxyz';
 
+// Purpose: Implements the degrees to radians operation.
 function degreesToRadians(degrees: number) {
   return degrees * (Math.PI / 180);
 }
 
+// Purpose: Implements the radians to degrees operation.
 function radiansToDegrees(radians: number) {
   return radians * (180 / Math.PI);
 }
 
+// Purpose: Returns spawn window.
 export function getSpawnWindow(
   serverNow: Date,
   windowMinutes = 30,
@@ -51,6 +54,7 @@ export function getSpawnWindow(
   };
 }
 
+// Purpose: Implements the distance meters operation.
 export function distanceMeters(from: Coordinate, to: Coordinate) {
   const latitudeDelta = degreesToRadians(to.latitude - from.latitude);
   const longitudeDelta = degreesToRadians(to.longitude - from.longitude);
@@ -66,6 +70,7 @@ export function distanceMeters(from: Coordinate, to: Coordinate) {
   return EARTH_RADIUS_METERS * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
 }
 
+// Purpose: Implements the destination point operation.
 export function destinationPoint(
   center: Coordinate,
   distanceFromCenterMeters: number,
@@ -95,6 +100,7 @@ export function destinationPoint(
   };
 }
 
+// Purpose: Implements the hmac bytes operation.
 async function hmacBytes(secret: string, message: string) {
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -109,12 +115,14 @@ async function hmacBytes(secret: string, message: string) {
   return new Uint8Array(signature);
 }
 
+// Purpose: Implements the hmac digest operation.
 export async function hmacDigest(secret: string, message: string) {
   return Array.from(await hmacBytes(secret, message))
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('');
 }
 
+// Purpose: Implements the deterministic index operation.
 export async function deterministicIndex(secret: string, message: string, length: number) {
   if (!Number.isInteger(length) || length <= 0) {
     throw new Error('A deterministic choice requires at least one item');
@@ -124,6 +132,7 @@ export async function deterministicIndex(secret: string, message: string, length
   return Math.floor(unitInterval(bytes, 0) * length);
 }
 
+// Purpose: Implements the unit interval operation.
 function unitInterval(bytes: Uint8Array, offset: number) {
   const value =
     bytes[offset] * 0x1000000 +
@@ -134,6 +143,7 @@ function unitInterval(bytes: Uint8Array, offset: number) {
   return value / 0x1_0000_0000;
 }
 
+// Purpose: Generates deterministic candidates.
 export async function generateDeterministicCandidates({
   secret,
   regionGeohash,
@@ -142,6 +152,10 @@ export async function generateDeterministicCandidates({
   count,
   searchRadiusMeters,
   minimumSpacingMeters,
+  minimumDistanceMeters = 0,
+  seedNamespace = 'candidate',
+  slotIndexOffset = 0,
+  excludedPoints = [],
 }: {
   secret: string;
   regionGeohash: string;
@@ -150,7 +164,15 @@ export async function generateDeterministicCandidates({
   count: number;
   searchRadiusMeters: number;
   minimumSpacingMeters: number;
+  minimumDistanceMeters?: number;
+  seedNamespace?: string;
+  slotIndexOffset?: number;
+  excludedPoints?: Coordinate[];
 }) {
+  if (minimumDistanceMeters < 0 || minimumDistanceMeters >= searchRadiusMeters) {
+    throw new Error('Invalid relic candidate distance band');
+  }
+
   const candidates: SpawnPoint[] = [];
   const maximumAttempts = Math.max(80, count * 30);
 
@@ -159,14 +181,28 @@ export async function generateDeterministicCandidates({
     // a client from predicting it without the server-only secret.
     const bytes = await hmacBytes(
       secret,
-      `candidate|${regionGeohash}|${windowId}|${attempt}`,
+      `${seedNamespace}|${regionGeohash}|${windowId}|${attempt}`,
     );
-    const radius = Math.sqrt(unitInterval(bytes, 0)) * searchRadiusMeters;
+    const radius = Math.sqrt(
+      minimumDistanceMeters ** 2 +
+        unitInterval(bytes, 0) *
+          (searchRadiusMeters ** 2 - minimumDistanceMeters ** 2),
+    );
     const bearing = unitInterval(bytes, 4) * 360;
     const point = destinationPoint(center, radius, bearing);
 
-    if (candidates.every((candidate) => distanceMeters(candidate, point) >= minimumSpacingMeters)) {
-      candidates.push({ ...point, slotIndex: candidates.length });
+    if (
+      excludedPoints.every(
+        (candidate) => distanceMeters(candidate, point) >= minimumSpacingMeters,
+      ) &&
+      candidates.every(
+        (candidate) => distanceMeters(candidate, point) >= minimumSpacingMeters,
+      )
+    ) {
+      candidates.push({
+        ...point,
+        slotIndex: slotIndexOffset + candidates.length,
+      });
     }
   }
 
@@ -177,6 +213,7 @@ export async function generateDeterministicCandidates({
   return candidates;
 }
 
+// Purpose: Selects deterministic safe locations.
 export async function selectDeterministicSafeLocations({
   secret,
   regionGeohash,
@@ -184,6 +221,9 @@ export async function selectDeterministicSafeLocations({
   locations,
   count,
   minimumSpacingMeters,
+  seedNamespace = 'safe-location',
+  slotIndexOffset = 0,
+  excludedPoints = [],
 }: {
   secret: string;
   regionGeohash: string;
@@ -191,12 +231,18 @@ export async function selectDeterministicSafeLocations({
   locations: Array<Coordinate & { id: string }>;
   count: number;
   minimumSpacingMeters: number;
+  seedNamespace?: string;
+  slotIndexOffset?: number;
+  excludedPoints?: Coordinate[];
 }) {
   const ranked = await Promise.all(
     locations.map(async (location) => ({
       location,
       rank: Array.from(
-        await hmacBytes(secret, `safe-location|${regionGeohash}|${windowId}|${location.id}`),
+        await hmacBytes(
+          secret,
+          `${seedNamespace}|${regionGeohash}|${windowId}|${location.id}`,
+        ),
       )
         .map((byte) => byte.toString(16).padStart(2, '0'))
         .join(''),
@@ -208,8 +254,20 @@ export async function selectDeterministicSafeLocations({
   const selected: Array<Coordinate & { id: string; slotIndex: number }> = [];
 
   for (const entry of ranked) {
-    if (selected.every((candidate) => distanceMeters(candidate, entry.location) >= minimumSpacingMeters)) {
-      selected.push({ ...entry.location, slotIndex: selected.length });
+    if (
+      excludedPoints.every(
+        (candidate) =>
+          distanceMeters(candidate, entry.location) >= minimumSpacingMeters,
+      ) &&
+      selected.every(
+        (candidate) =>
+          distanceMeters(candidate, entry.location) >= minimumSpacingMeters,
+      )
+    ) {
+      selected.push({
+        ...entry.location,
+        slotIndex: slotIndexOffset + selected.length,
+      });
     }
 
     if (selected.length === count) break;
@@ -218,6 +276,7 @@ export async function selectDeterministicSafeLocations({
   return selected;
 }
 
+// Purpose: Creates mystery zone.
 export async function createMysteryZone({
   secret,
   regionGeohash,
@@ -254,6 +313,7 @@ export async function createMysteryZone({
   };
 }
 
+// Purpose: Implements the encode geohash operation.
 export function encodeGeohash(coordinate: Coordinate, precision = 5) {
   let latitudeRange: [number, number] = [-90, 90];
   let longitudeRange: [number, number] = [-180, 180];
@@ -288,6 +348,7 @@ export function encodeGeohash(coordinate: Coordinate, precision = 5) {
   return geohash;
 }
 
+// Purpose: Implements the decode geohash center operation.
 export function decodeGeohashCenter(geohash: string): Coordinate {
   let latitudeRange: [number, number] = [-90, 90];
   let longitudeRange: [number, number] = [-180, 180];

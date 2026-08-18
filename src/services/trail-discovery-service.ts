@@ -40,16 +40,19 @@ export class TrailDiscoveryError extends Error {
   }
 }
 
+// Purpose: Implements the development log operation.
 function developmentLog(message: string, details?: unknown) {
   if (__DEV__) console.log(`[Trails] ${message}`, details ?? '');
 }
 
+// Purpose: Implements the configuration message operation.
 function configurationMessage() {
   return __DEV__
     ? 'Nearby trail service is not configured correctly.'
     : 'The nearby trail service is temporarily unavailable. Try again shortly.';
 }
 
+// Purpose: Normalizes function error.
 async function normalizeFunctionError(error: unknown): Promise<TrailDiscoveryError> {
   if (error instanceof FunctionsFetchError) {
     return new TrailDiscoveryError(
@@ -115,10 +118,12 @@ async function normalizeFunctionError(error: unknown): Promise<TrailDiscoveryErr
 
 // Three decimal places groups positions into roughly neighborhood-sized cells,
 // so walking a few feet does not spend another nearby-provider request.
+// Purpose: Implements the trail search cache key operation.
 export function trailSearchCacheKey(center: TrailSearchCoordinate, radiusMeters = DEFAULT_RADIUS_METERS) {
   return `${CACHE_PREFIX}${center.latitude.toFixed(3)}:${center.longitude.toFixed(3)}:${Math.round(radiusMeters)}`;
 }
 
+// Purpose: Implements the search nearby trails operation.
 export async function searchNearbyTrails(
   center: TrailSearchCoordinate,
   options: { radiusMeters?: number; forceRefresh?: boolean } = {},

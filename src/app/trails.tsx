@@ -31,6 +31,7 @@ import type { Trail } from '@/types/trails';
 type ViewMode = 'list' | 'map';
 
 // This screen coordinates trail search, filters, map markers, and navigation.
+// Purpose: Renders the trails screen interface.
 export default function TrailsScreen() {
   const router = useRouter();
   const { focus } = useLocalSearchParams<{ focus?: string }>();
@@ -67,6 +68,7 @@ export default function TrailsScreen() {
   }, [discovery.locationCenter, viewMode]);
 
   // Retries GPS and alerts once only for physical-device permission settings.
+  // Purpose: Finds my exact location.
   const findMyExactLocation = useCallback(async () => {
     const result = await discovery.refresh(true);
     if (result.kind === 'located') {
@@ -89,6 +91,7 @@ export default function TrailsScreen() {
   }, [discovery]);
 
   // Saves the selected trail so the details screen can load its full typed data.
+  // Purpose: Opens trail.
   const openTrail = useCallback(async (trail: Trail, section?: 'meetups') => {
     try {
       setSelectedTrailId(trail.id);
@@ -101,11 +104,13 @@ export default function TrailsScreen() {
   }, [router]);
 
   // Restores the complete trail list by clearing search text and active filters.
+  // Purpose: Clears search.
   const clearSearch = useCallback(() => {
     discovery.setQuery('');
     discovery.setFilters({ selected: [] });
   }, [discovery]);
 
+  // Purpose: Opens location settings.
   const openLocationSettings = useCallback(() => {
     void Linking.openSettings().catch((settingsError) => {
       if (__DEV__) console.warn('[Trails] Device settings could not be opened:', settingsError);
@@ -113,6 +118,7 @@ export default function TrailsScreen() {
     });
   }, []);
 
+  // Purpose: Implements the toggle favorite operation.
   const toggleFavorite = useCallback(async (trail: Trail) => {
     try {
       await discovery.toggleFavorite(trail.id);
@@ -123,6 +129,7 @@ export default function TrailsScreen() {
   }, [discovery]);
 
   // Builds one optimized FlatList row and connects its buttons to screen actions.
+  // Purpose: Renders trail.
   const renderTrail = useCallback(({ item }: { item: Trail }) => (
     <TrailCard
       trail={item}
@@ -279,6 +286,7 @@ export default function TrailsScreen() {
 }
 
 // This small control lets the student switch between list and map presentations.
+// Purpose: Renders the view toggle interface.
 function ViewToggle({ value, onChange }: { value: ViewMode; onChange: (value: ViewMode) => void }) {
   return (
     <View style={styles.toggle} accessibilityLabel="Trail view selector">

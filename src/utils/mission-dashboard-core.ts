@@ -22,6 +22,7 @@ export const MISSION_DASHBOARD_SECTION_ORDER = [
 ] as const;
 
 /** Creates every mission count and XP total from the same assigned collection. */
+// Purpose: Implements the summarize mission dashboard operation.
 export function summarizeMissionDashboard(missions: DashboardMissionLike[]) {
   const required = missions.filter((mission) => mission.required);
   const completedRequired = required.filter(
@@ -53,6 +54,7 @@ export function summarizeMissionDashboard(missions: DashboardMissionLike[]) {
 }
 
 /** Converts server state plus live sensor progress into clear, non-claiming UI copy. */
+// Purpose: Returns mission display status.
 export function getMissionDisplayStatus(
   state: DashboardMissionState,
   progress: number,
@@ -68,6 +70,7 @@ export function getMissionDisplayStatus(
 }
 
 /** Keeps a true empty day distinct from loading, failure, and cached offline data. */
+// Purpose: Returns mission collection state.
 export function getMissionCollectionState(input: {
   isLoading: boolean;
   missionCount: number;
@@ -81,12 +84,14 @@ export function getMissionCollectionState(input: {
   return 'loaded';
 }
 
+// Purpose: Clamps progress to its supported range.
 export function clampProgress(value: number, target: number) {
   if (!Number.isFinite(value) || !Number.isFinite(target) || target <= 0) return 0;
   return Math.min(1, Math.max(0, value / target));
 }
 
 /** Selects companion copy only from real activity, mission, and Energy state. */
+// Purpose: Returns companion dashboard message.
 export function getCompanionDashboardMessage(input: {
   name: string;
   hasCompanion: boolean;

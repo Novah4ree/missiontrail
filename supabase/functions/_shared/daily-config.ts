@@ -1,7 +1,9 @@
+// Purpose: Implements the read environment operation.
 function readEnvironment(name: string) {
   return Deno.env.get(name);
 }
 
+// Purpose: Implements the read boolean operation.
 function readBoolean(name: string, fallback: boolean) {
   const value = readEnvironment(name);
   if (!value) return fallback;
@@ -10,6 +12,7 @@ function readBoolean(name: string, fallback: boolean) {
   throw new Error(`Invalid server configuration: ${name}`);
 }
 
+// Purpose: Implements the read positive number operation.
 function readPositiveNumber(name: string, fallback: number) {
   const parsed = Number(readEnvironment(name) ?? fallback);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -48,6 +51,7 @@ export const COLLECTION_ATTEMPTS_PER_MINUTE = readPositiveNumber(
   6,
 );
 
+// Purpose: Determines whether is development mock user.
 export function isDevelopmentMockUser(userId: string) {
   const allowList = (readEnvironment('RELIC_DEVELOPMENT_USER_IDS') ?? '')
     .split(',')
@@ -56,6 +60,7 @@ export function isDevelopmentMockUser(userId: string) {
   return DEVELOPMENT_DISTANCE_MOCK_ENABLED && allowList.includes(userId);
 }
 
+// Purpose: Determines whether is development relic test user.
 export function isDevelopmentRelicTestUser(userId: string) {
   const allowList = (readEnvironment('RELIC_DEVELOPMENT_USER_IDS') ?? '')
     .split(',')

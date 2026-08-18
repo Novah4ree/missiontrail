@@ -9,6 +9,7 @@ type RelicDetailModalProps = {
   onClose: () => void;
 };
 
+// Purpose: Formats collection date.
 function formatCollectionDate(collectedAt?: string) {
   if (!collectedAt) {
     return 'Date unavailable';
@@ -21,6 +22,7 @@ function formatCollectionDate(collectedAt?: string) {
   }).format(new Date(collectedAt));
 }
 
+// Purpose: Renders the relic detail modal interface.
 export function RelicDetailModal({
   relic,
   isCollected,

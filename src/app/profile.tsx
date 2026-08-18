@@ -116,11 +116,13 @@ const RANK_COLORS = [
   "#F97316",
 ] as const;
 
+// Purpose: Normalizes explorer level.
 function normalizeExplorerLevel(level: number) {
   if (!Number.isFinite(level)) return 1;
   return Math.max(1, Math.floor(level));
 }
 
+// Purpose: Returns explorer rank.
 function getExplorerRank(level: number): ExplorerRank {
   const safeLevel = normalizeExplorerLevel(level);
   const zeroBased = safeLevel - 1;
@@ -156,6 +158,7 @@ function getExplorerRank(level: number): ExplorerRank {
   };
 }
 
+// Purpose: Returns next explorer rank.
 function getNextExplorerRank(level: number): ExplorerRank {
   return getExplorerRank(normalizeExplorerLevel(level) + 1);
 }
@@ -267,6 +270,7 @@ const EMPTY_PROFILE: RealProfile = {
   matchColumn: "id",
 };
 
+// Purpose: Renders the profile screen interface.
 export default function ProfileScreen() {
   const safeArea = useSafeAreaInsets();
   const router = useRouter();
@@ -336,6 +340,7 @@ export default function ProfileScreen() {
     void loadRealProfile();
   }, []);
 
+  // Purpose: Loads real profile.
   async function loadRealProfile() {
     setIsProfileLoading(true);
 
@@ -425,6 +430,7 @@ export default function ProfileScreen() {
     }
   }
 
+  // Purpose: Handles refresh.
   async function handleRefresh() {
     if (isRefreshing) return;
 
@@ -445,6 +451,7 @@ export default function ProfileScreen() {
     }
   }
 
+  // Purpose: Opens edit profile.
   function openEditProfile() {
     setDraft({
       displayName: profile.displayName,
@@ -457,6 +464,7 @@ export default function ProfileScreen() {
     setIsEditOpen(true);
   }
 
+  // Purpose: Saves profile.
   async function saveProfile() {
     if (isSavingProfile) return;
 
@@ -554,6 +562,7 @@ export default function ProfileScreen() {
     }
   }
 
+  // Purpose: Handles share.
   async function handleShare() {
     try {
       const location = [profile.city, profile.state].filter(Boolean).join(", ");
@@ -576,6 +585,7 @@ export default function ProfileScreen() {
     }
   }
 
+  // Purpose: Implements the confirm sign out operation.
   function confirmSignOut() {
     Alert.alert(
       "Disconnect session?",
@@ -585,12 +595,14 @@ export default function ProfileScreen() {
         {
           text: "Sign Out",
           style: "destructive",
+          // Purpose: Implements the on press operation.
           onPress: () => void performSignOut(),
         },
       ],
     );
   }
 
+  // Purpose: Implements the perform sign out operation.
   async function performSignOut() {
     try {
       const { error } = await supabase.auth.signOut();
@@ -823,7 +835,7 @@ export default function ProfileScreen() {
 
         <View style={styles.sectionHeader}>
           <View>
-            <Text style={styles.sectionEyebrow}>TODAY'S ACTIVITY</Text>
+            <Text style={styles.sectionEyebrow}>TODAY&apos;S ACTIVITY</Text>
 
             <Text style={styles.sectionTitle}>Today&apos;s Exploring</Text>
           </View>
@@ -1334,6 +1346,7 @@ export default function ProfileScreen() {
   );
 }
 
+// Purpose: Loads profile row.
 async function loadProfileRow(userId: string): Promise<{
   row: ProfileRecord | null;
   matchColumn: ProfileMatchColumn;
@@ -1383,6 +1396,7 @@ async function loadProfileRow(userId: string): Promise<{
   };
 }
 
+// Purpose: Renders the stat card interface.
 function StatCard({
   icon,
   value,
@@ -1409,6 +1423,7 @@ function StatCard({
   );
 }
 
+// Purpose: Renders the progress metric interface.
 function ProgressMetric({
   label,
   value,
@@ -1445,6 +1460,7 @@ function ProgressMetric({
   );
 }
 
+// Purpose: Renders the account row interface.
 function AccountRow({
   icon,
   label,
@@ -1470,6 +1486,7 @@ function AccountRow({
   );
 }
 
+// Purpose: Renders the profile input interface.
 function ProfileInput({
   label,
   value,
@@ -1503,10 +1520,12 @@ function ProfileInput({
   );
 }
 
+// Purpose: Implements the read string operation.
 function readString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+// Purpose: Normalizes username.
 function normalizeUsername(value: string) {
   return value
     .trim()
@@ -1515,6 +1534,7 @@ function normalizeUsername(value: string) {
     .replace(/[^a-zA-Z0-9_.-]/g, "");
 }
 
+// Purpose: Implements the compact number operation.
 function compactNumber(value: number) {
   if (value >= 1_000_000) {
     return `${(value / 1_000_000).toFixed(1)}M`;
@@ -1527,6 +1547,7 @@ function compactNumber(value: number) {
   return Math.round(value).toLocaleString();
 }
 
+// Purpose: Formats active time.
 function formatActiveTime(seconds: number) {
   const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
 
@@ -1543,6 +1564,7 @@ function formatActiveTime(seconds: number) {
   return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
 }
 
+// Purpose: Formats joined date.
 function formatJoinedDate(value: string) {
   const date = new Date(value);
 

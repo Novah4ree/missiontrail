@@ -10,6 +10,7 @@ if (Platform.OS !== 'web') {
 }
 
 // This component draws one public trail location as a selectable map marker.
+// Purpose: Renders the trail map marker interface.
 export function TrailMapMarker({ trail, selected, onPress }: {
   trail: Trail;
   selected: boolean;

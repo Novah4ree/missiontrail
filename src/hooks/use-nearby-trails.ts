@@ -35,6 +35,7 @@ export type TrailLocationResult =
   | { kind: 'denied' | 'services_off' | 'unavailable' };
 
 // Makes sure a GPS object contains finite coordinates inside the Earth's bounds.
+// Purpose: Implements the read valid coordinate operation.
 function readValidCoordinate(location: Location.LocationObject | null): TrailSearchCoordinate | null {
   if (!location) return null;
   const { latitude, longitude } = location.coords;
@@ -44,6 +45,7 @@ function readValidCoordinate(location: Location.LocationObject | null): TrailSea
 }
 
 // Stops the screen from waiting forever when the operating system cannot provide GPS.
+// Purpose: Returns balanced position with timeout.
 async function getBalancedPositionWithTimeout(): Promise<Location.LocationObject | null> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -59,14 +61,17 @@ async function getBalancedPositionWithTimeout(): Promise<Location.LocationObject
 }
 
 // Prints technical details only during development, keeping user messages simple.
+// Purpose: Implements the log location problem operation.
 function logLocationProblem(message: string, error?: unknown) {
   if (__DEV__) console.warn(`[Trails location] ${message}`, error ?? '');
 }
 
+// Purpose: Implements the log trail debug operation.
 function logTrailDebug(message: string, details?: unknown) {
   if (__DEV__) console.info(`[Trails discovery] ${message}`, details ?? '');
 }
 
+// Purpose: Provides the nearby trails React hook behavior.
 export function useNearbyTrails() {
   const [userLocation, setUserLocation] = useState<TrailSearchCoordinate | null>(null);
   const [locationCenter, setLocationCenter] = useState<TrailSearchCoordinate | null>(null);
@@ -92,6 +97,7 @@ export function useNearbyTrails() {
   const favoriteMutationIdsRef = useRef(new Set<string>());
 
   // Loads trail cards for one coordinate and ignores responses from stale searches.
+  // Purpose: Loads catalog.
   const loadCatalog = useCallback(async (
     center?: TrailSearchCoordinate | null,
     options: { forceRefresh?: boolean } = {},
@@ -152,6 +158,7 @@ export function useNearbyTrails() {
   }, []);
 
   // Gives simulators a clear no-location state without inventing GPS coordinates.
+  // Purpose: Implements the activate simulator preview operation.
   const activateSimulatorPreview = useCallback(async (): Promise<TrailLocationResult> => {
     // Development preview only: this coordinate is never saved as the user's location.
     if (!__DEV__ || Platform.OS !== 'ios' || Device.isDevice) return { kind: 'unavailable' };
@@ -166,6 +173,7 @@ export function useNearbyTrails() {
   }, [loadCatalog]);
 
   // Keeps the foreground map pin current after the first GPS fix is found.
+  // Purpose: Starts live location updates.
   const startLiveLocationUpdates = useCallback(async () => {
     if (locationSubscriptionRef.current || locationSubscriptionStartingRef.current) return;
     locationSubscriptionStartingRef.current = true;
@@ -210,6 +218,7 @@ export function useNearbyTrails() {
   }, [loadCatalog]);
 
   // Checks permission once, uses cached GPS immediately, then tries for a fresh fix.
+  // Purpose: Implements the run location request operation.
   const runLocationRequest = useCallback(async (forceRefresh = false): Promise<TrailLocationResult> => {
     const isIosSimulator = Platform.OS === 'ios' && !Device.isDevice;
     if (mountedRef.current) {
@@ -321,6 +330,7 @@ export function useNearbyTrails() {
   }, [activateSimulatorPreview, loadCatalog, startLiveLocationUpdates]);
 
   // Shares one request promise so fast repeated taps cannot start overlapping GPS work.
+  // Purpose: Implements the refresh operation.
   const refresh = useCallback((forceRefresh = false): Promise<TrailLocationResult> => {
     if (locationRequestRef.current) return locationRequestRef.current;
     const request = runLocationRequest(forceRefresh).finally(() => {
@@ -357,6 +367,7 @@ export function useNearbyTrails() {
 
   // Re-centers discovery on the real user; remote map panning must not expose
   // trails outside the nearby radius.
+  // Purpose: Implements the search this area operation.
   const searchThisArea = useCallback(async () => {
     if (mountedRef.current) setIsRefreshing(true);
     if (userLocation && mountedRef.current) setMapCenter(userLocation);
@@ -364,6 +375,7 @@ export function useNearbyTrails() {
   }, [loadCatalog, userLocation]);
 
   // Saves or removes one trail favorite using the existing trail service.
+  // Purpose: Implements the toggle favorite operation.
   const toggleFavorite = useCallback(async (trailId: string) => {
     if (favoriteMutationIdsRef.current.has(trailId)) return;
     favoriteMutationIdsRef.current.add(trailId);

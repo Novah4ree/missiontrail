@@ -128,6 +128,45 @@ test('generated candidates obey minimum spacing', async () => {
   }
 });
 
+test('tier candidates stay inside their annulus and use reserved slots', async () => {
+  const candidates = await generateDeterministicCandidates({
+    secret: SECRET,
+    regionGeohash: REGION,
+    windowId: '991234',
+    center: CENTER,
+    count: 10,
+    minimumDistanceMeters: 804.672,
+    searchRadiusMeters: 3_218.688,
+    minimumSpacingMeters: 175,
+    seedNamespace: 'local',
+    slotIndexOffset: 2_000,
+  });
+
+  for (const [index, candidate] of candidates.entries()) {
+    const distance = distanceMeters(CENTER, candidate);
+    assert.ok(distance >= 804.672 - 0.001);
+    assert.ok(distance <= 3_218.688 + 0.001);
+    assert.equal(candidate.slotIndex, 2_000 + index);
+  }
+});
+
+test('tier namespaces produce independent deterministic fields', async () => {
+  const input = {
+    secret: SECRET,
+    regionGeohash: REGION,
+    windowId: '991234',
+    center: CENTER,
+    count: 1,
+    searchRadiusMeters: 30.48,
+    minimumSpacingMeters: 1,
+  };
+
+  assert.notDeepEqual(
+    await generateDeterministicCandidates({ ...input, seedNamespace: 'ambient' }),
+    await generateDeterministicCandidates({ ...input, seedNamespace: 'neighborhood' }),
+  );
+});
+
 test('mystery zones contain but are not centered on the exact point', async () => {
   const exactPoint = { latitude: 37.7749, longitude: -122.4194 };
   const mystery = await createMysteryZone({
@@ -145,4 +184,3 @@ test('mystery zones contain but are not centered on the exact point', async () =
   assert.notDeepEqual(mystery.center, exactPoint);
   assert.ok([500, 200, 75].includes(mystery.clueBandMeters));
 });
-

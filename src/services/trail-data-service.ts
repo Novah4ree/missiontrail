@@ -175,6 +175,7 @@ export const DEVELOPMENT_TRAILS: Trail[] = __DEV__ ? [
   },
 ] : [];
 
+// Purpose: Implements the local date operation.
 function localDate(offsetDays = 0) {
   const date = new Date();
   date.setDate(date.getDate() + offsetDays);
@@ -187,6 +188,7 @@ let meetups: TrailMeetup[] = [
   { id: 'greenway-stroll', trailId: 'community-greenway', title: 'Community Stroll', date: localDate(1), startTime: '5:30 PM', meetingPoint: 'Public park information sign', hostName: 'Sam K.', attendeeCount: 4, maxGroupSize: 12, pace: 'relaxed' },
 ];
 
+// Purpose: Implements the to app trail operation.
 function toAppTrail(trail: NearbyTrail): Trail {
   const isWalking = trail.category === 'walking_path' || trail.category === 'park';
   const routeLength = trail.routeDistanceMiles ?? 0;
@@ -221,6 +223,7 @@ function toAppTrail(trail: NearbyTrail): Trail {
 }
 
 /** Queries the live nearby provider using the device coordinate and returns nearest first. */
+// Purpose: Returns trails.
 export async function getTrails(
   userLocation?: TrailSearchCoordinate | null,
   options: { forceRefresh?: boolean } = {},
@@ -233,10 +236,12 @@ export async function getTrails(
   return trails.map(toAppTrail);
 }
 
+// Purpose: Returns trail meetups.
 export async function getTrailMeetups(trailId?: string) {
   return meetups.filter((meetup) => !trailId || meetup.trailId === trailId);
 }
 
+// Purpose: Returns favorite trail ids.
 export async function getFavoriteTrailIds() {
   const value = await AsyncStorage.getItem(FAVORITES_KEY);
   if (!value) return [] as string[];
@@ -248,6 +253,7 @@ export async function getFavoriteTrailIds() {
 }
 
 /** Saves only public trail IDs; no user coordinates are written to favorites. */
+// Purpose: Sets trail favorite.
 export async function setTrailFavorite(trailId: string, favorite: boolean) {
   const current = await getFavoriteTrailIds();
   const next = favorite
@@ -268,6 +274,7 @@ export type CreateMeetupInput = {
 };
 
 /** Adds a local demo meetup. TODO: replace with authenticated Supabase moderation. */
+// Purpose: Creates trail meetup.
 export async function createTrailMeetup(input: CreateMeetupInput) {
   const meetup: TrailMeetup = {
     ...input,
@@ -280,16 +287,19 @@ export async function createTrailMeetup(input: CreateMeetupInput) {
 }
 
 /** TODO: submit this request through an authenticated, moderated backend. */
+// Purpose: Implements the request to join meetup operation.
 export async function requestToJoinMeetup(_meetupId: string) {
   return { status: 'requested' as const };
 }
 
 /** TODO: send reports to a trusted moderation service; never alert the reported user. */
+// Purpose: Implements the report meetup host operation.
 export async function reportMeetupHost(_meetupId: string) {
   return { status: 'reported' as const };
 }
 
 /** TODO: persist blocks against the signed-in user account in Supabase. */
+// Purpose: Implements the block meetup host operation.
 export async function blockMeetupHost(_meetupId: string) {
   return { status: 'blocked' as const };
 }

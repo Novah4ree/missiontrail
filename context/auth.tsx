@@ -11,6 +11,7 @@ const AuthContext = createContext<{ session: Session | null; loading: boolean }>
   loading: true,
 });
 
+// Purpose: Renders the auth provider interface.
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,4 +59,5 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Purpose: Provides the auth React hook behavior.
 export const useAuth = () => useContext(AuthContext);

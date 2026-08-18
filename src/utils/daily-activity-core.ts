@@ -7,6 +7,7 @@ import {
 
 export type ActivityDistanceSource = 'verified_gps' | 'estimated_steps';
 
+// Purpose: Returns local date key.
 export function getLocalDateKey(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -14,15 +15,18 @@ export function getLocalDateKey(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+// Purpose: Starts of local day.
 export function startOfLocalDay(date = new Date()) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
+// Purpose: Clamps daily steps to its supported range.
 export function clampDailySteps(steps: number) {
   if (!Number.isFinite(steps)) return 0;
   return Math.min(MAX_DAILY_STEPS, Math.max(0, Math.floor(steps)));
 }
 
+// Purpose: Implements the steps to meters operation.
 export function stepsToMeters(
   steps: number,
   strideLengthMeters = DEFAULT_STRIDE_LENGTH_METERS,
@@ -33,10 +37,12 @@ export function stepsToMeters(
   return clampDailySteps(steps) * safeStride;
 }
 
+// Purpose: Implements the meters to miles operation.
 export function metersToMiles(meters: number) {
   return Math.max(0, Number.isFinite(meters) ? meters : 0) / METERS_PER_MILE;
 }
 
+// Purpose: Selects daily distance.
 export function selectDailyDistance(
   verifiedGpsMeters: number,
   todaySteps: number,
@@ -48,6 +54,7 @@ export function selectDailyDistance(
   return { meters: stepsToMeters(todaySteps), source: 'estimated_steps' };
 }
 
+// Purpose: Estimates active calories.
 export function estimateActiveCalories(
   distanceMeters: number,
   caloriesPerKilometer = FALLBACK_ACTIVE_CALORIES_PER_KILOMETER,
@@ -59,6 +66,7 @@ export function estimateActiveCalories(
   return Math.round((safeDistance / 1_000) * safeRate);
 }
 
+// Purpose: Returns live mission progress.
 export function getLiveMissionProgress(
   requirementType: string,
   serverProgress: number,
@@ -82,6 +90,7 @@ export function getLiveMissionProgress(
   return Math.min(safeTarget, Math.max(0, liveProgress));
 }
 
+// Purpose: Implements the reconcile persisted steps operation.
 export function reconcilePersistedSteps(
   record: { userId?: string; localDate?: string; steps?: number } | null,
   userId: string,

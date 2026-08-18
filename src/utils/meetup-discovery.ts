@@ -68,6 +68,7 @@ export const MEETUP_POPULARITY_WEIGHTS = {
 } as const;
 
 /** Checks coordinates before passing them to the shared Haversine helper. */
+// Purpose: Determines whether is valid coordinate.
 function isValidCoordinate(value?: OptionalCoordinate | null): value is Coordinate {
   if (!value || !Number.isFinite(value.latitude) || !Number.isFinite(value.longitude)) return false;
   const latitude = value.latitude as number;
@@ -76,16 +77,19 @@ function isValidCoordinate(value?: OptionalCoordinate | null): value is Coordina
 }
 
 /** Keeps a number inside a safe scoring range. */
+// Purpose: Clamps the requested operation to its supported range.
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
 /** Counts unique attendees so repeated IDs cannot inflate popularity or capacity. */
+// Purpose: Implements the attendee count operation.
 function attendeeCount(meetup: Meetup): number {
   return new Set(meetup.attendeeIds).size;
 }
 
 /** Counts the current user's friends that are already attending this meetup. */
+// Purpose: Calculates friends attending.
 export function calculateFriendsAttending(
   meetup: Meetup,
   friendUserIds: readonly string[] = [],
@@ -96,6 +100,7 @@ export function calculateFriendsAttending(
 }
 
 /** Returns meetup distance in miles, or null when either coordinate is missing or invalid. */
+// Purpose: Calculates meetup distance miles.
 export function calculateMeetupDistanceMiles(
   userLocation: OptionalCoordinate | null | undefined,
   meetupLocation: OptionalCoordinate | null | undefined,
@@ -105,6 +110,7 @@ export function calculateMeetupDistanceMiles(
 }
 
 /** Keeps only meetups whose valid public landmark coordinate is inside the radius. */
+// Purpose: Filters meetups by radius.
 export function filterMeetupsByRadius(
   meetups: readonly Meetup[],
   userLocation: OptionalCoordinate | null | undefined,
@@ -118,6 +124,7 @@ export function filterMeetupsByRadius(
 }
 
 /** Checks private visibility without returning or displaying the invited-user list. */
+// Purpose: Determines whether can user view meetup.
 export function canUserViewMeetup(
   meetup: Meetup,
   currentUserId?: string | null,
@@ -130,6 +137,7 @@ export function canUserViewMeetup(
 }
 
 /** Builds a small, private, relevance-sorted marker set for today's map. */
+// Purpose: Filters meetups for map.
 export function filterMeetupsForMap(
   meetups: readonly Meetup[],
   context: MeetupMapFilterContext,
@@ -155,6 +163,7 @@ export function filterMeetupsForMap(
 }
 
 /** Returns spaces left, zero for a full meetup, or null when capacity is unlimited. */
+// Purpose: Calculates remaining capacity.
 export function calculateRemainingCapacity(meetup: Meetup): number | null {
   if (meetup.maxAttendees === undefined) return null;
   if (!Number.isFinite(meetup.maxAttendees)) return null;
@@ -162,6 +171,7 @@ export function calculateRemainingCapacity(meetup: Meetup): number | null {
 }
 
 /** Turns distance into a score that strongly favors nearby public landmarks. */
+// Purpose: Implements the distance score operation.
 function distanceScore(distanceMiles: number | null): number {
   if (distanceMiles === null) return 0;
   if (distanceMiles <= 1) return 1;
@@ -173,6 +183,7 @@ function distanceScore(distanceMiles: number | null): number {
 }
 
 /** Turns time until start into a score while preventing past meetups from ranking highly. */
+// Purpose: Implements the starting soon score operation.
 function startingSoonScore(startTime: string, now: Date): number {
   const startTimestamp = Date.parse(startTime);
   if (!Number.isFinite(startTimestamp)) return 0;
@@ -187,6 +198,7 @@ function startingSoonScore(startTime: string, now: Date): number {
 }
 
 /** Rewards meetups that still have room instead of rewarding full events. */
+// Purpose: Implements the available capacity score operation.
 function availableCapacityScore(meetup: Meetup): number {
   const remaining = calculateRemainingCapacity(meetup);
   if (remaining === null) return 1;
@@ -195,6 +207,7 @@ function availableCapacityScore(meetup: Meetup): number {
 }
 
 /** Calculates a balanced 0–100 discovery score and exposes each weighted part. */
+// Purpose: Calculates meetup popularity.
 export function calculateMeetupPopularity(
   meetup: Meetup,
   context: MeetupPopularityContext = {},
@@ -222,6 +235,7 @@ export function calculateMeetupPopularity(
 }
 
 /** Sorts by relevance while calculating each meetup score only once per call. */
+// Purpose: Sorts meetups by relevance.
 export function sortMeetupsByRelevance(
   meetups: readonly Meetup[],
   context: MeetupPopularityContext = {},
@@ -246,6 +260,7 @@ export function sortMeetupsByRelevance(
 }
 
 /** Checks whether two dates share the same local calendar day. */
+// Purpose: Determines whether is same local day.
 function isSameLocalDay(left: Date, right: Date): boolean {
   return left.getFullYear() === right.getFullYear()
     && left.getMonth() === right.getMonth()
@@ -253,6 +268,7 @@ function isSameLocalDay(left: Date, right: Date): boolean {
 }
 
 /** Checks Saturday and Sunday for the current or upcoming local weekend. */
+// Purpose: Determines whether is this weekend.
 function isThisWeekend(date: Date, now: Date): boolean {
   const saturday = new Date(now);
   const currentDay = now.getDay();
@@ -265,6 +281,7 @@ function isThisWeekend(date: Date, now: Date): boolean {
 }
 
 /** Applies one discovery chip without importing React or a UI component. */
+// Purpose: Filters meetups.
 export function filterMeetups(
   meetups: readonly Meetup[],
   filter: MeetupFilter,
@@ -288,6 +305,7 @@ export function filterMeetups(
 }
 
 /** Chooses one short badge using friends, capacity, momentum, and meetup age. */
+// Purpose: Implements the determine meetup status label operation.
 export function determineMeetupStatusLabel(
   meetup: Meetup,
   context: MeetupPopularityContext = {},

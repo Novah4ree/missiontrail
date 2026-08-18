@@ -53,6 +53,7 @@ export type LocationValidationResult =
 
 // Checks one pair of GPS readings. Only an accurate, realistic movement segment
 // can become mission progress; time passing by itself never adds distance.
+// Purpose: Validates location point.
 export function validateLocationPoint(
   start: LocationPoint,
   end: LocationPoint,
@@ -117,6 +118,7 @@ export function validateLocationPoint(
 }
 
 // Turns trusted map, step, relic, or location evidence into one comparable number.
+// Purpose: Implements the evaluate mission requirement operation.
 export function evaluateMissionRequirement(
   requirement: MissionRequirement,
   evidence: MissionEvidence,
@@ -138,6 +140,7 @@ export function evaluateMissionRequirement(
 }
 
 // Applies new verified evidence to an active mission. A locked mission ignores it.
+// Purpose: Updates mission progress.
 export function updateMissionProgress(
   mission: MissionRecord,
   requirement: MissionRequirement,
@@ -149,6 +152,7 @@ export function updateMissionProgress(
 }
 
 // Completes a mission only after its verified progress reaches the exact target.
+// Purpose: Implements the complete mission operation.
 export function completeMission(mission: MissionRecord): MissionRecord {
   if (mission.state !== 'active' || mission.progress < mission.target) return mission;
   return { ...mission, state: 'completed' };
@@ -156,6 +160,7 @@ export function completeMission(mission: MissionRecord): MissionRecord {
 
 // Models the one-way reward transition. Production rewards are still written by
 // the database transaction, so changing a phone's copy cannot grant XP.
+// Purpose: Implements the claim mission reward operation.
 export function claimMissionReward(mission: MissionRecord) {
   if (mission.state !== 'completed') return { awarded: false, mission };
   return { awarded: true, mission: { ...mission, state: 'claimed' as const } };
@@ -163,6 +168,7 @@ export function claimMissionReward(mission: MissionRecord) {
 
 // A card tap only chooses which details to show. It returns the same mission data
 // and deliberately has no completion side effect.
+// Purpose: Selects mission for details.
 export function selectMissionForDetails(missions: MissionRecord[], missionId: string) {
   return missions.find((mission) => mission.id === missionId) ?? null;
 }

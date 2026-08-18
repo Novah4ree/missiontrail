@@ -22,6 +22,7 @@ import { supabase } from '../../lib/supabase';
 // =======================
 // LOGIN SCREEN
 // =======================
+// Purpose: Renders the login screen interface.
 export default function LoginScreen() {
   const router = useRouter();
   const homeRedirectUrl = Linking.createURL('/home-backup');
@@ -47,6 +48,7 @@ export default function LoginScreen() {
     outputRange: [-140, 140],
   });
 
+  // Purpose: Handles sign in.
   const handleSignIn = async () => {
     if (!email.trim() || !password.trim()) {
       Alert.alert('Missing Fields', 'Please enter your email and password.');
@@ -72,6 +74,7 @@ export default function LoginScreen() {
     }
   };
 
+  // Purpose: Handles google sign in.
   const handleGoogleSignIn = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -80,6 +83,7 @@ export default function LoginScreen() {
     if (error) Alert.alert('Google Sign In Error', error.message);
   };
 
+  // Purpose: Handles apple sign in.
   const handleAppleSignIn = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'apple',

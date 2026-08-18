@@ -46,6 +46,7 @@ import type {
 } from "@/types/trails";
 
 // This screen presents one trail and manages its route, safety, and meetup actions.
+// Purpose: Renders the trail details screen interface.
 export default function TrailDetailsScreen() {
   const { trailId, section } = useLocalSearchParams<{
     trailId?: string;
@@ -77,6 +78,7 @@ export default function TrailDetailsScreen() {
   const [isElevationLoading, setIsElevationLoading] = useState(false);
 
   // Returns to Trails safely even if this details route has no back history.
+  // Purpose: Implements the return to trails operation.
   function returnToTrails() {
     if (router.canGoBack()) {
       router.back();
@@ -89,6 +91,7 @@ export default function TrailDetailsScreen() {
   useEffect(() => {
     let active = true;
     // Loads the trail handoff and its public meetups when the route opens.
+    // Purpose: Loads the requested operation.
     async function load() {
       try {
         const selected = await loadSelectedTrail(trailId);
@@ -124,6 +127,7 @@ export default function TrailDetailsScreen() {
     let active = true;
     // Uses an already-granted location for directions without prompting while
     // the user is only browsing the trail details.
+    // Purpose: Loads route.
     async function loadRoute() {
       setIsRouteLoading(true);
       try {
@@ -219,6 +223,7 @@ export default function TrailDetailsScreen() {
 
     let active = true;
 
+    // Purpose: Loads elevation.
     async function loadElevation() {
       setIsElevationLoading(true);
 
@@ -323,6 +328,7 @@ export default function TrailDetailsScreen() {
   }, [meetupSectionY, section]);
 
   // Opens turn-by-turn walking directions to the selected trailhead.
+  // Purpose: Starts navigation.
   async function startNavigation() {
     if (!trail || isStarting) return;
     if (
@@ -368,6 +374,7 @@ export default function TrailDetailsScreen() {
   }
 
   // Records a join request and updates the button so it cannot be sent repeatedly.
+  // Purpose: Implements the request join operation.
   async function requestJoin(meetup: TrailMeetup) {
     await requestToJoinMeetup(meetup.id);
     setRequestedMeetupIds((current) => [...new Set([...current, meetup.id])]);
@@ -378,6 +385,7 @@ export default function TrailDetailsScreen() {
   }
 
   // Confirms a safety report before calling the future moderation service placeholder.
+  // Purpose: Implements the report host operation.
   function reportHost(meetup: TrailMeetup) {
     Alert.alert(
       "Report unsafe behavior?",
@@ -387,6 +395,7 @@ export default function TrailDetailsScreen() {
         {
           text: "Report",
           style: "destructive",
+          // Purpose: Implements the on press operation.
           onPress: () =>
             void reportMeetupHost(meetup.id).then(() =>
               Alert.alert(
@@ -400,6 +409,7 @@ export default function TrailDetailsScreen() {
   }
 
   // Confirms a block and immediately hides that host's meetup from this screen.
+  // Purpose: Implements the block host operation.
   function blockHost(meetup: TrailMeetup) {
     Alert.alert(
       `Block ${meetup.hostName}?`,
@@ -409,6 +419,7 @@ export default function TrailDetailsScreen() {
         {
           text: "Block",
           style: "destructive",
+          // Purpose: Implements the on press operation.
           onPress: () =>
             void blockMeetupHost(meetup.id).then(() =>
               setMeetups((current) =>
@@ -421,6 +432,7 @@ export default function TrailDetailsScreen() {
   }
 
   // Adds the newly created local meetup to the visible meetup section.
+  // Purpose: Creates meetup.
   async function createMeetup(input: CreateMeetupInput) {
     const meetup = await createTrailMeetup(input);
     setMeetups((current) => [meetup, ...current]);
@@ -734,6 +746,7 @@ export default function TrailDetailsScreen() {
 }
 
 // Gives related detail rows a consistent heading and spacing.
+// Purpose: Renders the section interface.
 function Section({
   title,
   children,
@@ -750,6 +763,7 @@ function Section({
 }
 
 // Displays one quick trail measurement such as length, time, or elevation.
+// Purpose: Renders the stat interface.
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.stat}>
@@ -760,6 +774,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 // Displays one labeled trail fact with an icon for easier scanning.
+// Purpose: Renders the detail interface.
 function Detail({
   icon,
   label,
@@ -781,6 +796,7 @@ function Detail({
 }
 
 // Converts an amenity code into a readable availability badge.
+// Purpose: Renders the amenity interface.
 function Amenity({
   amenity,
   available,
@@ -810,6 +826,7 @@ function Amenity({
   );
 }
 
+// Purpose: Renders the daily forecast interface.
 function DailyForecast({
   forecast,
   isLoading,
@@ -865,6 +882,7 @@ function DailyForecast({
   );
 }
 
+// Purpose: Implements the weather icon operation.
 function weatherIcon(code: number): keyof typeof Ionicons.glyphMap {
   if (code === 0 || code === 1) return "sunny-outline";
   if (code === 2) return "partly-sunny-outline";
@@ -875,6 +893,7 @@ function weatherIcon(code: number): keyof typeof Ionicons.glyphMap {
   return "rainy-outline";
 }
 
+// Purpose: Formats forecast date.
 function formatForecastDate(date: string) {
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
@@ -883,9 +902,11 @@ function formatForecastDate(date: string) {
 }
 
 // Capitalizes stored lowercase labels before showing them to the user.
+// Purpose: Implements the capitalize operation.
 function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
+// Purpose: Calculates trail distance miles.
 function calculateTrailDistanceMiles(
   coordinates?: ReadonlyArray<ReadonlyArray<number>>,
 ): number | null {
@@ -926,6 +947,7 @@ function calculateTrailDistanceMiles(
   return totalMiles > 0 ? totalMiles : null;
 }
 
+// Purpose: Calculates distance between points.
 function calculateDistanceBetweenPoints(
   latitude1: number,
   longitude1: number,
@@ -933,6 +955,7 @@ function calculateDistanceBetweenPoints(
   longitude2: number,
 ) {
   const earthRadiusMiles = 3958.8;
+  // Purpose: Implements the to radians operation.
   const toRadians = (degrees: number) => degrees * (Math.PI / 180);
   const latitudeDifference = toRadians(latitude2 - latitude1);
   const longitudeDifference = toRadians(longitude2 - longitude1);
@@ -947,6 +970,7 @@ function calculateDistanceBetweenPoints(
   return earthRadiusMiles * c;
 }
 
+// Purpose: Formats trail duration.
 function formatTrailDuration(minutes: number) {
   if (minutes < 60) {
     return `${minutes} min`;
@@ -961,6 +985,7 @@ function formatTrailDuration(minutes: number) {
 
   return `${hours} hr ${remainingMinutes} min`;
 }
+// Purpose: Calculates trail elevation gain.
 async function calculateTrailElevationGain(
   coordinates: [number, number][],
 ): Promise<number | null> {
@@ -1039,6 +1064,7 @@ async function calculateTrailElevationGain(
   return elevationGainMeters * 3.28084;
 }
 // Uses native Apple Maps on iOS and Google Maps directions everywhere else.
+// Purpose: Returns trail navigation url.
 function getTrailNavigationUrl(trail: Trail) {
   const destination = `${trail.latitude},${trail.longitude}`;
   if (Platform.OS === "ios") {

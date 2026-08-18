@@ -30,6 +30,7 @@ export type ProximityResult = {
   rejectionCode: string | null;
 };
 
+// Purpose: Implements the distance in feet operation.
 export function distanceInFeet(distanceInMeters: number | null) {
   if (distanceInMeters === null || !Number.isFinite(distanceInMeters) || distanceInMeters < 0) {
     return null;
@@ -37,6 +38,7 @@ export function distanceInFeet(distanceInMeters: number | null) {
   return Math.max(0, Math.round(distanceInMeters / 0.3048));
 }
 
+// Purpose: Implements the bearing degrees operation.
 export function bearingDegrees(from: Coordinate, to: Coordinate) {
   const fromLatitude = from.latitude * (Math.PI / 180);
   const toLatitude = to.latitude * (Math.PI / 180);
@@ -47,6 +49,7 @@ export function bearingDegrees(from: Coordinate, to: Coordinate) {
   return (Math.atan2(y, x) * (180 / Math.PI) + 360) % 360;
 }
 
+// Purpose: Implements the distance in feet when nearby operation.
 export function distanceInFeetWhenNearby(
   distanceInMeters: number | null,
   searchRadiusFeet = 10,
@@ -69,11 +72,13 @@ type Options = {
   clueBandsMeters: readonly [number, number, number];
 };
 
+// Purpose: Implements the median operation.
 function median(values: number[]) {
   const sorted = [...values].sort((left, right) => left - right);
   return sorted[Math.floor(sorted.length / 2)];
 }
 
+// Purpose: Implements the invalid operation.
 function invalid(rejectionCode: string): ProximityResult {
   return {
     status: 'invalid_movement', clueStrength: 0, radiusUsedMeters: null,
@@ -82,6 +87,7 @@ function invalid(rejectionCode: string): ProximityResult {
   };
 }
 
+// Purpose: Verifies proximity samples.
 export function verifyProximitySamples(
   samples: ProximitySample[],
   exactPoint: Coordinate,

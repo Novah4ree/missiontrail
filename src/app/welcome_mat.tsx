@@ -40,6 +40,7 @@ import { supabase } from '../../lib/supabase';
 // SCREEN
 // ======================================================
 
+// Purpose: Renders the welcome mat interface.
 export default function WelcomeMat() {
 
   // ======================================================
@@ -59,6 +60,7 @@ export default function WelcomeMat() {
   // CHECK EMAIL VERIFICATION
   // ======================================================
 
+  // Purpose: Implements the check verification operation.
   const checkVerification = async () => {
 
     // ======================================================
@@ -128,6 +130,7 @@ export default function WelcomeMat() {
   // GO TO LOGIN SCREEN
   // ======================================================
 
+  // Purpose: Implements the go to login operation.
   const goToLogin = () => {
 
     router.replace('/login');

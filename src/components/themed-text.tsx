@@ -8,6 +8,7 @@ export type ThemedTextProps = TextProps & {
   themeColor?: ThemeColor;
 };
 
+// Purpose: Renders the themed text interface.
 export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
   const theme = useTheme();
 

@@ -29,6 +29,7 @@ const TABS = [
 ] as const;
 
 /** Displays the same six cyberpunk navigation buttons used by the Live Map. */
+// Purpose: Renders the mission bottom tab bar interface.
 export function MissionBottomTabBar({ activeTab }: { activeTab: MissionTabKey }) {
   const router = useRouter();
   const window = useWindowDimensions();

@@ -14,6 +14,7 @@ import {
 
 const companionImage = require('../../assets/images/tabIcons/companion.png');
 
+// Purpose: Renders the companion screen interface.
 export default function CompanionScreen() {
   const safeArea = useSafeAreaInsets();
   const { progress, isLoading, message } = useDailyProgress();
@@ -84,6 +85,7 @@ export default function CompanionScreen() {
   );
 }
 
+// Purpose: Renders the companion meter interface.
 function CompanionMeter({
   color,
   icon,

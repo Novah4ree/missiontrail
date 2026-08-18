@@ -22,6 +22,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+// Purpose: Implements the response operation.
 function response(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -29,12 +30,14 @@ function response(body: unknown, status = 200) {
   });
 }
 
+// Purpose: Implements the require environment operation.
 function requireEnvironment(name: string) {
   const value = Deno.env.get(name);
   if (!value) throw new Error(`Missing server environment: ${name}`);
   return value;
 }
 
+// Purpose: Implements the valid coordinate operation.
 function validCoordinate(value: Coordinate | undefined): value is Required<Coordinate> {
   return typeof value?.latitude === 'number' && Number.isFinite(value.latitude) &&
     value.latitude >= -90 && value.latitude <= 90 &&
@@ -42,6 +45,7 @@ function validCoordinate(value: Coordinate | undefined): value is Required<Coord
     value.longitude >= -180 && value.longitude <= 180;
 }
 
+// Purpose: Implements the require user operation.
 async function requireUser(request: Request) {
   const authorization = request.headers.get('Authorization');
   if (!authorization?.startsWith('Bearer ')) return null;
@@ -57,6 +61,7 @@ async function requireUser(request: Request) {
   return { userId: data.user.id as string, admin };
 }
 
+// Purpose: Implements the geoapify operation.
 async function geoapify(path: string, parameters: URLSearchParams) {
   parameters.set('apiKey', requireEnvironment('GEOAPIFY_API_KEY'));
   const result = await fetch(`https://api.geoapify.com${path}?${parameters.toString()}`, {
@@ -71,6 +76,7 @@ const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
 ];
 
+// Purpose: Implements the bounding box operation.
 function boundingBox(center: Required<Coordinate>, radiusMeters: number) {
   const latitudeDelta = radiusMeters / 111_320;
   const longitudeScale = Math.max(0.1, Math.cos(center.latitude * Math.PI / 180));
@@ -83,6 +89,7 @@ function boundingBox(center: Required<Coordinate>, radiusMeters: number) {
   ].map((value) => value.toFixed(6)).join(',');
 }
 
+// Purpose: Implements the overpass query operation.
 async function overpassQuery(query: string) {
   let lastFailure = 'OVERPASS_UNAVAILABLE';
   for (const endpoint of OVERPASS_ENDPOINTS) {
@@ -120,6 +127,7 @@ async function overpassQuery(query: string) {
   throw new Error(lastFailure);
 }
 
+// Purpose: Implements the overpass operation.
 async function overpass(center: Required<Coordinate>, radiusMeters: number) {
   const destinationBox = boundingBox(center, radiusMeters);
   // Dense named path segments are intentionally bounded to 10 km; parks,

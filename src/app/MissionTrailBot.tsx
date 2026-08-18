@@ -31,6 +31,7 @@ const CHAT_API_URL = "https://api.openai.com/v1/chat/completions";
 
 const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 
+// Purpose: Renders the mission trail bot interface.
 export default function MissionTrailBot({
   visible,
   onClose,
@@ -62,6 +63,7 @@ export default function MissionTrailBot({
     };
   }, []);
 
+  // Purpose: Starts listening.
   const startListening = () => {
     if (Platform.OS === 'web') {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -105,12 +107,14 @@ export default function MissionTrailBot({
     }
   };
 
+  // Purpose: Stops listening.
   const stopListening = () => {
     isListeningRef.current = false;
     if (Platform.OS === 'web') recognitionRef.current?.stop();
     else if (Voice) void Voice.stop();
   };
 
+  // Purpose: Implements the toggle voice mode operation.
   const toggleVoiceMode = () => {
     const newState = !isVoiceMode;
     isVoiceModeRef.current = newState;
@@ -118,6 +122,7 @@ export default function MissionTrailBot({
     if (newState) startListening(); else stopListening();
   };
 
+  // Purpose: Handles send message.
   async function handleSendMessage(text: string) {
     if (!text.trim()) return;
     setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'user', text }]);

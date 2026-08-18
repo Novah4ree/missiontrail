@@ -22,6 +22,7 @@ export const EMPTY_TODAYS_EXPLORING: TodaysExploringStats = {
   totalMissions: 0,
 };
 
+// Purpose: Returns todays exploring stats.
 export function getTodaysExploringStats(
   progress: VerifiedDailyProgress | null | undefined,
 ): TodaysExploringStats {
@@ -74,6 +75,7 @@ export function getTodaysExploringStats(
   };
 }
 
+// Purpose: Formats active time.
 export function formatActiveTime(seconds: number) {
   const safeSeconds = Math.max(0, seconds);
 

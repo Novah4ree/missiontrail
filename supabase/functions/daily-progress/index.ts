@@ -44,6 +44,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+// Purpose: Implements the json response operation.
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -51,12 +52,14 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+// Purpose: Implements the require environment operation.
 function requireEnvironment(name: string) {
   const value = Deno.env.get(name);
   if (!value) throw new Error(`Missing server environment: ${name}`);
   return value;
 }
 
+// Purpose: Implements the friendly error operation.
 function friendlyError(code: string, requestId: string, status: number) {
   const messages: Record<string, string> = {
     INVALID_GPS: 'We couldn’t verify this walk. Please try again.',
@@ -70,6 +73,7 @@ function friendlyError(code: string, requestId: string, status: number) {
   return jsonResponse({ error: code, message: messages[code] ?? 'Today’s walk could not update. Please try again.', requestId }, status);
 }
 
+// Purpose: Implements the authenticated clients operation.
 async function authenticatedClients(request: Request) {
   const authorization = request.headers.get('Authorization');
   if (!authorization?.startsWith('Bearer ')) return null;
@@ -88,6 +92,7 @@ async function authenticatedClients(request: Request) {
   return { user: data.user, admin };
 }
 
+// Purpose: Implements the valid health activity operation.
 function validHealthActivity(activity: HealthActivity, serverNow: number) {
   const start = Date.parse(activity.startedAt ?? '');
   const end = Date.parse(activity.endedAt ?? '');
@@ -113,6 +118,7 @@ type SupabaseAdmin = ReturnType<typeof createClient>;
 // Mission definitions and progress are the required payload. Newer optional
 // profile RPCs fall back independently so a missing migration cannot erase the
 // mission list for a user.
+// Purpose: Loads daily progress.
 async function loadDailyProgress(
   admin: SupabaseAdmin,
   userId: string,

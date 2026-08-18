@@ -12,6 +12,22 @@ export type RelicProximityStatus =
   | 'already_collected'
   | 'offline_retry';
 
+export type RelicEncounterType =
+  | 'ambient'
+  | 'neighborhood'
+  | 'local'
+  | 'regional';
+
+export type NearbyRelicSignal = {
+  assignmentId: string;
+  distanceFeet: number;
+  bearingDegrees: number | null;
+  direction: string | null;
+  clueStrength: 0 | 1 | 2 | 3;
+  availability: 'available' | 'locked';
+  encounterType: RelicEncounterType;
+};
+
 export type MysteryZone = {
   assignmentId: string;
   latitude: number;
@@ -20,6 +36,7 @@ export type MysteryZone = {
   clueBandMeters: number;
   status: string;
   availability: 'available' | 'locked';
+  encounterType: RelicEncounterType;
   expiresAt: string;
   graceEndsAt: string;
 };

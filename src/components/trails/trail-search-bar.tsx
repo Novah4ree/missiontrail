@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react
 import { MissionTrailColors as C } from '@/constants/theme';
 
 // This search bar filters public places and offers a separate current-location action.
+// Purpose: Renders the trail search bar interface.
 export function TrailSearchBar({ value, onChangeText, onUseLocation, isLocating = false }: {
   value: string;
   onChangeText: (value: string) => void;

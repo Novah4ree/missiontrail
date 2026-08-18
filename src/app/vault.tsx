@@ -57,6 +57,7 @@ const bottomTabs = [
     route: "/companion",
   },
 ] as const;
+// Purpose: Renders the vault screen interface.
 export default function VaultScreen() {
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
@@ -64,12 +65,16 @@ export default function VaultScreen() {
   const [collectedAtByRelicId, setCollectedAtByRelicId] = useState<
     Record<string, string>
   >({});
+  const [relicQuantityById, setRelicQuantityById] = useState<
+    Record<string, number>
+  >({});
   const [selectedRelic, setSelectedRelic] = useState<Relic | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
 
+      // Purpose: Loads collected relics.
       async function loadCollectedRelics() {
         try {
           const progress = await syncServerVaultCache().catch(() =>
@@ -79,6 +84,7 @@ export default function VaultScreen() {
           if (isActive) {
             setCollectedRelicIds(progress.collectedRelicIds);
             setCollectedAtByRelicId(progress.collectedAtByRelicId);
+            setRelicQuantityById(progress.relicQuantityById);
           }
         } catch (error) {
           console.error("Could not load collected relics:", error);
@@ -93,11 +99,21 @@ export default function VaultScreen() {
     }, []),
   );
 
-  const collectedRelics = RELICS.filter((relic) =>
-    collectedRelicIds.includes(relic.id),
+  const collectedRelics = RELICS.filter(
+    (relic) => (relicQuantityById[relic.id] ?? 0) > 0,
   );
+
+  const totalRelicCopies = Object.values(relicQuantityById).reduce(
+    (total, quantity) => total + quantity,
+    0,
+  );
+
+  // Purpose: Implements the rarity total operation.
   const rarityTotal = (rarity: RelicRarity) =>
-    collectedRelics.filter((relic) => relic.rarity === rarity).length;
+    RELICS.filter((relic) => relic.rarity === rarity).reduce(
+      (total, relic) => total + (relicQuantityById[relic.id] ?? 0),
+      0,
+    );
 
   return (
     <View style={styles.container}>

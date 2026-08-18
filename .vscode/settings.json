@@ -1,4 +1,8 @@
 {
+  "deno.path": "/opt/homebrew/bin/deno",
+
+  "deno.enablePaths": ["./supabase/functions"],
+
   "editor.codeActionsOnSave": {
     "source.fixAll": "explicit",
     "source.organizeImports": "explicit",

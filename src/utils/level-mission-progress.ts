@@ -5,6 +5,7 @@ export type LevelMissionLike = {
 };
 
 /** Selects one level's configured missions so every Level card uses the same list. */
+// Purpose: Selects level missions.
 export function selectLevelMissions<T extends LevelMissionLike>(
   missions: T[],
   level: number,
@@ -13,6 +14,7 @@ export function selectLevelMissions<T extends LevelMissionLike>(
 }
 
 /** Calculates the count and percentage shown by both the header and progress card. */
+// Purpose: Implements the summarize level missions operation.
 export function summarizeLevelMissions(missions: LevelMissionLike[]) {
   const totalCount = missions.length;
   const completedCount = missions.filter(

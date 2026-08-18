@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { AuthProvider } from '../../context/auth';
 import { ActivityProgressProvider } from '@/providers/activity-progress-provider';
 
+// Purpose: Renders the layout interface.
 export default function Layout() {
   return (
     <AuthProvider>

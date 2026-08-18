@@ -61,6 +61,7 @@ type GpsValidationOptions = {
   allowMocked?: boolean;
 };
 
+// Purpose: Validates gps samples.
 export function validateGpsSamples(
   samples: GpsSample[],
   {
@@ -79,6 +80,7 @@ export function validateGpsSamples(
   for (let index = 1; index < samples.length; index += 1) {
     const start = samples[index - 1];
     const end = samples[index];
+    // Purpose: Implements the reject operation.
     const reject = (code: RejectedSegment['code']) =>
       rejected.push({ startSampleId: start.sampleId, endSampleId: end.sampleId, code });
     if (
@@ -119,6 +121,7 @@ export function validateGpsSamples(
   return { accepted, rejected };
 }
 
+// Purpose: Calculates earned eligibility.
 export function calculateEarnedEligibility(distanceMetersValue: number, missionOverride: boolean) {
   return {
     rareEarned: missionOverride || distanceMetersValue >= RARE_DISTANCE_METERS,
@@ -127,6 +130,7 @@ export function calculateEarnedEligibility(distanceMetersValue: number, missionO
   };
 }
 
+// Purpose: Implements the all required missions complete operation.
 export function allRequiredMissionsComplete(
   missions: Array<{ required: boolean; completed: boolean }>,
 ) {
@@ -134,6 +138,7 @@ export function allRequiredMissionsComplete(
   return required.length > 0 && required.every((mission) => mission.completed);
 }
 
+// Purpose: Returns safe local date.
 export function getSafeLocalDate(at: Date, timezoneName: string | null | undefined) {
   const fallbackTimezone = 'UTC';
   let timezone = timezoneName || fallbackTimezone;
@@ -155,6 +160,7 @@ export function getSafeLocalDate(at: Date, timezoneName: string | null | undefin
   return { localDate: `${value.year}-${value.month}-${value.day}`, timezone };
 }
 
+// Purpose: Implements the ranges overlap operation.
 export function rangesOverlap(
   left: { startedAt: string; endedAt: string },
   right: { startedAt: string; endedAt: string },

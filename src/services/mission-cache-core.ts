@@ -5,6 +5,7 @@ export type KeyValueStorage = {
 
 // Activity data is isolated by both account and local calendar day. This keeps
 // one explorer's queued movement out of another explorer's mission progress.
+// Purpose: Returns user daily storage key.
 export function getUserDailyStorageKey(
   prefix: string,
   userId: string,
@@ -14,6 +15,7 @@ export function getUserDailyStorageKey(
 }
 
 // Saves only a server response. Phone-created completion flags are never accepted.
+// Purpose: Saves server mission progress.
 export async function saveServerMissionProgress<T>(
   storage: KeyValueStorage,
   key: string,
@@ -23,6 +25,7 @@ export async function saveServerMissionProgress<T>(
 }
 
 // Restores the last server response so a restart can show valid progress offline.
+// Purpose: Loads server mission progress.
 export async function loadServerMissionProgress<T>(storage: KeyValueStorage, key: string) {
   const value = await storage.getItem(key);
   if (!value) return null;

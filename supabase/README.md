@@ -54,13 +54,15 @@ The development mock requires all three controls: a development JS build,
 ## Safe-location behavior
 
 Production defaults to `RELIC_ALLOW_UNVERIFIED_SPAWNS=false`. The field endpoint
-returns `SAFE_WALKING_LOCATION_DATA_UNAVAILABLE` until enough rows in
-`private.safe_spawn_locations` have `validation_status = 'verified'`. A future map
+still creates at most one user-owned Ambient Common/Uncommon candidate per window,
+exactly at a fresh server-verified median GPS anchor. Neighborhood, local, and
+regional density requires rows in
+`private.safe_spawn_locations` with `validation_status = 'verified'`. A future map
 data importer must reject water, highways, vehicle-only/restricted/private areas,
 and inaccessible terrain before marking a location verified.
 
-Unverified mathematical candidates exist only for explicit local/staging testing.
-They are labeled `unverified` and are never described as safe.
+Wider unverified mathematical candidates exist only for explicit local/staging
+testing. They are labeled `unverified` and are never described as safe.
 
 ## Field endpoint
 
@@ -102,8 +104,9 @@ identity until the authenticated proximity endpoint authorizes a reveal.
 
 The 4.57 m target applies only when every reading reports accuracy at or below
 4.57 m. The 9 m fallback applies only when every reading is within the 12 m hard
-limit and median accuracy is no worse than 9 m. The server never expands beyond
-9 m. Poorer readings return `improving_accuracy`.
+limit and median accuracy is no worse than 9 m. Only Ambient encounters may use
+the separately named 12 m fallback; outdoor relics never expand beyond 9 m.
+Poorer readings return `improving_accuracy`.
 
 Reveal samples cannot be reused as collection samples. Replayed request batches
 are idempotent, and a retry after a lost successful response returns the existing

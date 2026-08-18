@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDailyProgress } from "@/hooks/use-daily-progress";
 import { getPlayerLevelProgress } from "@/utils/player-level";
 
+// Purpose: Renders the leaderboard screen interface.
 export default function LeaderboardScreen() {
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
@@ -18,6 +19,7 @@ export default function LeaderboardScreen() {
 
   const currentUserDistance = (progress?.verifiedDistanceMeters ?? 0) / 1000;
 
+  // Purpose: Implements the return to live map operation.
   function returnToLiveMap() {
     if (router.canGoBack()) {
       router.back();

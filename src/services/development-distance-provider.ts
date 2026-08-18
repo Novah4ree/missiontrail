@@ -2,6 +2,7 @@ import type { QueuedGpsSample } from '@/types/daily-progress';
 
 // This provider cannot be imported into a production build path. The server also
 // requires an explicit feature flag and user allow-list, so __DEV__ alone is not trust.
+// Purpose: Creates development walking samples.
 export function createDevelopmentWalkingSamples(
   latitude: number,
   longitude: number,

@@ -21,6 +21,7 @@ type OpenMeteoDailyResponse = {
   };
 };
 
+// Purpose: Implements the first finite number operation.
 function firstFiniteNumber(value: unknown, field: string) {
   const first = Array.isArray(value) ? value[0] : undefined;
   if (typeof first !== 'number' || !Number.isFinite(first)) {
@@ -29,6 +30,7 @@ function firstFiniteNumber(value: unknown, field: string) {
   return first;
 }
 
+// Purpose: Implements the first string operation.
 function firstString(value: unknown, field: string) {
   const first = Array.isArray(value) ? value[0] : undefined;
   if (typeof first !== 'string' || !first) {
@@ -37,6 +39,7 @@ function firstString(value: unknown, field: string) {
   return first;
 }
 
+// Purpose: Implements the describe weather code operation.
 export function describeWeatherCode(code: number) {
   if (code === 0) return 'Clear skies';
   if (code === 1) return 'Mostly clear';
@@ -52,6 +55,7 @@ export function describeWeatherCode(code: number) {
   return 'Mixed conditions';
 }
 
+// Purpose: Parses trail daily forecast.
 export function parseTrailDailyForecast(data: OpenMeteoDailyResponse): TrailDailyForecast {
   const daily = data.daily;
   if (!daily) throw new Error('Forecast response is missing daily weather.');
@@ -72,6 +76,7 @@ export function parseTrailDailyForecast(data: OpenMeteoDailyResponse): TrailDail
   };
 }
 
+// Purpose: Returns trail daily forecast.
 export async function getTrailDailyForecast(
   latitude: number,
   longitude: number,

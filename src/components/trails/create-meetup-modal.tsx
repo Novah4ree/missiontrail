@@ -18,6 +18,7 @@ import type { CreateMeetupInput } from '@/services/trail-data-service';
 import type { MeetupPace, Trail } from '@/types/trails';
 
 // This form collects only public meetup details and never asks for a private location.
+// Purpose: Renders the create meetup modal interface.
 export function CreateMeetupModal({ visible, trail, onClose, onCreate }: {
   visible: boolean;
   trail: Trail;
@@ -38,6 +39,7 @@ export function CreateMeetupModal({ visible, trail, onClose, onCreate }: {
   const canSubmit = Boolean(title.trim() && date.trim() && startTime.trim() && meetingPoint.trim() && Number(maxGroupSize) >= 2);
 
   // Validates the simple form, limits group size, and sends clean values to the service.
+  // Purpose: Implements the submit operation.
   async function submit() {
     if (!canSubmit) return;
     await onCreate({
@@ -79,6 +81,7 @@ export function CreateMeetupModal({ visible, trail, onClose, onCreate }: {
 }
 
 // Reuses the same accessible label and styling for every meetup text field.
+// Purpose: Renders the field interface.
 function Field({ label, ...inputProps }: { label: string; value: string; onChangeText: (value: string) => void; placeholder: string; keyboardType?: 'default' | 'number-pad' }) {
   return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput accessibilityLabel={label} placeholderTextColor="#766B81" style={styles.input} {...inputProps} /></View>;
 }

@@ -1,0 +1,1014 @@
+export type CompanionRarity =
+  | 'Common'
+  | 'Uncommon'
+  | 'Rare'
+  | 'Epic'
+  | 'Legendary'
+  | 'Mythic';
+
+export interface Companion {
+  id: string;
+  name: string;
+  element: string;
+  rarity: CompanionRarity;
+  hatchWeight: number;
+  description: string;
+}
+
+export const COMPANIONS: Companion[] = [
+  // =========================
+  // WATER COMPANIONS
+  // =========================
+
+  {
+    id: 'bubble-slime',
+    name: 'Bubble Slime',
+    element: 'water',
+    rarity: 'Common',
+    hatchWeight: 45,
+    description:
+      'A tiny water creature that happily bounces alongside explorers.',
+  },
+
+  {
+    id: 'aqua-pup',
+    name: 'Aqua Pup',
+    element: 'water',
+    rarity: 'Uncommon',
+    hatchWeight: 28,
+    description:
+      'A playful aquatic companion that loves rivers and lakes.',
+  },
+
+  {
+    id: 'coral-fox',
+    name: 'Coral Fox',
+    element: 'water',
+    rarity: 'Rare',
+    hatchWeight: 15,
+    description:
+      'A swift fox whose crystalline fur resembles living coral.',
+  },
+
+  {
+    id: 'frost-otter',
+    name: 'Frost Otter',
+    element: 'water',
+    rarity: 'Epic',
+    hatchWeight: 8,
+    description:
+      'An elusive water companion capable of freezing droplets around itself.',
+  },
+
+  {
+    id: 'tide-turtle',
+    name: 'Tide Turtle',
+    element: 'water',
+    rarity: 'Legendary',
+    hatchWeight: 3,
+    description:
+      'An ancient guardian said to remember every shoreline it has visited.',
+  },
+
+  {
+    id: 'abyss-dragon',
+    name: 'Abyss Dragon',
+    element: 'water',
+    rarity: 'Mythic',
+    hatchWeight: 1,
+    description:
+      'An extremely rare dragon born from the deepest unexplored waters.',
+  },
+
+  // =========================
+  // FIRE COMPANIONS
+  // =========================
+
+  {
+    id: 'ember-pup',
+    name: 'Ember Pup',
+    element: 'fire',
+    rarity: 'Common',
+    hatchWeight: 45,
+    description:
+      'A small fiery pup whose paws leave tiny glowing embers behind.',
+  },
+
+  {
+    id: 'magma-beetle',
+    name: 'Magma Beetle',
+    element: 'fire',
+    rarity: 'Uncommon',
+    hatchWeight: 28,
+    description:
+      'A tough little beetle protected by a shell of cooling magma.',
+  },
+
+  {
+    id: 'flame-fox',
+    name: 'Flame Fox',
+    element: 'fire',
+    rarity: 'Rare',
+    hatchWeight: 15,
+    description:
+      'A clever fire companion with a tail that burns without producing smoke.',
+  },
+
+  {
+    id: 'lava-golem',
+    name: 'Lava Golem',
+    element: 'fire',
+    rarity: 'Epic',
+    hatchWeight: 8,
+    description:
+      'A powerful creature formed from volcanic rock and molten energy.',
+  },
+
+  {
+    id: 'phoenix-chick',
+    name: 'Phoenix Chick',
+    element: 'fire',
+    rarity: 'Legendary',
+    hatchWeight: 3,
+    description:
+      'A young phoenix carrying an ancient flame within its tiny wings.',
+  },
+
+  {
+    id: 'inferno-dragon',
+    name: 'Inferno Dragon',
+    element: 'fire',
+    rarity: 'Mythic',
+    hatchWeight: 1,
+    description:
+      'A nearly mythical dragon capable of producing enormous waves of flame.',
+  },
+
+  // =========================
+  // NATURE COMPANIONS
+  // =========================
+
+  {
+    id: 'mossling',
+    name: 'Mossling',
+    element: 'nature',
+    rarity: 'Common',
+    hatchWeight: 45,
+    description:
+      'A tiny forest creature covered in soft moss and glowing sprouts.',
+  },
+
+  {
+    id: 'bloom-bunny',
+    name: 'Bloom Bunny',
+    element: 'nature',
+    rarity: 'Uncommon',
+    hatchWeight: 28,
+    description:
+      'A lively woodland companion whose footsteps leave tiny flowers behind.',
+  },
+
+  {
+    id: 'thorn-fox',
+    name: 'Thorn Fox',
+    element: 'nature',
+    rarity: 'Rare',
+    hatchWeight: 15,
+    description:
+      'A swift forest fox protected by living vines and crystalline thorns.',
+  },
+
+  {
+    id: 'mycelium-stag',
+    name: 'Mycelium Stag',
+    element: 'nature',
+    rarity: 'Epic',
+    hatchWeight: 8,
+    description:
+      'A mysterious stag connected to a glowing underground fungal network.',
+  },
+
+  {
+    id: 'verdant-guardian',
+    name: 'Verdant Guardian',
+    element: 'nature',
+    rarity: 'Legendary',
+    hatchWeight: 3,
+    description:
+      'An ancient protector awakened whenever the wilderness is threatened.',
+  },
+
+  {
+    id: 'worldroot-dragon',
+    name: 'Worldroot Dragon',
+    element: 'nature',
+    rarity: 'Mythic',
+    hatchWeight: 1,
+    description:
+      'A mythical dragon said to have grown from the roots beneath the oldest forests.',
+  },
+
+
+  // =========================
+  // STORM COMPANIONS
+  // =========================
+
+  {
+    id: 'spark-sprite',
+    name: 'Spark Sprite',
+    element: 'storm',
+    rarity: 'Common',
+    hatchWeight: 45,
+    description:
+      'A tiny electric creature that crackles whenever it gets excited.',
+  },
+
+  {
+    id: 'thunder-hare',
+    name: 'Thunder Hare',
+    element: 'storm',
+    rarity: 'Uncommon',
+    hatchWeight: 28,
+    description:
+      'A lightning-fast companion whose ears glow before a storm arrives.',
+  },
+
+  {
+    id: 'volt-lynx',
+    name: 'Volt Lynx',
+    element: 'storm',
+    rarity: 'Rare',
+    hatchWeight: 15,
+    description:
+      'A stealthy electric predator surrounded by a constantly shifting charge.',
+  },
+
+  {
+    id: 'tempest-roc',
+    name: 'Tempest Roc',
+    element: 'storm',
+    rarity: 'Epic',
+    hatchWeight: 8,
+    description:
+      'A massive storm bird capable of gathering thunder beneath its wings.',
+  },
+
+  {
+    id: 'storm-titan',
+    name: 'Storm Titan',
+    element: 'storm',
+    rarity: 'Legendary',
+    hatchWeight: 3,
+    description:
+      'An ancient giant formed from thunderclouds, lightning, and raw atmospheric power.',
+  },
+
+  {
+    id: 'skybreaker-dragon',
+    name: 'Skybreaker Dragon',
+    element: 'storm',
+    rarity: 'Mythic',
+    hatchWeight: 1,
+    description:
+      'A mythical dragon whose arrival can split the sky with a single roar.',
+  },
+
+
+  // =========================
+  // EARTH COMPANIONS
+  // =========================
+
+  {
+    id: 'pebble-pup',
+    name: 'Pebble Pup',
+    element: 'earth',
+    rarity: 'Common',
+    hatchWeight: 45,
+    description:
+      'A cheerful little stone pup that leaves tiny rocky footprints behind.',
+  },
+
+  {
+    id: 'burrow-mole',
+    name: 'Burrow Mole',
+    element: 'earth',
+    rarity: 'Uncommon',
+    hatchWeight: 28,
+    description:
+      'A sturdy underground explorer capable of tunneling through surprisingly hard ground.',
+  },
+
+  {
+    id: 'granite-ram',
+    name: 'Granite Ram',
+    element: 'earth',
+    rarity: 'Rare',
+    hatchWeight: 15,
+    description:
+      'A powerful mountain ram protected by horns and armor formed from granite.',
+  },
+
+  {
+    id: 'canyon-golem',
+    name: 'Canyon Golem',
+    element: 'earth',
+    rarity: 'Epic',
+    hatchWeight: 8,
+    description:
+      'A massive guardian assembled from stone shaped by ancient rivers and wind.',
+  },
+
+  {
+    id: 'titan-mammoth',
+    name: 'Titan Mammoth',
+    element: 'earth',
+    rarity: 'Legendary',
+    hatchWeight: 3,
+    description:
+      'An ancient mammoth whose footsteps are said to reshape the ground beneath it.',
+  },
+
+  {
+    id: 'worldshaker-dragon',
+    name: 'Worldshaker Dragon',
+    element: 'earth',
+    rarity: 'Mythic',
+    hatchWeight: 1,
+    description:
+      'A mythical earth dragon capable of awakening mountains with a single roar.',
+  },
+
+
+  // =========================
+  // FROST COMPANIONS
+  // =========================
+
+  {
+    id: 'snow-puff',
+    name: 'Snow Puff',
+    element: 'frost',
+    rarity: 'Common',
+    hatchWeight: 45,
+    description:
+      'A tiny fluffy frost creature surrounded by drifting flakes of snow.',
+  },
+
+  {
+    id: 'ice-hare',
+    name: 'Ice Hare',
+    element: 'frost',
+    rarity: 'Uncommon',
+    hatchWeight: 28,
+    description:
+      'A swift arctic companion whose paws leave sparkling ice crystals behind.',
+  },
+
+  {
+    id: 'glacier-lynx',
+    name: 'Glacier Lynx',
+    element: 'frost',
+    rarity: 'Rare',
+    hatchWeight: 15,
+    description:
+      'A silent frozen predator with crystalline markings across its icy coat.',
+  },
+
+  {
+    id: 'frostwing-owl',
+    name: 'Frostwing Owl',
+    element: 'frost',
+    rarity: 'Epic',
+    hatchWeight: 8,
+    description:
+      'A mysterious owl whose enormous wings scatter frozen mist across the trail.',
+  },
+
+  {
+    id: 'glacial-guardian',
+    name: 'Glacial Guardian',
+    element: 'frost',
+    rarity: 'Legendary',
+    hatchWeight: 3,
+    description:
+      'An ancient protector formed from living ice buried beneath forgotten glaciers.',
+  },
+
+  {
+    id: 'cryowyrm',
+    name: 'Cryowyrm',
+    element: 'frost',
+    rarity: 'Mythic',
+    hatchWeight: 1,
+    description:
+      'A mythical ice dragon said to freeze the air around itself simply by awakening.',
+  },
+
+
+  // =========================
+  // LUNAR COMPANIONS
+  // =========================
+
+  {
+    id: 'moon-mote',
+    name: 'Moon Mote',
+    element: 'lunar',
+    rarity: 'Common',
+    hatchWeight: 45,
+    description:
+      'A tiny floating lunar spirit that glows softly under the night sky.',
+  },
+
+  {
+    id: 'crescent-hare',
+    name: 'Crescent Hare',
+    element: 'lunar',
+    rarity: 'Uncommon',
+    hatchWeight: 28,
+    description:
+      'A silver-furred hare whose ears glow like a thin crescent moon.',
+  },
+
+  {
+    id: 'nightveil-fox',
+    name: 'Nightveil Fox',
+    element: 'lunar',
+    rarity: 'Rare',
+    hatchWeight: 15,
+    description:
+      'A quiet lunar fox that seems to disappear whenever shadows deepen.',
+  },
+
+  {
+    id: 'eclipse-owl',
+    name: 'Eclipse Owl',
+    element: 'lunar',
+    rarity: 'Epic',
+    hatchWeight: 8,
+    description:
+      'A celestial owl marked by rings of darkness and moonlight.',
+  },
+
+  {
+    id: 'moonwarden',
+    name: 'Moonwarden',
+    element: 'lunar',
+    rarity: 'Legendary',
+    hatchWeight: 3,
+    description:
+      'An ancient guardian said to watch over explorers who travel beneath the moon.',
+  },
+
+  {
+    id: 'lunar-wyrm',
+    name: 'Lunar Wyrm',
+    element: 'lunar',
+    rarity: 'Mythic',
+    hatchWeight: 1,
+    description:
+      'A mythical moon dragon whose scales shimmer with phases of the lunar cycle.',
+  },
+
+
+  // =========================
+  // SOLAR COMPANIONS
+  // =========================
+
+  {
+    id: 'sun-spark',
+    name: 'Sun Spark',
+    element: 'solar',
+    rarity: 'Common',
+    hatchWeight: 45,
+    description:
+      'A tiny radiant creature that glows brighter in direct sunlight.',
+  },
+
+  {
+    id: 'solar-gecko',
+    name: 'Solar Gecko',
+    element: 'solar',
+    rarity: 'Uncommon',
+    hatchWeight: 28,
+    description:
+      'A warm-scaled companion that stores sunlight along its glowing back.',
+  },
+
+  {
+    id: 'flare-falcon',
+    name: 'Flare Falcon',
+    element: 'solar',
+    rarity: 'Rare',
+    hatchWeight: 15,
+    description:
+      'A swift celestial bird that leaves thin ribbons of golden light in its wake.',
+  },
+
+  {
+    id: 'sunscarab-guardian',
+    name: 'Sunscarab Guardian',
+    element: 'solar',
+    rarity: 'Epic',
+    hatchWeight: 8,
+    description:
+      'An armored solar guardian covered in radiant ancient symbols.',
+  },
+
+  {
+    id: 'helios-lion',
+    name: 'Helios Lion',
+    element: 'solar',
+    rarity: 'Legendary',
+    hatchWeight: 3,
+    description:
+      'A massive lion whose mane burns with the light of a miniature sun.',
+  },
+
+  {
+    id: 'solar-seraph',
+    name: 'Solar Seraph',
+    element: 'solar',
+    rarity: 'Mythic',
+    hatchWeight: 1,
+    description:
+      'A mythical celestial beast born from concentrated stellar fire and light.',
+  },
+
+
+  // =========================
+  // COSMIC COMPANIONS
+  // =========================
+
+  {
+    id: 'star-mite',
+    name: 'Star Mite',
+    element: 'cosmic',
+    rarity: 'Common',
+    hatchWeight: 45,
+    description:
+      'A tiny cosmic creature that flickers like a distant star.',
+  },
+
+  {
+    id: 'nebula-pup',
+    name: 'Nebula Pup',
+    element: 'cosmic',
+    rarity: 'Uncommon',
+    hatchWeight: 28,
+    description:
+      'A playful stellar companion with cloudy nebula patterns drifting across its fur.',
+  },
+
+  {
+    id: 'comet-fox',
+    name: 'Comet Fox',
+    element: 'cosmic',
+    rarity: 'Rare',
+    hatchWeight: 15,
+    description:
+      'A swift celestial fox that leaves a glowing comet trail behind it.',
+  },
+
+  {
+    id: 'astral-manta',
+    name: 'Astral Manta',
+    element: 'cosmic',
+    rarity: 'Epic',
+    hatchWeight: 8,
+    description:
+      'A floating cosmic creature that glides silently through the air like open space.',
+  },
+
+  {
+    id: 'nova-guardian',
+    name: 'Nova Guardian',
+    element: 'cosmic',
+    rarity: 'Legendary',
+    hatchWeight: 3,
+    description:
+      'A massive celestial protector born from the collapse of an ancient star.',
+  },
+
+  {
+    id: 'galaxy-dragon',
+    name: 'Galaxy Dragon',
+    element: 'cosmic',
+    rarity: 'Mythic',
+    hatchWeight: 1,
+    description:
+      'A mythical dragon whose body appears to contain entire constellations.',
+  },
+
+
+  // =========================
+  // SPIRIT COMPANIONS
+  // =========================
+
+  {
+    id: 'whisper-wisp',
+    name: 'Whisper Wisp',
+    element: 'spirit',
+    rarity: 'Common',
+    hatchWeight: 45,
+    description:
+      'A tiny wandering spirit that communicates through soft pulses of light.',
+  },
+
+  {
+    id: 'ghost-kitten',
+    name: 'Ghost Kitten',
+    element: 'spirit',
+    rarity: 'Uncommon',
+    hatchWeight: 28,
+    description:
+      'A curious spectral kitten that occasionally phases through solid objects.',
+  },
+
+  {
+    id: 'veil-hound',
+    name: 'Veil Hound',
+    element: 'spirit',
+    rarity: 'Rare',
+    hatchWeight: 15,
+    description:
+      'A silent spirit hound that walks between the physical world and the veil.',
+  },
+
+  {
+    id: 'soul-raven',
+    name: 'Soul Raven',
+    element: 'spirit',
+    rarity: 'Epic',
+    hatchWeight: 8,
+    description:
+      'A ghostly raven surrounded by drifting fragments of pale spirit energy.',
+  },
+
+  {
+    id: 'wraith-guardian',
+    name: 'Wraith Guardian',
+    element: 'spirit',
+    rarity: 'Legendary',
+    hatchWeight: 3,
+    description:
+      'An ancient spectral protector bound to forgotten paths and ruins.',
+  },
+
+  {
+    id: 'phantom-wyrm',
+    name: 'Phantom Wyrm',
+    element: 'spirit',
+    rarity: 'Mythic',
+    hatchWeight: 1,
+    description:
+      'A mythical spirit dragon that appears only when the boundary between worlds grows thin.',
+  },
+
+
+  // =========================
+  // TOXIC COMPANIONS
+  // =========================
+
+  {
+    id: 'venom-sprite',
+    name: 'Venom Sprite',
+    element: 'toxic',
+    rarity: 'Common',
+    hatchWeight: 45,
+    description:
+      'A tiny glowing creature that carries harmless wisps of neon venom.',
+  },
+
+  {
+    id: 'toxin-toad',
+    name: 'Toxin Toad',
+    element: 'toxic',
+    rarity: 'Uncommon',
+    hatchWeight: 28,
+    description:
+      'A strange amphibious companion covered in bright warning markings.',
+  },
+
+  {
+    id: 'viper-lynx',
+    name: 'Viper Lynx',
+    element: 'toxic',
+    rarity: 'Rare',
+    hatchWeight: 15,
+    description:
+      'A stealthy predator with venomous energy coursing through glowing markings.',
+  },
+
+  {
+    id: 'plague-moth',
+    name: 'Plague Moth',
+    element: 'toxic',
+    rarity: 'Epic',
+    hatchWeight: 8,
+    description:
+      'A giant luminous moth surrounded by clouds of eerie toxic particles.',
+  },
+
+  {
+    id: 'venom-titan',
+    name: 'Venom Titan',
+    element: 'toxic',
+    rarity: 'Legendary',
+    hatchWeight: 3,
+    description:
+      'A massive ancient creature protected by corrosive crystalline armor.',
+  },
+
+  {
+    id: 'toxic-hydra',
+    name: 'Toxic Hydra',
+    element: 'toxic',
+    rarity: 'Mythic',
+    hatchWeight: 1,
+    description:
+      'A mythical multi-headed beast overflowing with unstable venom energy.',
+  },
+
+
+  // =========================
+  // TECH COMPANIONS
+  // =========================
+
+  {
+    id: 'byte-bug',
+    name: 'Byte Bug',
+    element: 'tech',
+    rarity: 'Common',
+    hatchWeight: 45,
+    description:
+      'A tiny mechanical insect that communicates through chirps and blinking code.',
+  },
+
+  {
+    id: 'pixel-pup',
+    name: 'Pixel Pup',
+    element: 'tech',
+    rarity: 'Uncommon',
+    hatchWeight: 28,
+    description:
+      'A playful cybernetic pup whose markings flicker like animated pixels.',
+  },
+
+  {
+    id: 'circuit-fox',
+    name: 'Circuit Fox',
+    element: 'tech',
+    rarity: 'Rare',
+    hatchWeight: 15,
+    description:
+      'A sleek mechanical fox powered by an advanced glowing circuit core.',
+  },
+
+  {
+    id: 'aegis-drone',
+    name: 'Aegis Drone',
+    element: 'tech',
+    rarity: 'Epic',
+    hatchWeight: 8,
+    description:
+      'An autonomous guardian machine surrounded by a shifting energy shield.',
+  },
+
+  {
+    id: 'quantum-sentinel',
+    name: 'Quantum Sentinel',
+    element: 'tech',
+    rarity: 'Legendary',
+    hatchWeight: 3,
+    description:
+      'A mysterious machine capable of calculating threats before they occur.',
+  },
+
+  {
+    id: 'mecha-dragon',
+    name: 'Mecha Dragon',
+    element: 'tech',
+    rarity: 'Mythic',
+    hatchWeight: 1,
+    description:
+      'A mythical cybernetic dragon powered by technology no explorer can identify.',
+  },
+
+
+  // =========================
+  // VOID COMPANIONS
+  // =========================
+
+  {
+    id: 'voidling',
+    name: 'Voidling',
+    element: 'void',
+    rarity: 'Common',
+    hatchWeight: 45,
+    description:
+      'A tiny shadow creature that seems to absorb light around its body.',
+  },
+
+  {
+    id: 'rift-cat',
+    name: 'Rift Cat',
+    element: 'void',
+    rarity: 'Uncommon',
+    hatchWeight: 28,
+    description:
+      'A curious dark-furred companion that occasionally vanishes through tiny rifts.',
+  },
+
+  {
+    id: 'shadow-jackal',
+    name: 'Shadow Jackal',
+    element: 'void',
+    rarity: 'Rare',
+    hatchWeight: 15,
+    description:
+      'A silent hunter surrounded by drifting fragments of fractured darkness.',
+  },
+
+  {
+    id: 'abyss-manta',
+    name: 'Abyss Manta',
+    element: 'void',
+    rarity: 'Epic',
+    hatchWeight: 8,
+    description:
+      'A floating creature that glides through the air as though swimming through empty space.',
+  },
+
+  {
+    id: 'null-guardian',
+    name: 'Null Guardian',
+    element: 'void',
+    rarity: 'Legendary',
+    hatchWeight: 3,
+    description:
+      'An ancient protector formed around a core of absolute darkness.',
+  },
+
+  {
+    id: 'rift-devourer',
+    name: 'Rift Devourer',
+    element: 'void',
+    rarity: 'Mythic',
+    hatchWeight: 1,
+    description:
+      'A mythical void dragon believed to travel between worlds by tearing open reality.',
+  },
+
+
+  // =========================
+  // CRYSTAL COMPANIONS
+  // =========================
+
+  {
+    id: 'prism-sprite',
+    name: 'Prism Sprite',
+    element: 'crystal',
+    rarity: 'Common',
+    hatchWeight: 45,
+    description:
+      'A tiny crystalline creature that scatters colored light as it moves.',
+  },
+
+  {
+    id: 'gem-gecko',
+    name: 'Gem Gecko',
+    element: 'crystal',
+    rarity: 'Uncommon',
+    hatchWeight: 28,
+    description:
+      'A curious little reptile covered in naturally forming gemstone scales.',
+  },
+
+  {
+    id: 'amethyst-fox',
+    name: 'Amethyst Fox',
+    element: 'crystal',
+    rarity: 'Rare',
+    hatchWeight: 15,
+    description:
+      'A sleek fox with violet crystal growths that hum with stored energy.',
+  },
+
+  {
+    id: 'aurora-stag',
+    name: 'Aurora Stag',
+    element: 'crystal',
+    rarity: 'Epic',
+    hatchWeight: 8,
+    description:
+      'A radiant stag whose antlers refract light into flowing aurora colors.',
+  },
+
+  {
+    id: 'spectrum-guardian',
+    name: 'Spectrum Guardian',
+    element: 'crystal',
+    rarity: 'Legendary',
+    hatchWeight: 3,
+    description:
+      'An ancient crystalline protector capable of bending energy through its armored body.',
+  },
+
+  {
+    id: 'prismatic-dragon',
+    name: 'Prismatic Dragon',
+    element: 'crystal',
+    rarity: 'Mythic',
+    hatchWeight: 1,
+    description:
+      'A mythical dragon whose crystal scales split light into impossible colors.',
+  },
+
+
+  // =========================
+  // ANCIENT COMPANIONS
+  // =========================
+
+  {
+    id: 'relic-scarab',
+    name: 'Relic Scarab',
+    element: 'ancient',
+    rarity: 'Common',
+    hatchWeight: 45,
+    description:
+      'A tiny mechanical scarab covered in symbols from a forgotten civilization.',
+  },
+
+  {
+    id: 'ruin-hound',
+    name: 'Ruin Hound',
+    element: 'ancient',
+    rarity: 'Uncommon',
+    hatchWeight: 28,
+    description:
+      'A loyal guardian beast awakened from stone carvings hidden inside ancient ruins.',
+  },
+
+  {
+    id: 'chrono-falcon',
+    name: 'Chrono Falcon',
+    element: 'ancient',
+    rarity: 'Rare',
+    hatchWeight: 15,
+    description:
+      'A mysterious bird surrounded by fragments of slowly moving clockwork.',
+  },
+
+  {
+    id: 'gear-golem',
+    name: 'Gear Golem',
+    element: 'ancient',
+    rarity: 'Epic',
+    hatchWeight: 8,
+    description:
+      'A towering machine assembled from relic gears, stone, and forgotten technology.',
+  },
+
+  {
+    id: 'time-sovereign',
+    name: 'Time Sovereign',
+    element: 'ancient',
+    rarity: 'Legendary',
+    hatchWeight: 3,
+    description:
+      'A royal ancient guardian whose mechanisms seem untouched by the passage of time.',
+  },
+
+  {
+    id: 'chronos-dragon',
+    name: 'Chronos Dragon',
+    element: 'ancient',
+    rarity: 'Mythic',
+    hatchWeight: 1,
+    description:
+      'A mythical dragon said to exist across several moments in time at once.',
+  },
+
+];
+
+// Purpose: Returns companion by id.
+export function getCompanionById(id: string) {
+  return COMPANIONS.find(
+    (companion) => companion.id === id
+  );
+}
+
+// Purpose: Returns companions by element.
+export function getCompanionsByElement(element: string) {
+  return COMPANIONS.filter(
+    (companion) => companion.element === element
+  );
+}
+
+// Purpose: Returns companions by rarity.
+export function getCompanionsByRarity(
+  rarity: CompanionRarity
+) {
+  return COMPANIONS.filter(
+    (companion) => companion.rarity === rarity
+  );
+}

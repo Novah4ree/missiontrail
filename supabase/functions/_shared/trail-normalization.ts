@@ -48,10 +48,12 @@ export type NormalizedTrail = {
   source: 'geoapify' | 'openstreetmap';
 };
 
+// Purpose: Implements the radians operation.
 function radians(value: number) {
   return value * Math.PI / 180;
 }
 
+// Purpose: Implements the distance meters operation.
 export function distanceMeters(from: Coordinate, to: Coordinate) {
   const latitudeDelta = radians(to.latitude - from.latitude);
   const longitudeDelta = radians(to.longitude - from.longitude);
@@ -62,11 +64,13 @@ export function distanceMeters(from: Coordinate, to: Coordinate) {
   return EARTH_RADIUS_METERS * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
 }
 
+// Purpose: Implements the read string operation.
 function readString(raw: Record<string, unknown>, key: string) {
   const value = raw[key];
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+// Purpose: Implements the category from operation.
 function categoryFrom(categories: string[], raw: Record<string, unknown>): NormalizedTrail['category'] {
   const information = readString(raw, 'information');
   if (information === 'trailhead' || categories.some((value) => value.includes('ranger_station'))) {
@@ -82,6 +86,7 @@ function categoryFrom(categories: string[], raw: Record<string, unknown>): Norma
 
 // Difficulty is returned only when OpenStreetMap supplied an explicit hiking
 // grade. We never infer it from route length, terrain, or a place category.
+// Purpose: Implements the difficulty from operation.
 function difficultyFrom(raw: Record<string, unknown>): NormalizedTrail['difficulty'] {
   const explicit = readString(raw, 'difficulty')?.toLowerCase();
   if (explicit === 'easy' || explicit === 'moderate' || explicit === 'challenging') return explicit;
@@ -95,6 +100,7 @@ function difficultyFrom(raw: Record<string, unknown>): NormalizedTrail['difficul
   return 'unknown';
 }
 
+// Purpose: Implements the category from osm tags operation.
 function categoryFromOsmTags(tags: Record<string, string>): NormalizedTrail['category'] {
   if (
     tags.highway === 'trailhead'
@@ -120,11 +126,13 @@ function categoryFromOsmTags(tags: Record<string, string>): NormalizedTrail['cat
   return 'trail';
 }
 
+// Purpose: Implements the osm address operation.
 function osmAddress(tags: Record<string, string>) {
   const street = [tags['addr:housenumber'], tags['addr:street']].filter(Boolean).join(' ');
   return [street, tags['addr:city'], tags['addr:state']].filter(Boolean).join(', ') || undefined;
 }
 
+// Purpose: Normalizes overpass places.
 export function normalizeOverpassPlaces(elements: OverpassElement[], origin: Coordinate) {
   const seen = new Set<string>();
   const trails: NormalizedTrail[] = [];
@@ -180,6 +188,7 @@ export function normalizeOverpassPlaces(elements: OverpassElement[], origin: Coo
     });
 }
 
+// Purpose: Normalizes geoapify places.
 export function normalizeGeoapifyPlaces(features: GeoapifyPlaceFeature[], origin: Coordinate) {
   const seen = new Set<string>();
   const trails: NormalizedTrail[] = [];
@@ -219,6 +228,7 @@ export function normalizeGeoapifyPlaces(features: GeoapifyPlaceFeature[], origin
   return trails.sort((left, right) => left.distanceMiles - right.distanceMiles);
 }
 
+// Purpose: Implements the category label operation.
 function categoryLabel(category: NormalizedTrail['category']) {
   return ({
     trail: 'Unnamed Trail',
@@ -238,6 +248,7 @@ type GeoapifyRouteFeature = {
   };
 };
 
+// Purpose: Implements the flatten route coordinates operation.
 function flattenRouteCoordinates(value: unknown): number[][] {
   if (!Array.isArray(value)) return [];
   if (value.length >= 2 && typeof value[0] === 'number' && typeof value[1] === 'number') {
@@ -248,6 +259,7 @@ function flattenRouteCoordinates(value: unknown): number[][] {
 
 // Geoapify can attach elevation as a third coordinate. Elevation gain is shown
 // only when those measured values are actually present in the response.
+// Purpose: Normalizes geoapify route.
 export function normalizeGeoapifyRoute(feature: GeoapifyRouteFeature) {
   const points = flattenRouteCoordinates(feature.geometry?.coordinates);
   const geometry = points

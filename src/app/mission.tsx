@@ -50,6 +50,7 @@ import { useAuth } from '../../context/auth';
 
 const WEATHER_LOCATION_TIMEOUT_MS = 8_000;
 
+// Purpose: Implements the valid weather coordinate operation.
 function validWeatherCoordinate(location: Location.LocationObject | null) {
   if (!location) return null;
   const { latitude, longitude } = location.coords;
@@ -58,6 +59,7 @@ function validWeatherCoordinate(location: Location.LocationObject | null) {
   return { latitude, longitude };
 }
 
+// Purpose: Implements the current weather coordinate operation.
 async function currentWeatherCoordinate() {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -72,6 +74,7 @@ async function currentWeatherCoordinate() {
   }
 }
 
+// Purpose: Implements the mission instruction operation.
 function missionInstruction(mission: VerifiedMissionProgress) {
   switch (mission.requirementType) {
     case 'distance':
@@ -91,6 +94,7 @@ function missionInstruction(mission: VerifiedMissionProgress) {
   }
 }
 
+// Purpose: Implements the mission icon operation.
 function missionIcon(requirementType: VerifiedMissionProgress['requirementType']) {
   switch (requirementType) {
     case 'distance':
@@ -110,6 +114,7 @@ function missionIcon(requirementType: VerifiedMissionProgress['requirementType']
   }
 }
 
+// Purpose: Implements the mission progress label operation.
 function missionProgressLabel(
   requirementType: VerifiedMissionProgress['requirementType'],
   progress: number,
@@ -133,6 +138,7 @@ function missionProgressLabel(
   }
 }
 
+// Purpose: Renders the mission screen interface.
 export default function MissionScreen() {
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
@@ -155,6 +161,7 @@ export default function MissionScreen() {
   const weatherRequestIdRef = useRef(0);
   const weatherAbortRef = useRef<AbortController | null>(null);
 
+  // Purpose: Implements the refresh weather operation.
   const refreshWeather = useCallback(async () => {
     const requestId = ++weatherRequestIdRef.current;
     weatherAbortRef.current?.abort();
@@ -415,6 +422,7 @@ export default function MissionScreen() {
   );
 }
 
+// Purpose: Renders the mission details modal interface.
 function MissionDetailsModal({
   mission,
   isBusy,

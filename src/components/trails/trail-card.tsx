@@ -21,6 +21,7 @@ type Props = {
 };
 
 // This memoized card summarizes a trail and exposes its main user actions.
+// Purpose: Renders the trail card interface.
 export const TrailCard = memo(function TrailCard({
   trail,
   meetupCount,
@@ -101,11 +102,13 @@ export const TrailCard = memo(function TrailCard({
 });
 
 // Displays a compact icon-and-value fact inside the trail card.
+// Purpose: Renders the fact interface.
 function Fact({ icon, value, accent }: { icon: keyof typeof Ionicons.glyphMap; value: string; accent?: boolean }) {
   return <View style={styles.fact}><Ionicons name={icon} size={14} color={accent ? C.warning : C.cyan} /><Text style={styles.factText}>{value}</Text></View>;
 }
 
 // Creates a consistent card button and stops its tap from selecting the whole card.
+// Purpose: Renders the action interface.
 function Action({ label, onPress, primary, disabled }: { label: string; onPress: () => void; primary?: boolean; disabled?: boolean }) {
   return (
     <Pressable
@@ -121,6 +124,7 @@ function Action({ label, onPress, primary, disabled }: { label: string; onPress:
 }
 
 // Converts a stored lowercase label into display text.
+// Purpose: Implements the capitalize operation.
 function capitalize(value: string) { return value.charAt(0).toUpperCase() + value.slice(1); }
 
 const styles = StyleSheet.create({

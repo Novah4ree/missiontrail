@@ -22,7 +22,6 @@ import {
   claimMissionReward,
   flushGpsQueue,
   getCachedVerifiedDailyProgress,
-  getVerifiedDailyProgress,
   subscribeToVerifiedProgress,
   syncDeviceSteps,
   syncUserTimezone,
@@ -96,6 +95,13 @@ const MISSION_STEP_STORAGE_PREFIX = "mission-trail:destination-steps:v1";
 const ActivityProgressContext =
   createContext<ActivityProgressContextValue | null>(null);
 let pedometerModulePromise: Promise<PedometerModule | null> | null = null;
+const STEP_SYNC_INTERVAL_MS = 30_000;
+const STEP_SYNC_RETRY_BASE_MS = 30_000;
+const STEP_SYNC_RATE_LIMIT_RETRY_MS = 60_000;
+const STEP_SYNC_MAX_RETRY_MS = 5 * 60_000;
+const PROGRESS_REFRESH_INTERVAL_MS = 30_000;
+const PROGRESS_REFRESH_RATE_LIMIT_RETRY_MS = 60_000;
+const PROGRESS_REFRESH_MAX_RETRY_MS = 5 * 60_000;
 
 /**
  * Loads the native pedometer only when step tracking starts.
@@ -104,6 +110,7 @@ let pedometerModulePromise: Promise<PedometerModule | null> | null = null;
  * not contain ExponentPedometer. Returning null lets every route keep rendering
  * while the activity card explains that step tracking is unavailable.
  */
+// Purpose: Loads pedometer module.
 function loadPedometerModule() {
   pedometerModulePromise ??= import("expo-sensors/build/Pedometer")
     .then((loadedModule) => {
@@ -133,10 +140,12 @@ function loadPedometerModule() {
   return pedometerModulePromise;
 }
 
+// Purpose: Implements the daily step storage key operation.
 function dailyStepStorageKey(userId: string, localDate: string) {
   return getUserDailyStorageKey(STORAGE_PREFIX, userId, localDate);
 }
 
+// Purpose: Loads daily steps.
 async function loadDailySteps(userId: string, localDate: string) {
   const value = await AsyncStorage.getItem(
     dailyStepStorageKey(userId, localDate),
@@ -156,10 +165,12 @@ async function loadDailySteps(userId: string, localDate: string) {
   }
 }
 
+// Purpose: Implements the mission step storage key operation.
 function missionStepStorageKey(userId: string, localDate: string) {
   return getUserDailyStorageKey(MISSION_STEP_STORAGE_PREFIX, userId, localDate);
 }
 
+// Purpose: Loads mission eligible steps.
 async function loadMissionEligibleSteps(userId: string, localDate: string) {
   const value = await AsyncStorage.getItem(
     missionStepStorageKey(userId, localDate),
@@ -173,6 +184,7 @@ async function loadMissionEligibleSteps(userId: string, localDate: string) {
   }
 }
 
+// Purpose: Renders the activity progress provider interface.
 export function ActivityProgressProvider({
   children,
 }: {
@@ -206,12 +218,29 @@ export function ActivityProgressProvider({
   const missionEligibleStepsRef = useRef(0);
   const activeDateRef = useRef(getLocalDateKey());
   const persistenceQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const progressRefreshInFlightRef = useRef<Promise<void> | null>(null);
+  const progressRefreshUserIdRef = useRef<string | null>(null);
+  const lastProgressRefreshAttemptAtRef = useRef(0);
+  const progressRefreshRetryNotBeforeRef = useRef(0);
+  const progressRefreshFailureCountRef = useRef(0);
+  const activityRefreshInFlightRef = useRef<Promise<void> | null>(null);
+  const activityRefreshUserIdRef = useRef<string | null>(null);
+  const stepSyncInFlightRef = useRef<Promise<void> | null>(null);
+  const stepSyncKeyRef = useRef<string | null>(null);
+  const lastSyncedStepsRef = useRef(0);
+  const lastStepSyncAttemptAtRef = useRef(0);
+  const stepSyncRetryNotBeforeRef = useRef(0);
+  const stepSyncFailureCountRef = useRef(0);
+  const [stepSyncScheduleVersion, setStepSyncScheduleVersion] = useState(0);
+  const currentUserIdRef = useRef(userId);
+  currentUserIdRef.current = userId;
   const previousLevelRef = useRef<number | null>(null);
   const [levelUp, setLevelUp] = useState<{
     fromLevel: number;
     toLevel: number;
   } | null>(null);
 
+  // Purpose: Saves daily steps.
   const saveDailySteps = useCallback(
     (
       recordUserId: string,
@@ -238,6 +267,7 @@ export function ActivityProgressProvider({
     [],
   );
 
+  // Purpose: Saves mission eligible steps.
   const saveMissionEligibleSteps = useCallback(
     (
       recordUserId: string,
@@ -264,7 +294,8 @@ export function ActivityProgressProvider({
     [],
   );
 
-  const refreshProgress = useCallback(async () => {
+  // Purpose: Implements the refresh progress operation.
+  const refreshProgress = useCallback(() => {
     if (!userId) {
       setProgress(null);
       setProgressMessage(null);
@@ -272,45 +303,96 @@ export function ActivityProgressProvider({
       setDistanceWarning(null);
       setStepWarning(null);
       setIsProgressLoading(false);
-      return;
+      return Promise.resolve();
     }
-    setIsProgressLoading(true);
-    let restoredProgress: VerifiedDailyProgress | null = null;
-    try {
-      restoredProgress = await getCachedVerifiedDailyProgress(userId);
-      if (restoredProgress?.localDate === getLocalDateKey()) {
-        setProgress(restoredProgress);
-        setIsUsingCachedProgress(true);
-      } else {
-        restoredProgress = null;
+
+    if (
+      progressRefreshInFlightRef.current &&
+      progressRefreshUserIdRef.current === userId
+    ) {
+      if (__DEV__) console.log("[PROGRESS REFRESH] deduplicated");
+      return progressRefreshInFlightRef.current;
+    }
+    if (progressRefreshUserIdRef.current !== userId) {
+      lastProgressRefreshAttemptAtRef.current = 0;
+      progressRefreshRetryNotBeforeRef.current = 0;
+      progressRefreshFailureCountRef.current = 0;
+    }
+    const now = Date.now();
+    const nextAllowedAt = Math.max(
+      lastProgressRefreshAttemptAtRef.current + PROGRESS_REFRESH_INTERVAL_MS,
+      progressRefreshRetryNotBeforeRef.current,
+    );
+    if (now < nextAllowedAt) {
+      if (__DEV__) {
+        console.log("[PROGRESS REFRESH] deduplicated", {
+          retryInMs: nextAllowedAt - now,
+        });
       }
-
-      // Timezone hints improve the server's local-day selection, but a failure
-      // here must not prevent configured missions from loading.
-      await syncUserTimezone(userId).catch((error) => {
-        if (__DEV__)
-          console.warn("[Mission refresh] Timezone sync failed.", error);
-      });
-
-      const freshProgress = await getVerifiedDailyProgress(userId);
-      setProgress(freshProgress);
-      setProgressMessage(null);
-      setIsUsingCachedProgress(false);
-    } catch (error) {
-      if (__DEV__)
-        console.warn("[Mission refresh] Mission query failed.", error);
-      setProgressMessage(
-        error instanceof VerifiedProgressError
-          ? "Missions could not be loaded. Check your connection and try again."
-          : "Missions could not be loaded. Please try again.",
-      );
-      if (!restoredProgress) setProgress(null);
-      setIsUsingCachedProgress(Boolean(restoredProgress));
-    } finally {
-      setIsProgressLoading(false);
+      return Promise.resolve();
     }
+    lastProgressRefreshAttemptAtRef.current = now;
+
+    setIsProgressLoading(true);
+    const request = (async () => {
+      let restoredProgress: VerifiedDailyProgress | null = null;
+      try {
+        restoredProgress = await getCachedVerifiedDailyProgress(userId);
+        if (currentUserIdRef.current !== userId) return;
+        if (restoredProgress?.localDate === getLocalDateKey()) {
+          setProgress(restoredProgress);
+          setIsUsingCachedProgress(true);
+        } else {
+          restoredProgress = null;
+        }
+
+        // Setting the timezone already returns the complete daily progress.
+        // Reuse it instead of spending a second rate-limited request on `get`.
+        const freshProgress = await syncUserTimezone(userId);
+        if (currentUserIdRef.current !== userId) return;
+        setProgress(freshProgress);
+        setProgressMessage(null);
+        setIsUsingCachedProgress(false);
+        progressRefreshFailureCountRef.current = 0;
+        progressRefreshRetryNotBeforeRef.current = 0;
+      } catch (error) {
+        if (currentUserIdRef.current !== userId) return;
+        progressRefreshFailureCountRef.current += 1;
+        const retryBase =
+          error instanceof VerifiedProgressError &&
+          error.code === "RATE_LIMITED"
+            ? PROGRESS_REFRESH_RATE_LIMIT_RETRY_MS
+            : PROGRESS_REFRESH_INTERVAL_MS;
+        const retryDelay = Math.min(
+          retryBase * 2 ** (progressRefreshFailureCountRef.current - 1),
+          PROGRESS_REFRESH_MAX_RETRY_MS,
+        );
+        progressRefreshRetryNotBeforeRef.current = Date.now() + retryDelay;
+        if (__DEV__)
+          console.warn("[Mission refresh] Mission query failed.", error);
+        setProgressMessage(
+          error instanceof VerifiedProgressError
+            ? "Missions could not be loaded. Check your connection and try again."
+            : "Missions could not be loaded. Please try again.",
+        );
+        if (!restoredProgress) setProgress(null);
+        setIsUsingCachedProgress(Boolean(restoredProgress));
+      } finally {
+        if (currentUserIdRef.current === userId) {
+          setIsProgressLoading(false);
+        }
+      }
+    })().finally(() => {
+      if (progressRefreshInFlightRef.current === request) {
+        progressRefreshInFlightRef.current = null;
+      }
+    });
+    progressRefreshInFlightRef.current = request;
+    progressRefreshUserIdRef.current = userId;
+    return request;
   }, [userId]);
 
+  // Purpose: Implements the restart pedometer operation.
   const restartPedometer = useCallback(async () => {
     pedometerSubscriptionRef.current?.remove();
     pedometerSubscriptionRef.current = null;
@@ -431,24 +513,46 @@ export function ActivityProgressProvider({
     }
   }, [saveDailySteps, saveMissionEligibleSteps, userId]);
 
-  const refreshActivity = useCallback(async () => {
-    await restartPedometer();
-    if (!userId) return;
-    try {
-      const queuedProgress = await flushGpsQueue(userId);
-      if (queuedProgress) setProgress(queuedProgress);
-      setDistanceWarning(null);
-    } catch (error) {
-      if (__DEV__)
-        console.warn("[Daily activity] Queued GPS sync failed.", error);
-      setDistanceWarning(
-        error instanceof VerifiedProgressError
-          ? "Walking activity couldn’t update."
-          : "Walking activity couldn’t update. Try again shortly.",
-      );
+  // Purpose: Implements the refresh activity operation.
+  const refreshActivity = useCallback(() => {
+    if (
+      activityRefreshInFlightRef.current &&
+      activityRefreshUserIdRef.current === userId
+    ) {
+      if (__DEV__) console.log("[ACTIVITY REFRESH] deduplicated");
+      return activityRefreshInFlightRef.current;
     }
+
+    const request = (async () => {
+      await restartPedometer();
+      if (!userId) return;
+      try {
+        const queuedProgress = await flushGpsQueue(userId);
+        if (currentUserIdRef.current !== userId) return;
+        if (queuedProgress) setProgress(queuedProgress);
+        setDistanceWarning(null);
+      } catch (error) {
+        if (currentUserIdRef.current !== userId) return;
+        if (__DEV__)
+          console.warn("[Daily activity] Queued GPS sync failed.", error);
+        setDistanceWarning(
+          error instanceof VerifiedProgressError
+            ? "Walking activity couldn’t update."
+            : "Walking activity couldn’t update. Try again shortly.",
+        );
+      }
+    })().finally(() => {
+      if (activityRefreshInFlightRef.current === request) {
+        activityRefreshInFlightRef.current = null;
+        activityRefreshUserIdRef.current = null;
+      }
+    });
+    activityRefreshInFlightRef.current = request;
+    activityRefreshUserIdRef.current = userId;
+    return request;
   }, [restartPedometer, userId]);
 
+  // Purpose: Implements the claim reward operation.
   const claimReward = useCallback(
     async (missionId: string) => {
       setIsProgressLoading(true);
@@ -505,6 +609,7 @@ export function ActivityProgressProvider({
       latitude: activeTrailActivity.trail.latitude,
       longitude: activeTrailActivity.trail.longitude,
     };
+    // Purpose: Updates proximity.
     const updateProximity = (location: Location.LocationObject) => {
       if (!active) return;
       const isNear = isWithinMissionStepRange(location.coords, destination);
@@ -516,6 +621,7 @@ export function ActivityProgressProvider({
       );
     };
 
+    // Purpose: Implements the watch destination proximity operation.
     async function watchDestinationProximity() {
       try {
         const [servicesEnabled, permission] = await Promise.all([
@@ -596,24 +702,151 @@ export function ActivityProgressProvider({
   }, [refreshActivity, refreshProgress]);
 
   useEffect(() => {
+    if (!userId) return;
+    const localDate = getLocalDateKey();
+    const syncKey = `${userId}:${localDate}`;
+    if (stepSyncKeyRef.current !== syncKey) {
+      stepSyncKeyRef.current = syncKey;
+      lastSyncedStepsRef.current = 0;
+      lastStepSyncAttemptAtRef.current = 0;
+      stepSyncRetryNotBeforeRef.current = 0;
+      stepSyncFailureCountRef.current = 0;
+    }
+    if (progress?.localDate === localDate) {
+      lastSyncedStepsRef.current = Math.max(
+        lastSyncedStepsRef.current,
+        progress.verifiedSteps,
+      );
+    }
+  }, [progress, userId]);
+
+  useEffect(() => {
     if (!userId || permissionStatus !== "granted") return;
     const localDate = getLocalDateKey();
-    const syncTimer = setTimeout(() => {
-      void syncDeviceSteps(userId, localDate, missionEligibleSteps)
-        .then((syncedProgress) => {
-          setProgress(syncedProgress);
-          setStepWarning(null);
-        })
-        .catch((error) => {
-          if (__DEV__)
-            console.warn("[Daily activity] Step sync will retry later.", error);
-          setStepWarning(
-            "Step progress could not update. Your saved missions are still available.",
-          );
-        });
-    }, 1_500);
-    return () => clearTimeout(syncTimer);
-  }, [missionEligibleSteps, permissionStatus, userId]);
+    const syncKey = `${userId}:${localDate}`;
+    if (stepSyncKeyRef.current !== syncKey) {
+      stepSyncKeyRef.current = syncKey;
+      lastSyncedStepsRef.current =
+        progress?.localDate === localDate ? progress.verifiedSteps : 0;
+      lastStepSyncAttemptAtRef.current = 0;
+      stepSyncRetryNotBeforeRef.current = 0;
+      stepSyncFailureCountRef.current = 0;
+    }
+
+    let cancelled = false;
+    let syncTimer: ReturnType<typeof setTimeout> | null = null;
+    // Purpose: Implements the schedule sync operation.
+    const scheduleSync = () => {
+      const pendingSteps = missionEligibleStepsRef.current;
+      if (pendingSteps <= lastSyncedStepsRef.current) {
+        if (__DEV__ && pendingSteps > 0) {
+          console.log("[PROGRESS SYNC] skipped duplicate", {
+            steps: pendingSteps,
+          });
+        }
+        return;
+      }
+
+      const now = Date.now();
+      const nextAllowedAt = Math.max(
+        lastStepSyncAttemptAtRef.current + STEP_SYNC_INTERVAL_MS,
+        stepSyncRetryNotBeforeRef.current,
+      );
+      syncTimer = setTimeout(() => {
+        if (cancelled) return;
+        if (stepSyncInFlightRef.current) {
+          if (__DEV__) console.log("[PROGRESS SYNC] deduplicated");
+          syncTimer = setTimeout(scheduleSync, 1_000);
+          return;
+        }
+
+        const stepsToSync = missionEligibleStepsRef.current;
+        if (stepsToSync <= lastSyncedStepsRef.current) return;
+        lastStepSyncAttemptAtRef.current = Date.now();
+        if (__DEV__) {
+          console.log("[PROGRESS SYNC] sending", { steps: stepsToSync });
+        }
+
+        const request = syncDeviceSteps(userId, localDate, stepsToSync)
+          .then((syncedProgress) => {
+            if (stepSyncKeyRef.current !== syncKey) return;
+            lastSyncedStepsRef.current = Math.max(
+              lastSyncedStepsRef.current,
+              stepsToSync,
+              syncedProgress.verifiedSteps,
+            );
+            stepSyncFailureCountRef.current = 0;
+            stepSyncRetryNotBeforeRef.current = 0;
+            if (!cancelled) {
+              setProgress(syncedProgress);
+              setStepWarning(null);
+            }
+            if (__DEV__) {
+              console.log("[PROGRESS SYNC] success", {
+                steps: syncedProgress.verifiedSteps,
+              });
+            }
+          })
+          .catch((error) => {
+            if (stepSyncKeyRef.current !== syncKey) return;
+            stepSyncFailureCountRef.current += 1;
+            const baseDelay =
+              error instanceof VerifiedProgressError &&
+              error.code === "RATE_LIMITED"
+                ? STEP_SYNC_RATE_LIMIT_RETRY_MS
+                : STEP_SYNC_RETRY_BASE_MS;
+            const retryDelay = Math.min(
+              baseDelay * 2 ** (stepSyncFailureCountRef.current - 1),
+              STEP_SYNC_MAX_RETRY_MS,
+            );
+            stepSyncRetryNotBeforeRef.current = Date.now() + retryDelay;
+            if (__DEV__) {
+              const errorCode =
+                error instanceof VerifiedProgressError
+                  ? error.code
+                  : "SYNC_FAILED";
+              console.warn(
+                errorCode === "RATE_LIMITED"
+                  ? "[PROGRESS SYNC] rate limited"
+                  : "[PROGRESS SYNC] retry scheduled",
+                {
+                  code: errorCode,
+                  retryInMs: retryDelay,
+                  steps: stepsToSync,
+                },
+              );
+            }
+            if (!cancelled) {
+              setStepWarning(
+                "Step progress could not update. Your saved missions are still available.",
+              );
+            }
+          })
+          .finally(() => {
+            if (stepSyncInFlightRef.current === request) {
+              stepSyncInFlightRef.current = null;
+            }
+            if (!cancelled) {
+              setStepSyncScheduleVersion((version) => version + 1);
+            }
+          });
+        stepSyncInFlightRef.current = request;
+      }, Math.max(0, nextAllowedAt - now));
+    };
+
+    scheduleSync();
+    return () => {
+      cancelled = true;
+      if (syncTimer) clearTimeout(syncTimer);
+    };
+  }, [
+    missionEligibleSteps,
+    permissionStatus,
+    progress?.localDate,
+    progress?.verifiedSteps,
+    stepSyncScheduleVersion,
+    userId,
+  ]);
 
   useEffect(() => {
     if (!progress || !Number.isFinite(progress.totalXp)) return;
@@ -708,6 +941,7 @@ export function ActivityProgressProvider({
   );
 }
 
+// Purpose: Provides the activity progress context React hook behavior.
 function useActivityProgressContext() {
   const context = useContext(ActivityProgressContext);
   if (!context)
@@ -715,10 +949,12 @@ function useActivityProgressContext() {
   return context;
 }
 
+// Purpose: Provides the shared daily progress React hook behavior.
 export function useSharedDailyProgress() {
   return useActivityProgressContext().dailyProgress;
 }
 
+// Purpose: Provides the daily activity React hook behavior.
 export function useDailyActivity() {
   return useActivityProgressContext().activity;
 }

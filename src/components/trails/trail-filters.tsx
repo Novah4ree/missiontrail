@@ -19,11 +19,13 @@ const options: { value: TrailFilterKey; label: string }[] = [
 ];
 
 // This row displays every available trail filter as a selectable chip.
+// Purpose: Renders the trail filters view interface.
 export function TrailFiltersView({ filters, onChange }: {
   filters: TrailFilters;
   onChange: (filters: TrailFilters) => void;
 }) {
   // Adds or removes one filter without changing the other selected filters.
+  // Purpose: Implements the toggle filter operation.
   function toggleFilter(value: TrailFilterKey) {
     const selected = filters.selected.includes(value)
       ? filters.selected.filter((item) => item !== value)

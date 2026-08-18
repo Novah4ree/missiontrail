@@ -34,6 +34,7 @@ const CATEGORY_LABELS: Readonly<Record<MeetupCategory, string>> = {
 };
 
 /** Shows the selected public meetup while leaving the map mounted underneath. */
+// Purpose: Renders the meetup map preview component interface.
 function MeetupMapPreviewComponent({
   meetup,
   userLocation,
@@ -124,6 +125,7 @@ function MeetupMapPreviewComponent({
 }
 
 /** Displays one compact preview fact with an icon and readable text. */
+// Purpose: Renders the preview fact interface.
 function PreviewFact({ icon, value }: { icon: keyof typeof Ionicons.glyphMap; value: string }) {
   return (
     <View style={styles.fact}>
@@ -134,6 +136,7 @@ function PreviewFact({ icon, value }: { icon: keyof typeof Ionicons.glyphMap; va
 }
 
 /** Formats meetup times using the user's local time preference. */
+// Purpose: Formats meetup time range.
 function formatMeetupTimeRange(meetup: Meetup): string {
   const start = new Date(meetup.startTime);
   const end = new Date(meetup.endTime);
@@ -143,12 +146,14 @@ function formatMeetupTimeRange(meetup: Meetup): string {
 }
 
 /** Checks whether the scheduled meetup end time has already passed. */
+// Purpose: Implements the meetup has ended operation.
 function meetupHasEnded(meetup: Meetup, now: Date): boolean {
   const end = Date.parse(meetup.endTime);
   return Number.isFinite(end) && end <= now.getTime();
 }
 
 /** Gives the Join button an explanation for every disabled state. */
+// Purpose: Returns join label.
 function getJoinLabel({ joined, cancelled, ended, full, joining }: {
   joined: boolean;
   cancelled: boolean;

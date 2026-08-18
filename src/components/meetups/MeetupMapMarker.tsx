@@ -28,6 +28,7 @@ const CATEGORY_VISUALS: Readonly<Record<MeetupCategory, CategoryVisual>> = {
 };
 
 /** Draws one social landmark pin without showing any attendee coordinates. */
+// Purpose: Renders the meetup map marker component interface.
 function MeetupMapMarkerComponent({ meetup, friendsAttending, onPress }: Props) {
   if (Platform.OS === 'web') return null;
   const visual = CATEGORY_VISUALS[meetup.category];
@@ -73,6 +74,7 @@ function MeetupMapMarkerComponent({ meetup, friendsAttending, onPress }: Props) 
 }
 
 /** Prevents unrelated map state changes from redrawing an unchanged marker. */
+// Purpose: Implements the marker props are equal operation.
 function markerPropsAreEqual(previous: Props, next: Props): boolean {
   return previous.meetup.id === next.meetup.id
     && previous.meetup.latitude === next.meetup.latitude

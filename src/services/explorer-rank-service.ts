@@ -43,6 +43,7 @@ const DIVISION_NAMES = [
 const LEVELS_PER_TIER = 50;
 const LEVELS_PER_DIVISION = 10;
 
+// Purpose: Returns explorer rank.
 export function getExplorerRank(level: number): ExplorerRank {
   const safeLevel = Math.max(1, Math.floor(level));
 
@@ -82,10 +83,12 @@ export function getExplorerRank(level: number): ExplorerRank {
   };
 }
 
+// Purpose: Returns next explorer rank.
 export function getNextExplorerRank(level: number): ExplorerRank {
   return getExplorerRank(level + 1);
 }
 
+// Purpose: Generates explorer ranks.
 export function generateExplorerRanks(
   totalLevels = 1000
 ): ExplorerRank[] {

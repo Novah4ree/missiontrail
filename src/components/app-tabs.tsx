@@ -3,6 +3,7 @@ import { useColorScheme } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 
+// Purpose: Renders the app tabs interface.
 export default function AppTabs() {
   const scheme = useColorScheme();
   const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];

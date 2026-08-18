@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 
 // Student note: Displays the cosmic sky glow UI.
+// Purpose: Renders the cosmic sky glow interface.
 function CosmicSkyGlow() {
 
   const glowAnim = useRef(new Animated.Value(0)).current;
@@ -103,6 +104,7 @@ function CosmicSkyGlow() {
 }
 
 // Student note: Displays the skyline glow UI.
+// Purpose: Renders the skyline glow interface.
 function SkylineGlow() {
 
   const purplePulse = useRef(new Animated.Value(0)).current;
@@ -111,6 +113,7 @@ function SkylineGlow() {
   useEffect(() => {
 
     // Student note: Creates pulse.
+    // Purpose: Creates pulse.
     const createPulse = (value: Animated.Value, duration: number) =>
       Animated.loop(
         Animated.sequence([
@@ -145,6 +148,7 @@ function SkylineGlow() {
   }, [bluePulse, purplePulse]);
 
   // Student note: Creates the opacity and movement for one skyline glow layer.
+  // Purpose: Implements the animated layer style operation.
   const animatedLayerStyle = (value: Animated.Value) => ({
     opacity: value.interpolate({
       inputRange: [0, 1],
@@ -194,6 +198,7 @@ function SkylineGlow() {
 }
 
 // Student note: Displays the water aurora glow UI.
+// Purpose: Renders the water aurora glow interface.
 function WaterAuroraGlow() {
 
   const leftAurora = useRef(new Animated.Value(0)).current;
@@ -203,6 +208,7 @@ function WaterAuroraGlow() {
   useEffect(() => {
 
     // Student note: Creates aurora loop.
+    // Purpose: Creates aurora loop.
     const createAuroraLoop = (value: Animated.Value, duration: number) =>
       Animated.loop(
         Animated.sequence([
@@ -238,6 +244,7 @@ function WaterAuroraGlow() {
   }, [centerAurora, leftAurora, rightAurora]);
 
   // Student note: Creates the opacity and movement for one aurora layer.
+  // Purpose: Implements the animated aurora style operation.
   const animatedAuroraStyle = (
     value: Animated.Value,
     horizontalDrift: number,
@@ -370,6 +377,7 @@ const COSMIC_STAR_CONFIG: Star[] = [
 ];
 
 // Student note: Displays the cosmic stars UI.
+// Purpose: Renders the cosmic stars interface.
 function CosmicStars() {
 
   const starAnimations = useRef(
@@ -592,6 +600,7 @@ const CITY_WINDOW_LIGHT_CONFIG = [
 
 const CITY_WINDOW_COLORS = ['#60a5fa', '#3b82f6', '#93c5fd', '#c084fc'] as const;
 // Student note: Displays the city window lights UI.
+// Purpose: Renders the city window lights interface.
 function CityWindowLights() {
 
   const windowPulses = useRef([
@@ -733,6 +742,7 @@ type TrailSparklePathProps = {
 };
 
 // Student note: Displays the trail sparkle path UI.
+// Purpose: Renders the trail sparkle path interface.
 function TrailSparklePath({
   positions,
   progress,
@@ -780,16 +790,19 @@ function TrailSparklePath({
 }
 
 // Student note: Displays the left trail sparkles UI.
+// Purpose: Renders the left trail sparkles interface.
 function LeftTrailSparkles(props: Omit<TrailSparklePathProps, 'positions'>) {
   return <TrailSparklePath {...props} positions={LEFT_TRAIL_DOTS} />;
 }
 
 // Student note: Displays the right trail sparkles UI.
+// Purpose: Renders the right trail sparkles interface.
 function RightTrailSparkles(props: Omit<TrailSparklePathProps, 'positions'>) {
   return <TrailSparklePath {...props} positions={RIGHT_TRAIL_DOTS} />;
 }
 
 // Student note: Displays the trail edge sparkles UI.
+// Purpose: Renders the trail edge sparkles interface.
 function TrailEdgeSparkles() {
 
   const { width, height } = useWindowDimensions();
@@ -798,6 +811,7 @@ function TrailEdgeSparkles() {
 
   useEffect(() => {
     // Student note: Creates trail loop.
+    // Purpose: Creates trail loop.
     const createTrailLoop = (progress: Animated.Value) =>
       Animated.loop(
         Animated.timing(progress, {
@@ -834,6 +848,7 @@ function TrailEdgeSparkles() {
 }
 
 // Student note: Builds and controls the splash screen.
+// Purpose: Renders the splash screen interface.
 export default function SplashScreen() {
 
   const router = useRouter();
@@ -868,6 +883,7 @@ export default function SplashScreen() {
   }, [fadeAnim]);
 
   // Student note: Handles the enter action.
+  // Purpose: Handles enter.
   const handleEnter = () => {
 
     router.replace('/login');

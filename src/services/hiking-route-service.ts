@@ -5,6 +5,7 @@ type HikingRouteResponse = { route?: HikingRoute };
 
 // Routing stays behind the same Edge Function so the Geoapify key never enters
 // the Expo bundle or a committed source file.
+// Purpose: Returns hiking route.
 export async function getHikingRoute(origin: TrailSearchCoordinate, destination: TrailSearchCoordinate) {
   const { data, error } = await supabase.functions.invoke<HikingRouteResponse>('trail-discovery', {
     body: { action: 'route', origin, destination },

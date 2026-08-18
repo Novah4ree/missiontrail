@@ -13,6 +13,7 @@ export type PlayerLevelProgress = {
 };
 
 /** Returns the XP required to advance from the supplied level. */
+// Purpose: Implements the xp for level operation.
 export const xpForLevel = (level: number) =>
   Math.round(
     PLAYER_LEVEL_XP_BASE
@@ -20,6 +21,7 @@ export const xpForLevel = (level: number) =>
   );
 
 /** Converts lifetime XP into a level and progress within that level. */
+// Purpose: Returns player level progress.
 export function getPlayerLevelProgress(totalXp: number): PlayerLevelProgress {
   const safeTotalXp = Number.isFinite(totalXp) ? Math.max(0, Math.floor(totalXp)) : 0;
   let level = 1;

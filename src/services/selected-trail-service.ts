@@ -6,10 +6,12 @@ const SELECTED_TRAIL_KEY = 'mission-trail:selected-trail:v1';
 
 // The route parameter carries only an ID. The full normalized object stays in a
 // small local handoff record instead of being placed in a navigation URL.
+// Purpose: Saves selected trail.
 export async function saveSelectedTrail(trail: Trail) {
   await AsyncStorage.setItem(SELECTED_TRAIL_KEY, JSON.stringify(trail));
 }
 
+// Purpose: Loads selected trail.
 export async function loadSelectedTrail(trailId?: string) {
   const value = await AsyncStorage.getItem(SELECTED_TRAIL_KEY);
   if (!value) return null;

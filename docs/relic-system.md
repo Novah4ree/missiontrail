@@ -8,14 +8,16 @@ remain here because they help developers understand the security model.
 
 1. The map asks for foreground location permission and collects fresh GPS readings.
 2. `relic-field` authenticates the Supabase user. Three accurate readings create a
-   stable exploration zone based on a precision-5 geohash. That zone lasts for the
-   configured zone lifetime, so walking across a geohash boundary cannot reroll relics.
+   deterministic field cell based on a precision-7 geohash. A changed cell rotates
+   the field only when no secure reveal/collection flow is active.
 3. Database server time selects a half-open 30-minute interval. An HMAC over the
    server secret, region, interval ID, and slot creates repeatable but unpredictable
    candidate choices. The secret never ships with Expo.
-4. Production candidates must come from `private.safe_spawn_locations` rows already
-   marked `verified`. Without enough trusted pedestrian locations, the server returns
-   no areas. Mathematical candidates are allowed only for explicit local testing.
+4. Production neighborhood, local, and regional candidates come from
+   `private.safe_spawn_locations` rows marked `verified`. One user-owned
+   Common/Uncommon Ambient candidate is placed at the freshly verified median GPS
+   anchor, so it cannot point into an arbitrary nearby property. Wider mathematical
+   candidates remain development-only.
 5. The server offsets every client marker from the exact point. The circle contains
    the relic but is not centered on it. The response includes only that offset area,
    expiry, and a locked/available flag.
@@ -25,7 +27,8 @@ remain here because they help developers understand the security model.
 7. `relic-proximity` checks three ordered, recent readings with Haversine distance.
    All readings at 4.57 m accuracy or better use the 4.57 m target. Readings within
    the 12 m hard limit may use the 9 m fallback only when median accuracy is 9 m or
-   better. The radius never grows beyond 9 m.
+   better. Ambient encounters alone may use a separately configured 12 m fallback;
+   normal outdoor verification remains capped at 9 m.
 8. A successful reveal issues a one-time token that expires after 90 seconds. Three
    new readings are required for collection; reveal readings cannot be reused.
 9. One PostgreSQL transaction locks the assignment and token, consumes the token,
@@ -34,6 +37,33 @@ remain here because they help developers understand the security model.
 10. The client updates its offline Vault cache immediately, plays Relic Awakening
     with the registry artwork, and offers **View in Vault**. The Vault also syncs from
     the server whenever it gains focus.
+
+## Tiered field density
+
+- Ambient: at most 1 Common/Uncommon candidate per user/window, anchored to the
+  user's freshly verified immediate area and never shared with another user.
+- Neighborhood: up to 12 verified safe candidates within 804.672 m, spaced by 50 m.
+- Local: up to 10 verified safe candidates from 804.672–3,218.688 m, spaced by 175 m.
+- Regional: up to 6 verified safe candidates from 3,218.688–16,093.44 m, spaced by 500 m.
+
+Safe-location availability controls the three wider tier counts. Rare can roll only
+in local/regional tiers and Legendary only in the regional tier; their existing daily
+eligibility and collection checks remain server authoritative.
+
+## Nearby Relic Radar
+
+`relic-proximity` returns at most six active signals sorted by server-measured
+distance. Each summary contains only an opaque assignment ID, rounded feet,
+bearing/direction, clue strength, availability, and encounter type. Locked
+Rare/Legendary assignments are labeled only as locked unknown signals; their rarity
+and identity remain private.
+
+Auto Nearest targets the closest available signal. Selecting an available row keeps
+that assignment as the target until it is collected, expires, becomes unavailable,
+or the player restores Auto Nearest. Ambient rows deliberately omit bearing and show
+“all around you.” The client refreshes every 25 seconds while far, progressively down
+to an 8-second floor at encounter range, with movement thresholds and a single
+in-flight request guard.
 
 ## Daily distance and missions
 
@@ -136,8 +166,10 @@ It requires all of the following:
 - `RELIC_ALLOW_DEVELOPMENT_DISTANCE_MOCK=true`, and
 - the authenticated development user's UUID in `RELIC_DEVELOPMENT_USER_IDS`.
 
-Unverified spawn coordinates additionally require `RELIC_ALLOW_UNVERIFIED_SPAWNS=true`.
-Never use production accounts in either development allow-list.
+Wider unverified spawn coordinates additionally require
+`RELIC_ALLOW_UNVERIFIED_SPAWNS=true`. Ambient is not an unverified mathematical
+fallback: its exact point must match a fresh server-recorded GPS anchor. Never use
+production accounts in either development allow-list.
 
 ## Local commands
 
@@ -203,8 +235,8 @@ Run on a development build, not a simulator, for final GPS and health decisions.
 - The repository currently declares Expo SDK 54 while project instructions target SDK
   56. Upgrade and regenerate the native project before adding SDK-56 native health work.
 - The native HealthKit/Health Connect bridge is an interface only.
-- No trusted safe-location importer is included. Production intentionally returns no
-  relic areas until verified pedestrian/public POIs are loaded.
+- No trusted safe-location importer is included. Production still returns the ambient
+  Common/Uncommon area, but wider tier density depends on verified pedestrian/public POIs.
 - Device attestation, scheduled retention cleanup, observability dashboards, and a
   human suspicious-event review process are still required before public release.
 - Phone GPS cannot promise 15-foot accuracy everywhere. The bounded 9 m fallback is

@@ -6,6 +6,7 @@
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
+// Purpose: Provides the theme React hook behavior.
 export function useTheme() {
   const scheme = useColorScheme();
   const theme = scheme === 'dark' ? 'dark' : 'light';

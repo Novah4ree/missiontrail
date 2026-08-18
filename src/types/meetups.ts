@@ -87,11 +87,13 @@ const meetupTypeValues: ReadonlySet<string> = new Set(MEETUP_TYPES);
 const meetupCategoryValues: ReadonlySet<string> = new Set(MEETUP_CATEGORIES);
 
 /** Safely checks an unknown API value before using it as a MeetupType. */
+// Purpose: Determines whether is meetup type.
 export function isMeetupType(value: unknown): value is MeetupType {
   return typeof value === 'string' && meetupTypeValues.has(value);
 }
 
 /** Safely checks an unknown API value before using it as a MeetupCategory. */
+// Purpose: Determines whether is meetup category.
 export function isMeetupCategory(value: unknown): value is MeetupCategory {
   return typeof value === 'string' && meetupCategoryValues.has(value);
 }

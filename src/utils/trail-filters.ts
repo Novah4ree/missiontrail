@@ -2,11 +2,13 @@ import type { Trail, TrailFilters, TrailMeetup } from '@/types/trails';
 
 export const EMPTY_TRAIL_FILTERS: TrailFilters = { selected: [] };
 
+// Purpose: Determines whether is today.
 function isToday(dateValue: string) {
   return dateValue === new Date().toISOString().slice(0, 10);
 }
 
 /** Applies search and filter groups without changing the original catalog. */
+// Purpose: Filters trails.
 export function filterTrails(
   trails: Trail[],
   filters: TrailFilters,

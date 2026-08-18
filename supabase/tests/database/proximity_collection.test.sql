@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(22);
+select plan(23);
 
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
 values (
@@ -42,6 +42,12 @@ insert into private.relic_spawn_candidates (
     1, 'star-fragment', 'rare',
     extensions.st_setsrid(extensions.st_makepoint(-122.001, 37.001), 4326)::extensions.geography,
     'verified', repeat('b', 64)
+  ),
+  (
+    '40000000-0000-4000-8000-000000000009', '40000000-0000-4000-8000-000000000002',
+    2, 'star-fragment', 'rare',
+    extensions.st_setsrid(extensions.st_makepoint(-122.002, 37.002), 4326)::extensions.geography,
+    'verified', repeat('f', 64)
   );
 
 insert into private.user_relic_assignments (
@@ -69,6 +75,16 @@ insert into private.user_relic_assignments (
     extensions.st_setsrid(extensions.st_makepoint(-122.0014, 37.0014), 4326)::extensions.geography,
     75, 75, 'active', clock_timestamp() + interval '25 minutes',
     clock_timestamp() + interval '27 minutes', null, null
+  ),
+  (
+    '40000000-0000-4000-8000-000000000010',
+    '33333333-3333-4333-8333-333333333333',
+    '40000000-0000-4000-8000-000000000001',
+    '40000000-0000-4000-8000-000000000009',
+    'star-fragment', 'rare', 'eligible',
+    extensions.st_setsrid(extensions.st_makepoint(-122.0024, 37.0024), 4326)::extensions.geography,
+    75, 75, 'active', clock_timestamp() + interval '25 minutes',
+    clock_timestamp() + interval '27 minutes', null, null
   );
 
 select ok(
@@ -84,8 +100,19 @@ select is(
     select count(*)
     from public.server_list_nearby_relic_contexts('33333333-3333-4333-8333-333333333333')
   ),
+  3::bigint,
+  'radar context includes all active uncollected assignments'
+);
+select is(
+  (
+    select count(*)
+    from public.server_list_nearby_relic_contexts(
+      '33333333-3333-4333-8333-333333333333'
+    )
+    where eligibility_status = 'locked'
+  ),
   1::bigint,
-  'nearest search includes active eligible relics and excludes locked special relics'
+  'locked radar context stays opaque and service-role only'
 );
 select ok(
   not has_function_privilege(

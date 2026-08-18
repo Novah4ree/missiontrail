@@ -80,11 +80,13 @@ export const APPROVED_LANDMARK_KINDS_BY_CATEGORY: Readonly<
 };
 
 /** Returns true only inside a React Native development bundle. */
+// Purpose: Implements the development test data is enabled operation.
 function developmentTestDataIsEnabled(): boolean {
   return typeof __DEV__ !== 'undefined' && __DEV__ === true;
 }
 
 /** Creates an ISO time today without depending on a real user or database record. */
+// Purpose: Implements the test time today operation.
 function testTimeToday(hour: number, minute = 0): string {
   const date = new Date();
   date.setHours(hour, minute, 0, 0);
@@ -92,6 +94,7 @@ function testTimeToday(hour: number, minute = 0): string {
 }
 
 /** Builds approved landmark previews only after the development guard succeeds. */
+// Purpose: Builds development landmarks.
 function buildDevelopmentLandmarks(): DevelopmentApprovedLandmark[] {
   return [
     {
@@ -215,12 +218,14 @@ function buildDevelopmentLandmarks(): DevelopmentApprovedLandmark[] {
 }
 
 /** Returns sample landmarks in development and an empty list in production. */
+// Purpose: Returns development approved landmarks.
 export function getDevelopmentApprovedLandmarks(): readonly DevelopmentApprovedLandmark[] {
   if (!developmentTestDataIsEnabled()) return [];
   return buildDevelopmentLandmarks();
 }
 
 /** Builds sample meetup previews without writing attendees, XP, missions, or relics. */
+// Purpose: Builds development meetups.
 function buildDevelopmentMeetups(): DevelopmentMeetup[] {
   const createdAt = testTimeToday(6);
   return [
@@ -386,6 +391,7 @@ function buildDevelopmentMeetups(): DevelopmentMeetup[] {
 }
 
 /** Returns sample meetups in development and an empty list in production. */
+// Purpose: Returns development meetups today.
 export function getDevelopmentMeetupsToday(): readonly DevelopmentMeetup[] {
   if (!developmentTestDataIsEnabled()) return [];
   return buildDevelopmentMeetups();
