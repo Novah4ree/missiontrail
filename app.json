@@ -14,7 +14,8 @@
         "NSLocationWhenInUseUsageDescription": "Allow Mission Trails to use your location to find nearby trails and track trails you choose to start.",
         "NSMotionUsageDescription": "Mission Trails uses motion activity to count your steps and track walking progress during missions.",
         "ITSAppUsesNonExemptEncryption": false,
-        "NSFaceIDUsageDescription": "Mission Trails uses Face ID to securely sign you in."
+        "NSFaceIDUsageDescription": "Mission Trails uses Face ID to securely sign you in.",
+        "NSCameraUsageDescription": "Mission Trails uses your camera to discover hidden relics in augmented reality."
       }
     },
     "android": {
@@ -86,7 +87,8 @@
         }
       ],
       "expo-secure-store",
-      "expo-iap"
+      "expo-iap",
+      "@reactvision/react-viro"
     ],
     "experiments": {
       "typedRoutes": true,
