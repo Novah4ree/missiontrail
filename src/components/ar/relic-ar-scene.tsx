@@ -35,7 +35,7 @@ type RelicARSceneProps = {
 export default function RelicARScene({
   sceneNavigator,
   arSceneNavigator,
-}: RelicARSceneProps) {
+}: RelicARSceneProps = {}) {
   const navigator =
     sceneNavigator ?? arSceneNavigator;
 
