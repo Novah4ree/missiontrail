@@ -1,9 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { CameraView, useCameraPermissions } from "expo-camera";
-import { DeviceMotion } from "expo-sensors";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  Image,
   Modal,
   Pressable,
   StyleSheet,
@@ -17,12 +14,11 @@ import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
-  withRepeat,
-  withSequence,
   withTiming,
 } from "react-native-reanimated";
 
 import type { Relic } from "@/constants/relics";
+import { RelicARWorld } from "@/components/ar/relic-ar-world";
 
 type RelicEncounterProps = {
   visible: boolean;
@@ -52,220 +48,36 @@ export function RelicEncounter({
   onClose,
 }: RelicEncounterProps) {
   const reduceMotion = useReducedMotion();
-  const [cameraPermission, requestCameraPermission] =
-    useCameraPermissions();
 
-  const [relicTouched, setRelicTouched] = useState(false);
+  // Purpose:
+  // Tracks whether ARKit/ARCore has found a usable
+  // physical surface in the player's environment.
+  const [arSurfaceFound, setArSurfaceFound] =
+    useState(false);
 
-  const floatY = useSharedValue(0);
-  const motionX = useSharedValue(0);
-  const motionY = useSharedValue(0);
-  const pulse = useSharedValue(1);
-  const ringScale = useSharedValue(0.9);
-  const ringOpacity = useSharedValue(0.65);
+  // Purpose:
+  // Tracks whether the player actually tapped the
+  // relic inside the real AR world.
+  const [relicTouched, setRelicTouched] =
+    useState(false);
+
+  // Purpose:
+  // Smoothly changes the scanning label into the
+  // surface-locked label when AR finds the environment.
   const lockProgress = useSharedValue(0);
 
-  const motionOriginRef = useRef<{
-    beta: number;
-    gamma: number;
-  } | null>(null);
-
   useEffect(() => {
-    if (
-      visible &&
-      cameraPermission?.status === "undetermined"
-    ) {
-      void requestCameraPermission();
-    }
-  }, [
-    cameraPermission?.status,
-    requestCameraPermission,
-    visible,
-  ]);
-
-  useEffect(() => {
-    if (!visible || !relic) {
-      motionOriginRef.current = null;
-      motionX.value = 0;
-      motionY.value = 0;
-      lockProgress.value = 0;
-      return;
-    }
-
-    let cancelled = false;
-    let subscription: ReturnType<typeof DeviceMotion.addListener> | null = null;
-
-    void (async () => {
-      const available = await DeviceMotion.isAvailableAsync();
-      if (!available || cancelled) return;
-
-      const existingPermission =
-        await DeviceMotion.getPermissionsAsync();
-
-      const permission = existingPermission.granted
-        ? existingPermission
-        : await DeviceMotion.requestPermissionsAsync();
-
-      if (!permission.granted || cancelled) return;
-
-      // 200 ms keeps this cross-platform without requesting
-      // Android high-sampling sensor permission.
-      DeviceMotion.setUpdateInterval(200);
-
-      subscription = DeviceMotion.addListener((measurement) => {
-        const rotation = measurement.rotation;
-        if (!rotation) return;
-
-        const { beta, gamma } = rotation;
-
-        if (!motionOriginRef.current) {
-          motionOriginRef.current = { beta, gamma };
-          return;
-        }
-
-        const horizontalDelta =
-          gamma - motionOriginRef.current.gamma;
-
-        const verticalDelta =
-          beta - motionOriginRef.current.beta;
-
-        // Move opposite the phone turn to create the illusion
-        // that the relic is hanging in the real world.
-        const nextX = Math.max(
-          -48,
-          Math.min(48, -horizontalDelta * 95),
-        );
-
-        const nextY = Math.max(
-          -32,
-          Math.min(32, verticalDelta * 70),
-        );
-
-        // The relic is considered centered when its simulated
-        // world position sits inside the targeting window.
-        const centered =
-          Math.abs(nextX) <= 14 &&
-          Math.abs(nextY) <= 12;
-
-        lockProgress.value = withTiming(
-          centered ? 1 : 0,
-          {
-            duration: centered ? 220 : 120,
-          },
-        );
-
-        motionX.value = withTiming(nextX, {
-          duration: 180,
-        });
-
-        motionY.value = withTiming(nextY, {
-          duration: 180,
-        });
-      });
-    })();
-
-    return () => {
-      cancelled = true;
-      subscription?.remove();
-
-      motionOriginRef.current = null;
-
-      motionX.value = 0;
-      motionY.value = 0;
-      lockProgress.value = 0;
-    };
-  }, [
-    visible,
-    relic?.id,
-    motionX,
-    motionY,
-    lockProgress,
-  ]);
-
-  useEffect(() => {
-    if (!visible || !relic) {
-      setRelicTouched(false);
-      return;
-    }
-
+    // Reset AR hunt state whenever the encounter
+    // closes or Mission Trails loads a different relic.
+    setArSurfaceFound(false);
     setRelicTouched(false);
 
-    if (reduceMotion) {
-      floatY.value = 0;
-      pulse.value = 1;
-      ringScale.value = 1;
-      ringOpacity.value = 0.5;
-      return;
-    }
-
-    floatY.value = withRepeat(
-      withSequence(
-        withTiming(-14, { duration: 1400 }),
-        withTiming(8, { duration: 1400 }),
-      ),
-      -1,
-      true,
-    );
-
-    pulse.value = withRepeat(
-      withSequence(
-        withTiming(1.07, { duration: 900 }),
-        withTiming(0.97, { duration: 900 }),
-      ),
-      -1,
-      true,
-    );
-
-    ringScale.value = withRepeat(
-      withSequence(
-        withTiming(1.16, { duration: 1500 }),
-        withTiming(0.9, { duration: 0 }),
-      ),
-      -1,
-      false,
-    );
-
-    ringOpacity.value = withRepeat(
-      withSequence(
-        withTiming(0.08, { duration: 1500 }),
-        withTiming(0.65, { duration: 0 }),
-      ),
-      -1,
-      false,
-    );
+    lockProgress.value = 0;
   }, [
     visible,
     relic?.id,
-    reduceMotion,
-    floatY,
-    pulse,
-    ringScale,
-    ringOpacity,
+    lockProgress,
   ]);
-
-  const floatingRelicStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: motionX.value },
-      { translateY: floatY.value + motionY.value },
-      { scale: pulse.value },
-    ],
-  }));
-
-  const energyRingStyle = useAnimatedStyle(() => ({
-    opacity: ringOpacity.value,
-    transform: [{ scale: ringScale.value }],
-  }));
-
-  const targetReticleStyle = useAnimatedStyle(() => ({
-    opacity: 0.42 + lockProgress.value * 0.58,
-    transform: [
-      {
-        scale:
-          1.12 -
-          lockProgress.value * 0.12,
-      },
-    ],
-  }));
 
   const targetingLabelStyle = useAnimatedStyle(() => ({
     opacity: 1 - lockProgress.value,
@@ -306,18 +118,24 @@ export function RelicEncounter({
       ? "LOCATION VERIFIED"
       : `${freshFinalReadingCount} / 3 LOCATION CHECKS`;
 
-  // Purpose: Starts collecting the relic when the player touches it.
+  // Purpose:
+  // Runs when Viro detects a real horizontal surface
+  // such as a counter, floor, sidewalk, or trail.
+  function handlePlaneFound() {
+    setArSurfaceFound(true);
+
+    lockProgress.value = withTiming(1, {
+      duration: reduceMotion ? 0 : 350,
+    });
+  }
+
+  // Purpose:
+  // Runs only when the player taps the relic
+  // inside the real AR world.
   function touchRelic() {
     if (isBusy) return;
 
     setRelicTouched(true);
-
-    if (!reduceMotion) {
-      pulse.value = withSequence(
-        withTiming(1.22, { duration: 130 }),
-        withTiming(1, { duration: 260 }),
-      );
-    }
   }
 
   return (
@@ -330,14 +148,14 @@ export function RelicEncounter({
       onRequestClose={onClose}
     >
       <View style={styles.screen}>
-        {visible && cameraPermission?.granted ? (
-          <CameraView
-            facing="back"
-            style={[
-              StyleSheet.absoluteFillObject,
-              styles.cameraPreview,
-            ]}
-          />
+        {visible ? (
+          <View style={StyleSheet.absoluteFillObject}>
+            <RelicARWorld
+              relicIcon={relic.icon}
+              onPlaneFound={handlePlaneFound}
+              onRelicTouched={touchRelic}
+            />
+          </View>
         ) : null}
 
         <View
@@ -481,81 +299,10 @@ export function RelicEncounter({
           </Animated.View>
         ) : null}
 
-        <View style={styles.encounterStage}>
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.energyRing,
-              {
-                borderColor: relic.primaryColor,
-                shadowColor: relic.primaryColor,
-              },
-              energyRingStyle,
-            ]}
-          />
-
-          <View
-            style={[
-              styles.innerGlow,
-              {
-                backgroundColor: `${relic.primaryColor}12`,
-                borderColor: `${relic.primaryColor}28`,
-              },
-            ]}
-          />
-
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.targetReticle,
-              {
-                borderColor: relic.primaryColor,
-                shadowColor: relic.primaryColor,
-              },
-              targetReticleStyle,
-            ]}
-          >
-            <View
-              style={[
-                styles.reticleTickTop,
-                {
-                  backgroundColor:
-                    relic.primaryColor,
-                },
-              ]}
-            />
-
-            <View
-              style={[
-                styles.reticleTickBottom,
-                {
-                  backgroundColor:
-                    relic.primaryColor,
-                },
-              ]}
-            />
-
-            <View
-              style={[
-                styles.reticleTickLeft,
-                {
-                  backgroundColor:
-                    relic.primaryColor,
-                },
-              ]}
-            />
-
-            <View
-              style={[
-                styles.reticleTickRight,
-                {
-                  backgroundColor:
-                    relic.primaryColor,
-                },
-              ]}
-            />
-          </Animated.View>
-
+        <View
+          pointerEvents="none"
+          style={styles.encounterStage}
+        >
           <View
             pointerEvents="none"
             style={styles.lockStatusWrap}
@@ -566,7 +313,7 @@ export function RelicEncounter({
                 targetingLabelStyle,
               ]}
             >
-              TARGETING…
+              SCANNING REAL-WORLD SURFACES…
             </Animated.Text>
 
             <Animated.Text
@@ -580,41 +327,9 @@ export function RelicEncounter({
                 lockedLabelStyle,
               ]}
             >
-              ✦ RELIC LOCKED ✦
+              ✦ AR SURFACE LOCKED ✦
             </Animated.Text>
           </View>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Touch ${relic.name}`}
-            accessibilityHint="Stabilizes the relic energy before collection"
-            disabled={isBusy}
-            onPress={touchRelic}
-            style={styles.relicPressable}
-          >
-            <Animated.View
-              style={[
-                styles.relicArtworkWrap,
-                floatingRelicStyle,
-              ]}
-            >
-              <View
-                style={[
-                  styles.artworkGlow,
-                  {
-                    backgroundColor: `${relic.primaryColor}18`,
-                    shadowColor: relic.primaryColor,
-                  },
-                ]}
-              />
-
-              <Image
-                resizeMode="contain"
-                source={relic.icon}
-                style={styles.relicImage}
-              />
-            </Animated.View>
-          </Pressable>
         </View>
 
         <Animated.View
@@ -625,20 +340,38 @@ export function RelicEncounter({
           }
           style={styles.instructions}
         >
-          {!relicTouched ? (
+          {!arSurfaceFound ? (
             <>
               <Ionicons
-                name="finger-print"
-                size={26}
+                name="scan-outline"
+                size={27}
                 color={relic.primaryColor}
               />
 
               <Text style={styles.instructionTitle}>
-                TOUCH THE RELIC
+                SCAN THE AREA
               </Text>
 
               <Text style={styles.instructionCopy}>
-                Stabilize its energy before claiming it.
+                Move your phone slowly so Mission Trails
+                can detect the ground or nearby surfaces.
+              </Text>
+            </>
+          ) : !relicTouched ? (
+            <>
+              <Ionicons
+                name="eye-outline"
+                size={27}
+                color={relic.primaryColor}
+              />
+
+              <Text style={styles.instructionTitle}>
+                FIND THE RELIC
+              </Text>
+
+              <Text style={styles.instructionCopy}>
+                Look around the real world and tap the
+                relic when you discover it.
               </Text>
             </>
           ) : (
