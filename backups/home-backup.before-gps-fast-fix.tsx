@@ -544,7 +544,7 @@ export default function HomeScreen() {
   const mapCoordinates = visualGpsPoints.map(makeMapCoordinate);
 
   const stablePlayerLocation =
-    getLatestGpsPoint(visualGpsPoints) ?? latestGpsPoint;
+    getStableFootprintLocation(visualGpsPoints) ?? latestGpsPoint;
 
   // UI/map calculations use the stabilized walking position.
   // Secure relic verification still receives the original accepted GPS samples.
@@ -1215,7 +1215,7 @@ export default function HomeScreen() {
         )}
 
         {renderUserGlow(
-          stablePlayerLocation,
+          getStableFootprintLocation(visualGpsPoints),
           selectedAura.color,
           selectedFootprint,
           secureRelicField.huntStage,
@@ -1476,7 +1476,7 @@ function watchLiveLocation(
       // the server receive three new readings without asking them to wander off.
       distanceInterval: 0,
 
-      timeInterval: 1000,
+      timeInterval: 2500,
     },
 
     onLocationChange,
@@ -1589,12 +1589,9 @@ function buildVisualGpsTrack(
     );
 
     // Purpose: Requires movement to exceed normal GPS uncertainty.
-    // Keep enough filtering to stop stationary GPS wobble without making
-    // normal walking look frozen. At walking speed this updates roughly every
-    // few steps instead of waiting 10-30 meters.
     const visualMovementThreshold = Math.max(
-      2,
-      Math.min(4, maximumVisualAccuracy * 0.2),
+      4,
+      Math.min(30, maximumVisualAccuracy * 1.25),
     );
 
     // Ignore tiny stationary GPS movements.
@@ -1810,7 +1807,7 @@ function renderWalkedPath(coordinates: ReturnType<typeof makeMapCoordinate>[]) {
 // FOOTPRINT MARKERS
 // =======================
 
-const FOOTPRINT_MIN_MOVEMENT_METERS = 2;
+const FOOTPRINT_MIN_MOVEMENT_METERS = 4;
 
 // Purpose: Measures visual GPS movement without changing secure GPS evidence.
 function getFootprintDistanceMeters(
@@ -1858,12 +1855,22 @@ function getWalkingFootprintLocations(locations: Location.LocationObject[]) {
 
     const distanceMeters = getFootprintDistanceMeters(previous, location);
 
-    // buildVisualGpsTrack already filtered GPS noise. Do NOT apply another
-    // accuracy-sized movement gate here or ordinary walking can appear frozen.
+    const maximumAccuracy = Math.max(
+      previous.coords.accuracy ?? 0,
+      location.coords.accuracy ?? 0,
+    );
+
+    // Poorer GPS accuracy requires a larger displacement before the visual
+    // footprint is allowed to move. This prevents stationary GPS wobble from
+    // walking the player's icon around the map.
+    const accuracyMovementThreshold = Math.max(
+      FOOTPRINT_MIN_MOVEMENT_METERS,
+      Math.min(30, maximumAccuracy * 1.25),
+    );
+
     const speedMetersPerSecond = Math.max(0, location.coords.speed ?? 0);
 
-    const movingByDistance =
-      distanceMeters >= FOOTPRINT_MIN_MOVEMENT_METERS;
+    const movingByDistance = distanceMeters >= accuracyMovementThreshold;
 
     const speedLooksPlausible =
       speedMetersPerSecond <= speedLimitMetersPerSecond;
@@ -1875,6 +1882,11 @@ function getWalkingFootprintLocations(locations: Location.LocationObject[]) {
   }
 
   return walkingLocations;
+}
+
+// Purpose: Keeps the live footprint marker on the last confirmed movement point.
+function getStableFootprintLocation(locations: Location.LocationObject[]) {
+  return getWalkingFootprintLocations(locations).at(-1) ?? locations.at(-1);
 }
 
 // Purpose: Renders footprint markers.
