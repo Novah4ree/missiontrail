@@ -10,6 +10,7 @@ import {
 // Information passed from the Mission Trails screen
 // into the real AR scene.
 export type RelicARSceneAppProps = {
+  relicId: string;
   relicIcon: ImageSourcePropType;
 
   // Called when AR finds a real surface.
@@ -29,6 +30,32 @@ type RelicARSceneProps = {
 };
 
 // Purpose:
+// Gives each relic a repeatable hidden position.
+// The same relic ID gets the same offset during the encounter.
+function getHiddenRelicPosition(
+  relicId: string,
+): [number, number, number] {
+  const positions: [number, number, number][] = [
+    [-0.12, 0.12, -0.10],
+    [0.12, 0.12, -0.10],
+    [-0.11, 0.12, 0.11],
+    [0.11, 0.12, 0.11],
+    [0, 0.12, -0.14],
+    [-0.14, 0.12, 0],
+    [0.14, 0.12, 0],
+    [0, 0.12, 0.14],
+  ];
+
+  const hash = [...relicId].reduce(
+    (total, character) =>
+      total + character.charCodeAt(0),
+    0,
+  );
+
+  return positions[hash % positions.length];
+}
+
+// Purpose:
 // Detects a real horizontal surface such as a counter,
 // floor, sidewalk, pavement, or trail and anchors the
 // relic PNG into that real-world location.
@@ -40,6 +67,10 @@ export default function RelicARScene({
     sceneNavigator ?? arSceneNavigator;
 
   const appProps = navigator?.viroAppProps;
+
+  const relicPosition = appProps
+    ? getHiddenRelicPosition(appProps.relicId)
+    : [0, 0.12, 0] as [number, number, number];
 
   // If Mission Trails has not passed a relic yet,
   // keep AR running but display nothing.
@@ -67,8 +98,8 @@ export default function RelicARScene({
       */}
       <ViroARPlane
         alignment="Horizontal"
-        minWidth={0.3}
-        minHeight={0.3}
+        minWidth={0.45}
+        minHeight={0.45}
       >
         {/*
           The relic floats about 15cm above the surface.
@@ -78,9 +109,9 @@ export default function RelicARScene({
         */}
         <ViroImage
           source={appProps.relicIcon}
-          width={0.28}
-          height={0.28}
-          position={[0, 0.15, 0]}
+          width={0.20}
+          height={0.20}
+          position={relicPosition}
           transformBehaviors={["billboardY"]}
           onClick={() => {
             appProps.onRelicTouched?.();

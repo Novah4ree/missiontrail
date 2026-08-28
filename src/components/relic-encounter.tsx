@@ -151,6 +151,7 @@ export function RelicEncounter({
         {visible ? (
           <View style={StyleSheet.absoluteFillObject}>
             <RelicARWorld
+              relicId={relic.id}
               relicIcon={relic.icon}
               onPlaneFound={handlePlaneFound}
               onRelicTouched={touchRelic}

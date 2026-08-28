@@ -13,6 +13,7 @@ import RelicARScene, {
 } from "./relic-ar-scene";
 
 type RelicARWorldProps = {
+  relicId: string;
   relicIcon: ImageSourcePropType;
 
   // Purpose:
@@ -30,11 +31,13 @@ type RelicARWorldProps = {
 // Owns the actual AR camera and loads
 // Mission Trails' relic AR scene.
 export function RelicARWorld({
+  relicId,
   relicIcon,
   onPlaneFound,
   onRelicTouched,
 }: RelicARWorldProps) {
   const viroAppProps: RelicARSceneAppProps = {
+    relicId,
     relicIcon,
     onPlaneFound,
     onRelicTouched,
