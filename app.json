@@ -88,7 +88,18 @@
       ],
       "expo-secure-store",
       "expo-iap",
-      "@reactvision/react-viro"
+      [
+        "@reactvision/react-viro",
+        {
+          "provider": "none",
+          "android": {
+            "xRMode": "AR"
+          },
+          "ios": {
+            "cameraUsagePermission": "Mission Trails uses your camera to discover hidden relics in augmented reality."
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
