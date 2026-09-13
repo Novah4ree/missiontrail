@@ -33,7 +33,13 @@ type RequestBody = {
   healthActivities?: HealthActivity[];
   missionId?: string;
   localDate?: string;
+
+  // Existing destination/mission eligible steps.
   steps?: number;
+
+  // Actual Mission Trails daily step total.
+  activitySteps?: number;
+
   idempotencyKey?: string;
   // Eligibility and mission booleans are intentionally absent. Unknown fields are ignored.
 };
@@ -134,6 +140,7 @@ async function loadDailyProgress(
     care,
     streak,
     missionRewards,
+    progression,
   ] = await Promise.all([
     admin.rpc('server_get_total_xp', { p_user_id: userId }),
     admin.rpc('server_get_device_steps', { p_user_id: userId }),
@@ -144,6 +151,12 @@ async function loadDailyProgress(
 
     admin.rpc('server_get_daily_streak', { p_user_id: userId }),
     admin.rpc('server_get_mission_rewards', { p_user_id: userId }),
+
+    // Permanent missions, weekly steps, lifetime stats,
+    // personal records, leaderboard scores and Egg Hunts.
+    admin.rpc('server_get_progression_summary', {
+      p_user_id: userId,
+    }),
   ]);
 
   if (totalXp.error) console.warn(`[daily-progress:${requestId}] total XP unavailable`);
@@ -152,6 +165,12 @@ async function loadDailyProgress(
   if (care.error) console.warn(`[daily-progress:${requestId}] companion care unavailable`);
   if (streak.error) console.warn(`[daily-progress:${requestId}] daily streak unavailable`);
   if (missionRewards.error) console.warn(`[daily-progress:${requestId}] mission rewards unavailable`);
+
+  if (progression.error) {
+    console.warn(
+      `[daily-progress:${requestId}] permanent progression unavailable`,
+    );
+  }
 
   const rewardsByMission = (
     missionRewards.data && typeof missionRewards.data === 'object'
@@ -172,7 +191,14 @@ async function loadDailyProgress(
     totalXp: Number(totalXp.data ?? 0),
     verifiedSteps: Number(verifiedSteps.data ?? 0),
     dailyStreak: Number(streak.data ?? 0),
+
+    progression:
+      progression.error
+        ? null
+        : progression.data ?? null,
+
     missions,
+
     companion: {
       ...(companion.data ?? {
         companionId: null,
@@ -260,7 +286,48 @@ Deno.serve(async (request) => {
         p_steps: body.steps,
         p_idempotency_key: body.idempotencyKey,
       });
-      if (recorded.error) throw new Error('STEP_SYNC_FAILED');
+
+      if (recorded.error) {
+        throw new Error('STEP_SYNC_FAILED');
+      }
+
+      // New permanent progression system.
+      //
+      // Older app builds may not send activitySteps yet,
+      // so only process this when the field is present.
+      if (body.activitySteps !== undefined) {
+        if (
+          !Number.isInteger(body.activitySteps)
+          || body.activitySteps < 0
+          || body.activitySteps > 100_000
+        ) {
+          return friendlyError(
+            'INVALID_REQUEST',
+            requestId,
+            400,
+          );
+        }
+
+        const activity = await admin.rpc(
+          'server_record_activity_steps',
+          {
+            p_user_id: user.id,
+            p_local_date: body.localDate,
+            p_steps: body.activitySteps,
+          },
+        );
+
+        if (activity.error) {
+          console.error(
+            `[daily-progress:${requestId}] permanent step sync failed`,
+            activity.error,
+          );
+
+          throw new Error(
+            'ACTIVITY_STEP_SYNC_FAILED',
+          );
+        }
+      }
     } else if (body.action === 'sync-distance') {
       const provider = body.provider;
       if (!provider) return friendlyError('INVALID_REQUEST', requestId, 400);

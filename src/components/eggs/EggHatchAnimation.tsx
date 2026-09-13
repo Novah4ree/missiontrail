@@ -481,7 +481,7 @@ const styles = StyleSheet.create({
   },
 
   cracks: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
 
   crack: {

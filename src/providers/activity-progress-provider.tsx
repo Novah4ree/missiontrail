@@ -13,6 +13,7 @@ import {
 import { AppState } from "react-native";
 
 import { LevelUpCelebration } from "@/components/level-up-celebration";
+import { MAX_DAILY_STEPS } from "@/config/activity-rules";
 import { getUserDailyStorageKey } from "@/services/mission-cache-core";
 import {
   loadActiveTrailActivity,
@@ -215,7 +216,12 @@ export function ActivityProgressProvider({
   const activityRefreshUserIdRef = useRef<string | null>(null);
   const stepSyncInFlightRef = useRef<Promise<void> | null>(null);
   const stepSyncKeyRef = useRef<string | null>(null);
+  // Existing destination/mission eligible counter.
   const lastSyncedStepsRef = useRef(0);
+
+  // Actual daily steps synced into permanent progression.
+  const lastSyncedActivityStepsRef = useRef(0);
+
   const lastStepSyncAttemptAtRef = useRef(0);
   const stepSyncRetryNotBeforeRef = useRef(0);
   const stepSyncFailureCountRef = useRef(0);
@@ -448,7 +454,12 @@ export function ActivityProgressProvider({
 
       // Mission Trails only continues from activity already recorded
       // by Mission Trails. Do not import all iPhone steps since midnight.
-      const sessionBaseSteps = saved?.steps ?? 0;
+      // Recover from the old corruption bug where an impossible sensor value
+      // was clamped and persisted as exactly 100,000 steps.
+      const sessionBaseSteps =
+        saved?.steps === MAX_DAILY_STEPS
+          ? 0
+          : (saved?.steps ?? 0);
 
       const startedAt = new Date().toISOString();
       const eligibleBase = activeTrailRef.current
@@ -469,6 +480,50 @@ export function ActivityProgressProvider({
       // Purpose: Applies only new confirmed steps from this Mission Trails session.
       const applySessionSteps = (rawSessionSteps: number) => {
         if (activeDateRef.current !== getLocalDateKey()) return;
+
+        // Reject corrupt sensor values BEFORE clampDailySteps can turn them
+        // into the 100,000-step ceiling.
+        if (
+          !Number.isFinite(rawSessionSteps) ||
+          rawSessionSteps < 0 ||
+          rawSessionSteps >= MAX_DAILY_STEPS
+        ) {
+          if (__DEV__) {
+            console.warn(
+              "[Daily activity] Rejected invalid pedometer reading:",
+              rawSessionSteps,
+            );
+          }
+
+          return;
+        }
+
+        const elapsedSessionSeconds = Math.max(
+          1,
+          (Date.now() - sessionStartedAt.getTime()) / 1000,
+        );
+
+        // Four steps per second is intentionally generous, even for running.
+        // The startup cushion allows normal Core Motion batching without
+        // accepting absurd jumps.
+        const maximumPlausibleSessionSteps = Math.ceil(
+          elapsedSessionSeconds * 4 + 50,
+        );
+
+        if (rawSessionSteps > maximumPlausibleSessionSteps) {
+          if (__DEV__) {
+            console.warn(
+              "[Daily activity] Rejected impossible pedometer spike:",
+              {
+                rawSessionSteps,
+                maximumPlausibleSessionSteps,
+                elapsedSessionSeconds,
+              },
+            );
+          }
+
+          return;
+        }
 
         const reportedSessionSteps = clampDailySteps(rawSessionSteps);
 
@@ -778,6 +833,7 @@ export function ActivityProgressProvider({
     if (stepSyncKeyRef.current !== syncKey) {
       stepSyncKeyRef.current = syncKey;
       lastSyncedStepsRef.current = 0;
+      lastSyncedActivityStepsRef.current = 0;
       lastStepSyncAttemptAtRef.current = 0;
       stepSyncRetryNotBeforeRef.current = 0;
       stepSyncFailureCountRef.current = 0;
@@ -786,6 +842,16 @@ export function ActivityProgressProvider({
       lastSyncedStepsRef.current = Math.max(
         lastSyncedStepsRef.current,
         progress.verifiedSteps,
+      );
+
+      const serverActivitySteps =
+        progress.progression?.daily.date === localDate
+          ? progress.progression.daily.steps
+          : 0;
+
+      lastSyncedActivityStepsRef.current = Math.max(
+        lastSyncedActivityStepsRef.current,
+        serverActivitySteps,
       );
     }
   }, [progress, userId]);
@@ -797,7 +863,15 @@ export function ActivityProgressProvider({
     if (stepSyncKeyRef.current !== syncKey) {
       stepSyncKeyRef.current = syncKey;
       lastSyncedStepsRef.current =
-        progress?.localDate === localDate ? progress.verifiedSteps : 0;
+        progress?.localDate === localDate
+          ? progress.verifiedSteps
+          : 0;
+
+      lastSyncedActivityStepsRef.current =
+        progress?.progression?.daily.date === localDate
+          ? progress.progression.daily.steps
+          : 0;
+
       lastStepSyncAttemptAtRef.current = 0;
       stepSyncRetryNotBeforeRef.current = 0;
       stepSyncFailureCountRef.current = 0;
@@ -807,13 +881,31 @@ export function ActivityProgressProvider({
     let syncTimer: ReturnType<typeof setTimeout> | null = null;
     // Purpose: Implements the schedule sync operation.
     const scheduleSync = () => {
-      const pendingSteps = missionEligibleStepsRef.current;
-      if (pendingSteps <= lastSyncedStepsRef.current) {
-        if (__DEV__ && pendingSteps > 0) {
-          console.log("[PROGRESS SYNC] skipped duplicate", {
-            steps: pendingSteps,
-          });
+      const pendingMissionSteps =
+        missionEligibleStepsRef.current;
+
+      const pendingActivitySteps =
+        todaySteps;
+
+      const missionNeedsSync =
+        pendingMissionSteps >
+        lastSyncedStepsRef.current;
+
+      const activityNeedsSync =
+        pendingActivitySteps >
+        lastSyncedActivityStepsRef.current;
+
+      if (!missionNeedsSync && !activityNeedsSync) {
+        if (__DEV__ && pendingActivitySteps > 0) {
+          console.log(
+            "[PROGRESS SYNC] skipped duplicate",
+            {
+              missionSteps: pendingMissionSteps,
+              activitySteps: pendingActivitySteps,
+            },
+          );
         }
+
         return;
       }
 
@@ -830,21 +922,61 @@ export function ActivityProgressProvider({
           return;
         }
 
-        const stepsToSync = missionEligibleStepsRef.current;
-        if (stepsToSync <= lastSyncedStepsRef.current) return;
-        lastStepSyncAttemptAtRef.current = Date.now();
-        if (__DEV__) {
-          console.log("[PROGRESS SYNC] sending", { steps: stepsToSync });
+        const missionStepsToSync =
+          missionEligibleStepsRef.current;
+
+        const activityStepsToSync =
+          todaySteps;
+
+        const missionNeedsSync =
+          missionStepsToSync >
+          lastSyncedStepsRef.current;
+
+        const activityNeedsSync =
+          activityStepsToSync >
+          lastSyncedActivityStepsRef.current;
+
+        if (!missionNeedsSync && !activityNeedsSync) {
+          return;
         }
 
-        const request = syncDeviceSteps(userId, localDate, stepsToSync)
+        lastStepSyncAttemptAtRef.current =
+          Date.now();
+
+        if (__DEV__) {
+          console.log(
+            "[PROGRESS SYNC] sending",
+            {
+              missionSteps:
+                missionStepsToSync,
+
+              activitySteps:
+                activityStepsToSync,
+            },
+          );
+        }
+
+        const request = syncDeviceSteps(
+          userId,
+          localDate,
+          missionStepsToSync,
+          activityStepsToSync,
+        )
           .then((syncedProgress) => {
             if (stepSyncKeyRef.current !== syncKey) return;
             lastSyncedStepsRef.current = Math.max(
               lastSyncedStepsRef.current,
-              stepsToSync,
+              missionStepsToSync,
               syncedProgress.verifiedSteps,
             );
+
+            lastSyncedActivityStepsRef.current =
+              Math.max(
+                lastSyncedActivityStepsRef.current,
+                activityStepsToSync,
+                syncedProgress.progression?.daily.steps ?? 0,
+              );
+
             stepSyncFailureCountRef.current = 0;
             stepSyncRetryNotBeforeRef.current = 0;
             if (!cancelled) {
@@ -852,9 +984,25 @@ export function ActivityProgressProvider({
               setStepWarning(null);
             }
             if (__DEV__) {
-              console.log("[PROGRESS SYNC] success", {
-                steps: syncedProgress.verifiedSteps,
-              });
+              console.log(
+                "[PROGRESS SYNC] success",
+                {
+                  missionSteps:
+                    syncedProgress.verifiedSteps,
+
+                  activitySteps:
+                    syncedProgress.progression?.daily.steps
+                    ?? activityStepsToSync,
+
+                  weeklySteps:
+                    syncedProgress.progression?.weekly.steps
+                    ?? 0,
+
+                  lifetimeSteps:
+                    syncedProgress.progression?.lifetime.steps
+                    ?? 0,
+                },
+              );
             }
           })
           .catch((error) => {
@@ -882,7 +1030,11 @@ export function ActivityProgressProvider({
                 {
                   code: errorCode,
                   retryInMs: retryDelay,
-                  steps: stepsToSync,
+                  missionSteps:
+                    missionStepsToSync,
+
+                  activitySteps:
+                    activityStepsToSync,
                 },
               );
             }
@@ -911,6 +1063,7 @@ export function ActivityProgressProvider({
     };
   }, [
     missionEligibleSteps,
+    todaySteps,
     permissionStatus,
     progress?.localDate,
     progress?.verifiedSteps,

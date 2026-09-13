@@ -1,9 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
+  Animated,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -40,7 +43,7 @@ import {
 } from '@/utils/food-sort-game';
 
 import {
-  createFoodSortLevel,
+  getLevelConfig,
   type FoodSortLevelGoal,
 } from '@/utils/food-sort-level';
 
@@ -111,6 +114,396 @@ const FOOD_ART:
 };
 
 
+
+// ============================================================
+// FOOD SORT LEVEL THEMES
+//
+// Purpose:
+// Gives later Food Sort levels different Mission Trails foods
+// while keeping each match type visually consistent.
+// ============================================================
+
+type FoodSortArtEntry = {
+  label: string;
+  image: ImageSourcePropType;
+};
+
+
+type FoodSortArtSet =
+  Record<
+    FoodSortFoodId,
+    FoodSortArtEntry
+  >;
+
+
+const FOOD_ART_SETS:
+  FoodSortArtSet[] = [
+
+  // LEVEL THEME 1
+  FOOD_ART,
+
+
+  // LEVEL THEME 2
+  {
+    treat: {
+      label: 'Galaxy Donut',
+      image: require(
+        '../../assets/images/companionfoodicons/bakedtreatssweets-happines/galaxydonut.png',
+      ),
+    },
+
+    carrot: {
+      label: 'Neon Apple',
+      image: require(
+        '../../assets/images/companionfoodicons/fruitsquick-energy/neonapple.png',
+      ),
+    },
+
+    berry: {
+      label: 'Plasma Grapes',
+      image: require(
+        '../../assets/images/companionfoodicons/fruitsquick-energy/plasmagrapes.png',
+      ),
+    },
+
+    drink: {
+      label: 'Moon Milk',
+      image: require(
+        '../../assets/images/companionfoodicons/drinks-recovery/moonmilk.png',
+      ),
+    },
+
+    meal: {
+      label: 'Meteor Burger',
+      image: require(
+        '../../assets/images/companionfoodicons/proteinfullmeals-hungerrestoration/meteorburger.png',
+      ),
+    },
+  },
+
+
+  // LEVEL THEME 3
+  {
+    treat: {
+      label: 'Comet Cupcake',
+      image: require(
+        '../../assets/images/companionfoodicons/bakedtreatssweets-happines/cometcupcake.png',
+      ),
+    },
+
+    carrot: {
+      label: 'Solar Mango',
+      image: require(
+        '../../assets/images/companionfoodicons/fruitsquick-energy/solarmango.png',
+      ),
+    },
+
+    berry: {
+      label: 'Icy Frost Melon',
+      image: require(
+        '../../assets/images/companionfoodicons/fruitsquick-energy/icyfrostmelon.png',
+      ),
+    },
+
+    drink: {
+      label: 'Dream Tea',
+      image: require(
+        '../../assets/images/companionfoodicons/drinks-recovery/dreamtea.png',
+      ),
+    },
+
+    meal: {
+      label: 'Energy Steak',
+      image: require(
+        '../../assets/images/companionfoodicons/proteinfullmeals-hungerrestoration/energysteak.png',
+      ),
+    },
+  },
+
+
+  // LEVEL THEME 4
+  {
+    treat: {
+      label: 'Novah Waffle',
+      image: require(
+        '../../assets/images/companionfoodicons/bakedtreatssweets-happines/novahwaffle.png',
+      ),
+    },
+
+    carrot: {
+      label: 'Rainbow Starfruit',
+      image: require(
+        '../../assets/images/companionfoodicons/fruitsquick-energy/rainbowstarfruit.png',
+      ),
+    },
+
+    berry: {
+      label: 'Cosmic Berry',
+      image: require(
+        '../../assets/images/companionfoodicons/fruitsquick-energy/cosmicberry.png',
+      ),
+    },
+
+    drink: {
+      label: 'Stamina Smooth',
+      image: require(
+        '../../assets/images/companionfoodicons/drinks-recovery/staminasmooth.png',
+      ),
+    },
+
+    meal: {
+      label: 'Salmon',
+      image: require(
+        '../../assets/images/companionfoodicons/proteinfullmeals-hungerrestoration/salmon.png',
+      ),
+    },
+  },
+
+
+  // LEVEL THEME 5
+  {
+    treat: {
+      label: 'Pixel Macaron',
+      image: require(
+        '../../assets/images/companionfoodicons/bakedtreatssweets-happines/pixelmacaron.png',
+      ),
+    },
+
+    carrot: {
+      label: 'Ember Carrot',
+      image: require(
+        '../../assets/images/companionfoodicons/fruitsquick-energy/embercarrot.png',
+      ),
+    },
+
+    berry: {
+      label: 'Plasma Grapes',
+      image: require(
+        '../../assets/images/companionfoodicons/fruitsquick-energy/plasmagrapes.png',
+      ),
+    },
+
+    drink: {
+      label: 'Sunbeam Soup',
+      image: require(
+        '../../assets/images/companionfoodicons/drinks-recovery/sunbeamsoup.png',
+      ),
+    },
+
+    meal: {
+      label: 'Turbo Drumstick',
+      image: require(
+        '../../assets/images/companionfoodicons/proteinfullmeals-hungerrestoration/turbodrumstick.png',
+      ),
+    },
+  },
+
+
+  // LEVEL THEME 6
+  {
+    treat: {
+      label: 'Star Biscuit',
+      image: require(
+        '../../assets/images/companionfoodicons/bakedtreatssweets-happines/starbiscuit.png',
+      ),
+    },
+
+    carrot: {
+      label: 'Neon Apple',
+      image: require(
+        '../../assets/images/companionfoodicons/fruitsquick-energy/neonapple.png',
+      ),
+    },
+
+    berry: {
+      label: 'Rainbow Starfruit',
+      image: require(
+        '../../assets/images/companionfoodicons/fruitsquick-energy/rainbowstarfruit.png',
+      ),
+    },
+
+    drink: {
+      label: 'Electro Water',
+      image: require(
+        '../../assets/images/companionfoodicons/drinks-recovery/electrowaterbottle.png',
+      ),
+    },
+
+    meal: {
+      label: 'Power Bowl',
+      image: require(
+        '../../assets/images/companionfoodicons/proteinfullmeals-hungerrestoration/powerbowl.png',
+      ),
+    },
+  },
+];
+
+
+// Purpose:
+// Selects one consistent food theme for the whole level.
+//
+// Level 1 = theme 1
+// Level 2 = theme 2
+// ...
+// After the last theme, the themes rotate again.
+// ============================================================
+// RARE FOOD SORT SNACKS
+// ============================================================
+//
+// Purpose:
+// Occasionally lets rare companion foods appear
+// as the Treat artwork during Food Sort.
+//
+// This is VISUAL variety only.
+// It does not change matching, scoring, or rewards.
+// ============================================================
+
+const RARE_FOOD_SORT_TREATS:
+  FoodSortArtEntry[] = [
+  {
+    label: 'Crystal Rock',
+
+    image: require(
+      '../../assets/images/companionfoodicons/mythicboost/crystalrock.png',
+    ),
+  },
+
+  {
+    label: 'Cyber Lollipop',
+
+    image: require(
+      '../../assets/images/companionfoodicons/mythicboost/cyberlollipop.png',
+    ),
+  },
+
+  {
+    label: 'Infinity Candy',
+
+    image: require(
+      '../../assets/images/companionfoodicons/mythicboost/infinitycandy.png',
+    ),
+  },
+
+  {
+    label: 'Jelly Beans',
+
+    image: require(
+      '../../assets/images/companionfoodicons/mythicboost/jellybeans.png',
+    ),
+  },
+
+  {
+    label: 'Quantum Gummy',
+
+    image: require(
+      '../../assets/images/companionfoodicons/mythicboost/quantumgummy.png',
+    ),
+  },
+
+  {
+    label: 'Stardust Taffy',
+
+    image: require(
+      '../../assets/images/companionfoodicons/mythicboost/stardusttaffy.png',
+    ),
+  },
+
+  {
+    label: 'Time Crystal Cake',
+
+    image: require(
+      '../../assets/images/companionfoodicons/mythicboost/timecrystalcake.png',
+    ),
+  },
+];
+
+
+function getFoodSortArtSet(
+  _level: number,
+  forceRareTreat = false,
+): FoodSortArtSet {
+  // Purpose:
+  // Creates a fresh random snack lineup
+  // every time Food Sort starts.
+
+
+  function randomSet() {
+    return FOOD_ART_SETS[
+      Math.floor(
+        Math.random() *
+        FOOD_ART_SETS.length,
+      )
+    ];
+  }
+
+
+  // Pick the two fruit categories separately.
+  let carrotArt =
+    randomSet().carrot;
+
+  let berryArt =
+    randomSet().berry;
+
+
+  // Purpose:
+  // Avoid showing the exact same fruit
+  // image for two different match categories.
+  let attempts = 0;
+
+  while (
+    carrotArt.image ===
+      berryArt.image &&
+    attempts < 8
+  ) {
+    berryArt =
+      randomSet().berry;
+
+    attempts += 1;
+  }
+
+
+  let treatArt =
+    randomSet().treat;
+
+
+  // Purpose:
+  // About 1 out of every 4 rounds gets
+  // a rare Mythic snack as the Treat skin.
+  const getsRareTreat =
+    forceRareTreat ||
+    Math.random() < 0.06;
+
+
+  if (getsRareTreat) {
+    treatArt =
+      RARE_FOOD_SORT_TREATS[
+        Math.floor(
+          Math.random() *
+          RARE_FOOD_SORT_TREATS.length,
+        )
+      ];
+  }
+
+
+  return {
+    treat:
+      treatArt,
+
+    carrot:
+      carrotArt,
+
+    berry:
+      berryArt,
+
+    drink:
+      randomSet().drink,
+
+    meal:
+      randomSet().meal,
+  };
+}
+
+
 const BOARD_GAP = 2;
 const BOARD_PADDING = 4;
 
@@ -118,13 +511,21 @@ const BOARD_PADDING = 4;
 // Purpose: Gives the screen a safe Level 1
 // while permanent progress loads from Supabase.
 const INITIAL_LEVEL =
-  createFoodSortLevel(1);
+  getLevelConfig(1);
 
 
 type GameStatus =
+  | 'intro'
   | 'playing'
   | 'won'
   | 'lost';
+
+
+type FailureReason =
+  | 'time'
+  | 'mistakes'
+  | 'moves'
+  | 'verification';
 
 
 // Purpose: Adds newly matched foods to the
@@ -166,6 +567,35 @@ function goalsAreComplete(
 }
 
 
+function totalCollectedFood(
+  collected: FoodSortCollected,
+) {
+  return Object.values(collected).reduce(
+    (total, amount) => total + amount,
+    0,
+  );
+}
+
+
+function calculateAccuracy(
+  successfulMoves: number,
+  mistakes: number,
+) {
+  const attempts =
+    successfulMoves + mistakes;
+
+  if (attempts === 0) {
+    return 0;
+  }
+
+  return Math.round(
+    successfulMoves /
+      attempts *
+      100,
+  );
+}
+
+
 // Purpose: Renders the playable Mission Trails
 // Companion Food Sort game.
 export default function CompanionFoodSortScreen() {
@@ -187,10 +617,41 @@ export default function CompanionFoodSortScreen() {
     );
 
 
+  // Purpose:
+  // Changes whenever a new Food Sort round starts.
+  // This allows the same level to get fresh food artwork.
+  const [
+    foodArtRound,
+    setFoodArtRound,
+  ] =
+    useState(0);
+
+
+  // Purpose:
+  // Keeps one consistent random set of food artwork
+  // throughout the current round.
+  const activeFoodArt =
+    useMemo(
+      () =>
+        getFoodSortArtSet(
+          levelConfig.level,
+          levelConfig.rareFoodRequired,
+        ),
+      [
+        levelConfig.level,
+        levelConfig.rareFoodRequired,
+        foodArtRound,
+      ],
+    );
+
+
   const [board, setBoard] =
     useState<FoodSortTile[]>(
       () =>
-        createFoodSortBoard(),
+        createFoodSortBoard(
+          INITIAL_LEVEL.activeFoodIds,
+          INITIAL_LEVEL.spawnWeights,
+        ),
     );
 
   const [
@@ -209,6 +670,29 @@ export default function CompanionFoodSortScreen() {
   const [score, setScore] =
     useState(0);
 
+  const [timeLeft, setTimeLeft] =
+    useState(
+      INITIAL_LEVEL.timeLimit,
+    );
+
+  const [mistakes, setMistakes] =
+    useState(0);
+
+  const [comboStreak, setComboStreak] =
+    useState(0);
+
+  const [bestCombo, setBestCombo] =
+    useState(0);
+
+  const [highestUnlockedLevel, setHighestUnlockedLevel] =
+    useState(1);
+
+  const [currentServerLevel, setCurrentServerLevel] =
+    useState(1);
+
+  const [showLevelSelect, setShowLevelSelect] =
+    useState(false);
+
   const [
     collected,
     setCollected,
@@ -223,7 +707,12 @@ export default function CompanionFoodSortScreen() {
     setGameStatus,
   ] =
     useState<GameStatus>(
-      'playing',
+      'intro',
+    );
+
+  const [failureReason, setFailureReason] =
+    useState<FailureReason | null>(
+      null,
     );
 
   const [
@@ -264,6 +753,38 @@ export default function CompanionFoodSortScreen() {
 
 
   // Purpose:
+  // Shows the Explorer Score actually awarded
+  // by the server for the completed Food Sort level.
+  const [
+    earnedExplorerPoints,
+    setEarnedExplorerPoints,
+  ] =
+    useState(0);
+
+
+  // Purpose:
+  // Shows the player's updated lifetime Explorer Score.
+  const [
+    totalExplorerScore,
+    setTotalExplorerScore,
+  ] =
+    useState<number | null>(
+      null,
+    );
+
+
+  // Purpose:
+  // Shows the player's current global leaderboard rank.
+  const [
+    globalRank,
+    setGlobalRank,
+  ] =
+    useState<number | null>(
+      null,
+    );
+
+
+  // Purpose:
   // Stores Ice and future obstacles for each
   // square on the 6x6 Food Sort board.
   const [
@@ -281,6 +802,33 @@ export default function CompanionFoodSortScreen() {
     );
 
 
+  // These refs guard server and round transitions that can happen
+  // before React has committed the corresponding state update.
+  const roundEndedRef =
+    useRef(false);
+
+  const mistakesRef =
+    useRef(0);
+
+  const comboStreakRef =
+    useRef(0);
+
+  const bestComboRef =
+    useRef(0);
+
+  const claimInFlightRef =
+    useRef(false);
+
+  const startInFlightRef =
+    useRef(false);
+
+  const isMountedRef =
+    useRef(true);
+
+  const runRequestIdRef =
+    useRef(0);
+
+
   // Remembers where the player's finger started.
   const swipeStartRef =
     useRef<{
@@ -294,6 +842,109 @@ export default function CompanionFoodSortScreen() {
   // immediately after a successful swipe.
   const ignoreNextPressRef =
     useRef(false);
+
+
+  // Purpose:
+  // Tracks which food is currently following
+  // the player's finger during a swipe.
+  const [
+    draggingIndex,
+    setDraggingIndex,
+  ] =
+    useState<number | null>(
+      null,
+    );
+
+
+  // Purpose:
+  // Moves the touched food visually before
+  // the actual board swap is committed.
+  const dragOffset =
+    useRef(
+      new Animated.ValueXY({
+        x: 0,
+        y: 0,
+      }),
+    ).current;
+
+
+  // Purpose:
+  // Creates a visible blast over the board
+  // for bombs, Mythics, and power combos.
+  const blastScale =
+    useRef(
+      new Animated.Value(
+        0.4,
+      ),
+    ).current;
+
+
+  const blastOpacity =
+    useRef(
+      new Animated.Value(
+        0,
+      ),
+    ).current;
+
+
+  const [
+    blastSymbol,
+    setBlastSymbol,
+  ] =
+    useState('💥');
+
+
+  // ============================================================
+  // MATCH POP + FOOD DROP ANIMATION
+  // ============================================================
+
+  // Purpose:
+  // Tracks the board positions currently exploding.
+  const [
+    poppingIndexes,
+    setPoppingIndexes,
+  ] =
+    useState<number[]>([]);
+
+
+  // Purpose:
+  // Prevents another move while the board is animating.
+  const [
+    isBoardAnimating,
+    setIsBoardAnimating,
+  ] =
+    useState(false);
+
+
+  const [
+    droppingFoods,
+    setDroppingFoods,
+  ] =
+    useState(false);
+
+
+  const matchPopScale =
+    useRef(
+      new Animated.Value(1),
+    ).current;
+
+
+  const matchPopOpacity =
+    useRef(
+      new Animated.Value(1),
+    ).current;
+
+
+  const foodDropY =
+    useRef(
+      new Animated.Value(0),
+    ).current;
+
+
+  const foodDropOpacity =
+    useRef(
+      new Animated.Value(1),
+    ).current;
 
 
   // Purpose: Makes the 6x6 board use almost
@@ -333,11 +984,108 @@ export default function CompanionFoodSortScreen() {
     BOARD_PADDING * 2;
 
 
+  // Purpose:
+  // Temporary animation proof.
+  // If this pulses on the iPhone, Animated is working
+  // and the phone has loaded this exact source code.
+  const animationProofScale =
+    useRef(
+      new Animated.Value(0.75),
+    ).current;
+
+
+  useEffect(() => {
+    const animation =
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(
+            animationProofScale,
+            {
+              toValue: 1.3,
+              duration: 450,
+              useNativeDriver: true,
+            },
+          ),
+
+          Animated.timing(
+            animationProofScale,
+            {
+              toValue: 0.75,
+              duration: 450,
+              useNativeDriver: true,
+            },
+          ),
+        ]),
+      );
+
+    animation.start();
+
+    console.log(
+      '[Food Sort] ANIMATION TEST BUILD LOADED',
+    );
+
+    return () => {
+      animation.stop();
+    };
+  }, [
+    animationProofScale,
+  ]);
+
+
   // Purpose: Starts one secure Food Sort run on Supabase.
-  async function startServerRun() {
+  async function startServerRun(
+    requestedLevel?: number,
+  ) {
+    if (startInFlightRef.current) {
+      return;
+    }
+
+    startInFlightRef.current =
+      true;
+
+    const requestId =
+      runRequestIdRef.current + 1;
+
+    runRequestIdRef.current =
+      requestId;
+
     setIsStartingRun(true);
     setRunId(null);
     setRewardMessage(null);
+    setFailureReason(null);
+
+    roundEndedRef.current =
+      false;
+
+    mistakesRef.current =
+      0;
+
+    comboStreakRef.current =
+      0;
+
+    bestComboRef.current =
+      0;
+
+
+    // Purpose:
+    // Give every new Food Sort game a fresh
+    // random snack lineup.
+    setFoodArtRound(
+      previous =>
+        previous + 1,
+    );
+
+    setEarnedExplorerPoints(
+      0,
+    );
+
+    setTotalExplorerScore(
+      null,
+    );
+
+    setGlobalRank(
+      null,
+    );
 
     try {
       // Purpose: Loads the permanent Food Sort
@@ -352,6 +1100,14 @@ export default function CompanionFoodSortScreen() {
 
       if (progressError) {
         throw progressError;
+      }
+
+      if (
+        !isMountedRef.current ||
+        requestId !==
+          runRequestIdRef.current
+      ) {
+        return;
       }
 
       const progress =
@@ -369,19 +1125,76 @@ export default function CompanionFoodSortScreen() {
           ),
         );
 
-      const nextLevel =
-        createFoodSortLevel(
+      const serverHighestUnlocked =
+        Math.max(
           serverLevel,
+          1,
+          Number(
+            progress.highestLevel ??
+            1,
+          ),
+        );
+
+      setCurrentServerLevel(
+        serverLevel,
+      );
+
+      setHighestUnlockedLevel(
+        serverHighestUnlocked,
+      );
+
+      const selectedLevel =
+        requestedLevel === undefined
+          ? serverLevel
+          : Math.max(
+              1,
+              Math.floor(
+                requestedLevel,
+              ),
+            );
+
+      if (
+        selectedLevel >
+        serverHighestUnlocked
+      ) {
+        throw new Error(
+          `Level ${selectedLevel} is locked.`,
+        );
+      }
+
+      // A small bounded seed changes equivalent target categories
+      // and distractors on replays without changing difficulty.
+      const replayVariant =
+        Math.floor(
+          Math.random() * 5,
+        );
+
+      let nextLevel =
+        getLevelConfig(
+          selectedLevel,
+          replayVariant,
         );
 
 
       const { data, error } =
         await supabase.rpc(
-          'server_start_food_sort_run',
+          'server_start_food_sort_run_v3',
+          {
+            p_level:
+              selectedLevel,
+          },
         );
 
       if (error) {
         throw error;
+      }
+
+      if (
+        !isMountedRef.current ||
+        requestId !==
+          runRequestIdRef.current
+      ) {
+        return;
       }
 
       const result =
@@ -401,6 +1214,28 @@ export default function CompanionFoodSortScreen() {
         );
       }
 
+      // Purpose:
+      // Uses the exact level attached to this server run.
+      //
+      // This prevents the UI from getting stuck on Level 1
+      // when progression and run creation happen separately.
+      const authoritativeLevel =
+        Math.max(
+          1,
+          Number(
+            result.level_number ??
+            selectedLevel,
+          ),
+        );
+
+
+      nextLevel =
+        getLevelConfig(
+          authoritativeLevel,
+          replayVariant,
+        );
+
+
       setRunId(
         String(result.run_id),
       );
@@ -410,7 +1245,10 @@ export default function CompanionFoodSortScreen() {
       );
 
       setBoard(
-        createFoodSortBoard(),
+        createFoodSortBoard(
+          nextLevel.activeFoodIds,
+          nextLevel.spawnWeights,
+        ),
       );
 
 
@@ -436,18 +1274,28 @@ export default function CompanionFoodSortScreen() {
 
       setScore(0);
 
+      setTimeLeft(
+        nextLevel.timeLimit,
+      );
+
+      setMistakes(0);
+
+      setComboStreak(0);
+
+      setBestCombo(0);
+
       setCollected(
         createEmptyCollected(),
       );
 
       setGameStatus(
-        'playing',
+        'intro',
       );
 
       setMessage(
         nextLevel.bossLevel
-          ? `LEVEL ${nextLevel.level} CHECKPOINT! The kitchen just got tougher. 🔥`
-          : `Level ${nextLevel.level} ready! Match the food goals.`,
+          ? `LEVEL ${nextLevel.level} CHECKPOINT! Review the goal, then start. 🔥`
+          : `Level ${nextLevel.level} is ready. Review the goal, then start.`,
       );
     } catch (error) {
       console.warn(
@@ -455,11 +1303,97 @@ export default function CompanionFoodSortScreen() {
         error,
       );
 
-      setMessage(
-        'Food Sort could not connect to the reward server.',
-      );
+      if (
+        isMountedRef.current &&
+        requestId ===
+          runRequestIdRef.current
+      ) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : 'Food Sort could not connect to the reward server.',
+        );
+      }
     } finally {
-      setIsStartingRun(false);
+      startInFlightRef.current =
+        false;
+
+      if (
+        isMountedRef.current &&
+        requestId ===
+          runRequestIdRef.current
+      ) {
+        setIsStartingRun(false);
+      }
+    }
+  }
+
+
+  // Purpose:
+  // Loads this player's current Explorer Score
+  // and global leaderboard position.
+  async function loadLeaderboardSnapshot() {
+    try {
+      const {
+        data,
+        error,
+      } =
+        await supabase.rpc(
+          'server_get_explorer_leaderboard',
+          {
+            p_limit: 50,
+          },
+        );
+
+
+      if (error) {
+        throw error;
+      }
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+
+      const rows =
+        Array.isArray(data)
+          ? data
+          : [];
+
+
+      const currentPlayer =
+        rows.find(
+          (row) =>
+            row?.is_current_user ===
+            true,
+        );
+
+
+      if (!currentPlayer) {
+        return;
+      }
+
+
+      setTotalExplorerScore(
+        Number(
+          currentPlayer.explorer_score ??
+          0,
+        ),
+      );
+
+
+      setGlobalRank(
+        Number(
+          currentPlayer.rank_position ??
+          0,
+        ) || null,
+      );
+
+    } catch (error) {
+      console.warn(
+        '[Food Sort] Could not refresh leaderboard snapshot.',
+        error,
+      );
     }
   }
 
@@ -470,9 +1404,12 @@ export default function CompanionFoodSortScreen() {
     finalScore: number,
     finalMoves: number,
   ) {
-    if (isClaimingReward) {
+    if (claimInFlightRef.current) {
       return;
     }
+
+    claimInFlightRef.current =
+      true;
 
     setIsClaimingReward(true);
     setRewardMessage(
@@ -497,6 +1434,10 @@ export default function CompanionFoodSortScreen() {
 
       if (error) {
         throw error;
+      }
+
+      if (!isMountedRef.current) {
+        return;
       }
 
       const result =
@@ -524,8 +1465,37 @@ export default function CompanionFoodSortScreen() {
           );
         }
 
+        setFailureReason(
+          'verification',
+        );
+
+        setGameStatus(
+          'lost',
+        );
+
         return;
       }
+
+      // The completion update and unlock trigger share one server
+      // transaction. Only a confirmed completion can expose N+1.
+      const unlockedLevel =
+        levelConfig.level + 1;
+
+      setCurrentServerLevel(
+        previous =>
+          Math.max(
+            previous,
+            unlockedLevel,
+          ),
+      );
+
+      setHighestUnlockedLevel(
+        previous =>
+          Math.max(
+            previous,
+            unlockedLevel,
+          ),
+      );
 
       const explorerPoints =
         Number(
@@ -533,56 +1503,227 @@ export default function CompanionFoodSortScreen() {
           0,
         );
 
-      const carrotQuantity =
+
+      // Purpose:
+      // Never invent leaderboard points on the phone.
+      // Display exactly what Supabase awarded.
+      setEarnedExplorerPoints(
+        explorerPoints,
+      );
+
+      // Purpose:
+      // Read the exact random companion food
+      // selected by the Food Sort reward server.
+      const rewardFoodName =
+        typeof result.reward_food_name ===
+          'string'
+          ? result.reward_food_name
+          : null;
+
+      const rewardQuantity =
         Number(
-          result.carrot_quantity ??
-          0,
+          result.reward_quantity ??
+            0,
         );
 
-      const treatQuantity =
-        Number(
-          result.treat_quantity ??
-          0,
-        );
+      const rewardKind =
+        typeof result.reward_kind === 'string'
+          ? result.reward_kind
+          : 'completion';
+
+      const rewardRarity =
+        typeof result.reward_rarity === 'string'
+          ? result.reward_rarity
+          : null;
+
+      const rewardKindLabel =
+        rewardKind === 'milestone_first_clear'
+          ? 'MILESTONE FIRST CLEAR'
+          : rewardKind === 'first_clear'
+            ? 'FIRST CLEAR'
+            : rewardKind === 'replay'
+              ? 'REPLAY REWARD'
+              : 'LEVEL REWARD';
+
 
       if (result.rewarded) {
         setRewardMessage(
-          `REWARDED! +${explorerPoints} Explorer Score • +${carrotQuantity} Ember Carrot • +${treatQuantity} Aurora Pudding • +5 Bond • +5 Happiness 🎁`,
+          rewardFoodName &&
+          rewardQuantity > 0
+            ? `${rewardKindLabel}! +${explorerPoints} Explorer Score • +${rewardQuantity} ${rewardFoodName}${rewardRarity ? ` (${rewardRarity})` : ''} • +5 Bond • +5 Happiness 🎁`
+            : `${rewardKindLabel}! +${explorerPoints} Explorer Score • +5 Bond • +5 Happiness 🎁`,
         );
+
+
+        // Purpose:
+        // Celebrate only after the server confirms
+        // this win actually received a reward.
+        playRewardWinFx();
+
       } else {
+        const resultCode =
+          String(
+            result.result_code ??
+            '',
+          );
+
         setRewardMessage(
-          `+${explorerPoints} Explorer Score. Today's free Food Sort food rewards are already used.`,
+          resultCode === 'REPLAY_SCORE_ONLY'
+            ? `Replay complete: +${explorerPoints} Explorer Score. Replay food drops are intentionally reduced.`
+            : `+${explorerPoints} Explorer Score. Today's Food Sort food reward limit has been reached.`,
         );
       }
+
+
+      // Purpose:
+      // The XP ledger was just updated.
+      // Pull the player's new total and global rank.
+      await loadLeaderboardSnapshot();
     } catch (error) {
       console.warn(
         '[Food Sort] Reward claim failed.',
         error,
       );
 
-      setRewardMessage(
-        'Level completed, but the reward server could not be reached.',
-      );
+      if (isMountedRef.current) {
+        setRewardMessage(
+          'Level completion could not be verified. Try again while connected.',
+        );
+
+        setFailureReason(
+          'verification',
+        );
+
+        setGameStatus(
+          'lost',
+        );
+      }
     } finally {
-      setIsClaimingReward(false);
+      claimInFlightRef.current =
+        false;
+
+      if (isMountedRef.current) {
+        setIsClaimingReward(false);
+      }
     }
   }
 
 
-  // Purpose: Starts Level 1 over from scratch.
+  // Purpose: Restarts the displayed level without advancing it.
   async function restartGame() {
     setMessage(
       'Loading your next Food Sort challenge...',
     );
 
-    await startServerRun();
+    await startServerRun(
+      levelConfig.level,
+    );
+  }
+
+
+  function beginLevel() {
+    if (
+      gameStatus !== 'intro' ||
+      !runId ||
+      isStartingRun
+    ) {
+      return;
+    }
+
+    setGameStatus('playing');
+    setMessage(
+      'Swipe a food left, right, up, or down to make a match.',
+    );
+  }
+
+
+  function startNextLevel() {
+    const nextLevel =
+      levelConfig.level + 1;
+
+    if (
+      isClaimingReward ||
+      nextLevel >
+        highestUnlockedLevel
+    ) {
+      return;
+    }
+
+    void startServerRun(
+      nextLevel,
+    );
+  }
+
+
+  function selectLevel(
+    selectedLevel: number,
+  ) {
+    if (
+      selectedLevel >
+        highestUnlockedLevel ||
+      gameStatus === 'playing' ||
+      isStartingRun ||
+      isClaimingReward
+    ) {
+      return;
+    }
+
+    setShowLevelSelect(false);
+
+    void startServerRun(
+      selectedLevel,
+    );
   }
 
 
   // Purpose: Creates the first secure run when the screen opens.
   useEffect(() => {
+    isMountedRef.current =
+      true;
+
     void startServerRun();
+
+    return () => {
+      isMountedRef.current =
+        false;
+
+      runRequestIdRef.current +=
+        1;
+    };
   }, []);
+
+
+  // The countdown starts only after the player dismisses the
+  // level intro, so reading the objective never costs play time.
+  useEffect(() => {
+    if (gameStatus !== 'playing') {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setTimeLeft(previous => {
+        if (roundEndedRef.current) {
+          return previous;
+        }
+
+        if (previous <= 1) {
+          roundEndedRef.current =
+            true;
+
+          setFailureReason('time');
+          setGameStatus('lost');
+          setMessage('Time is up. Try the level again!');
+          return 0;
+        }
+
+        return previous - 1;
+      });
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [gameStatus]);
 
 
   // Purpose: Performs one legal adjacent food swap.
@@ -595,6 +1736,7 @@ export default function CompanionFoodSortScreen() {
   ) {
     if (
       gameStatus !== 'playing' ||
+      roundEndedRef.current ||
       !runId ||
       isStartingRun ||
       isClaimingReward
@@ -682,10 +1824,43 @@ export default function CompanionFoodSortScreen() {
     if (
       firstMatch.size === 0
     ) {
+      const nextMistakes =
+        mistakesRef.current + 1;
+
+      mistakesRef.current =
+        nextMistakes;
+
+      comboStreakRef.current =
+        0;
+
+      setComboStreak(0);
+
       setSelectedIndex(null);
 
+      setMistakes(
+        nextMistakes,
+      );
+
+      if (
+        nextMistakes >=
+        levelConfig.allowedMistakes + 1
+      ) {
+        roundEndedRef.current =
+          true;
+
+        setFailureReason(
+          'mistakes',
+        );
+
+        setGameStatus('lost');
+        setMessage(
+          'Mistake limit reached. Try the level again!',
+        );
+        return;
+      }
+
       setMessage(
-        'That swap does not make a match.',
+        `That swap does not make a match. ${levelConfig.allowedMistakes - nextMistakes} mistake${levelConfig.allowedMistakes - nextMistakes === 1 ? '' : 's'} left.`,
       );
 
       return;
@@ -735,7 +1910,17 @@ export default function CompanionFoodSortScreen() {
     const result =
       resolveFoodSortBoard(
         swappedBoard,
+        levelConfig.activeFoodIds,
+        levelConfig.spawnWeights,
       );
+
+
+    // Purpose:
+    // Gives every successful match physical feedback,
+    // with stronger effects for specials and cascades.
+    playFoodSortFx(
+      result,
+    );
 
 
     const nextCollected =
@@ -752,8 +1937,28 @@ export default function CompanionFoodSortScreen() {
     const nextScore =
       score + result.score;
 
+    const nextComboStreak =
+      comboStreakRef.current + 1;
 
-    setBoard(
+    const nextBestCombo =
+      Math.max(
+        bestComboRef.current,
+        nextComboStreak,
+      );
+
+    comboStreakRef.current =
+      nextComboStreak;
+
+    bestComboRef.current =
+      nextBestCombo;
+
+
+    // Purpose:
+    // Animate the player's match before showing
+    // the completely resolved board.
+    animateMatchedFoods(
+      swappedBoard,
+      firstMatch,
       result.board,
     );
 
@@ -775,6 +1980,14 @@ export default function CompanionFoodSortScreen() {
       nextMoves,
     );
 
+    setComboStreak(
+      nextComboStreak,
+    );
+
+    setBestCombo(
+      nextBestCombo,
+    );
+
     setSelectedIndex(
       null,
     );
@@ -791,10 +2004,29 @@ export default function CompanionFoodSortScreen() {
     if (
       goalsAreComplete(
         nextCollected,
-        levelConfig.goals,
+        levelConfig.foodTargets,
+      ) &&
+      (
+        !levelConfig.sortTarget ||
+        totalCollectedFood(
+          nextCollected,
+        ) >= levelConfig.sortTarget
+      ) &&
+      (
+        !levelConfig.scoreTarget ||
+        nextScore >=
+          levelConfig.scoreTarget
+      ) &&
+      (
+        !levelConfig.comboTarget ||
+        nextBestCombo >=
+          levelConfig.comboTarget
       ) &&
       remainingObstacles === 0
     ) {
+      roundEndedRef.current =
+        true;
+
       setGameStatus(
         'won',
       );
@@ -817,6 +2049,13 @@ export default function CompanionFoodSortScreen() {
     if (
       nextMoves <= 0
     ) {
+      roundEndedRef.current =
+        true;
+
+      setFailureReason(
+        'moves',
+      );
+
       setGameStatus(
         'lost',
       );
@@ -906,7 +2145,18 @@ export default function CompanionFoodSortScreen() {
       result.mythicsCreated > 0
     ) {
       setMessage(
-        'MYTHIC TREAT CREATED! ✦ Match it to unleash a huge clear!',
+        '6-MATCH MYTHIC BURST! ✦ Match it again to wipe that food type!',
+      );
+
+      return;
+    }
+
+
+    if (
+      result.bombsCreated > 0
+    ) {
+      setMessage(
+        'NOVA BOMB CREATED! 💣 Match it again to explode a 3x3 area!',
       );
 
       return;
@@ -947,7 +2197,7 @@ export default function CompanionFoodSortScreen() {
 
 
     setMessage(
-      'Nice match! Keep going.',
+      `${nextComboStreak}x COMBO! Keep the streak going.`,
     );
   }
 
@@ -1068,6 +2318,440 @@ export default function CompanionFoodSortScreen() {
   }
 
 
+  // Purpose:
+  // Smoothly puts the dragged food back
+  // into its normal board position.
+  function resetFoodDrag() {
+    Animated.spring(
+      dragOffset,
+      {
+        toValue: {
+          x: 0,
+          y: 0,
+        },
+
+        damping: 18,
+        stiffness: 260,
+        mass: 0.55,
+
+        useNativeDriver:
+          true,
+      },
+    ).start(
+      () => {
+        setDraggingIndex(
+          null,
+        );
+      },
+    );
+  }
+
+
+  // Purpose:
+  // Makes the food visually follow the player's finger.
+  function moveTileSwipe(
+    index: number,
+    event: GestureResponderEvent,
+  ) {
+    const start =
+      swipeStartRef.current;
+
+
+    if (
+      !start ||
+      start.index !== index
+    ) {
+      return;
+    }
+
+
+    const rawX =
+      event.nativeEvent.pageX -
+      start.x;
+
+    const rawY =
+      event.nativeEvent.pageY -
+      start.y;
+
+
+    const maximumDistance =
+      tileSize * 0.85;
+
+
+    const x =
+      Math.max(
+        -maximumDistance,
+        Math.min(
+          maximumDistance,
+          rawX,
+        ),
+      );
+
+
+    const y =
+      Math.max(
+        -maximumDistance,
+        Math.min(
+          maximumDistance,
+          rawY,
+        ),
+      );
+
+
+    dragOffset.setValue({
+      x,
+      y,
+    });
+  }
+
+
+  // Purpose:
+  // Plays visible and physical feedback
+  // after Food Sort resolves a match.
+  // Purpose:
+  // Celebrates a verified Food Sort reward.
+  // Reuses the board's existing blast overlay so
+  // we do not create another animation system.
+  // Purpose:
+  // Shows the actual matched foods disappearing
+  // before the resolved board drops into place.
+  function animateMatchedFoods(
+    swappedBoard: FoodSortTile[],
+    matchedIndexes: Set<number>,
+    resolvedBoard: FoodSortTile[],
+  ) {
+    setIsBoardAnimating(
+      true,
+    );
+
+
+    // First show the player's completed swap.
+    setBoard(
+      swappedBoard,
+    );
+
+
+    setPoppingIndexes(
+      Array.from(
+        matchedIndexes,
+      ),
+    );
+
+
+    matchPopScale.setValue(
+      1,
+    );
+
+    matchPopOpacity.setValue(
+      1,
+    );
+
+
+    // -----------------------------------------
+    // MATCH POP
+    // -----------------------------------------
+
+    Animated.parallel([
+      Animated.timing(
+        matchPopScale,
+        {
+          toValue: 0.15,
+
+          duration: Math.round(
+            170 /
+            levelConfig.speedMultiplier,
+          ),
+
+          useNativeDriver:
+            true,
+        },
+      ),
+
+      Animated.timing(
+        matchPopOpacity,
+        {
+          toValue: 0,
+
+          duration: Math.round(
+            150 /
+            levelConfig.speedMultiplier,
+          ),
+
+          useNativeDriver:
+            true,
+        },
+      ),
+    ]).start(
+      () => {
+
+        // -------------------------------------
+        // PUT THE RESOLVED BOARD IN PLACE
+        // -------------------------------------
+
+        setBoard(
+          resolvedBoard,
+        );
+
+        setPoppingIndexes(
+          [],
+        );
+
+
+        matchPopScale.setValue(
+          1,
+        );
+
+        matchPopOpacity.setValue(
+          1,
+        );
+
+
+        // -------------------------------------
+        // DROP NEW FOODS FROM ABOVE
+        // -------------------------------------
+
+        setDroppingFoods(
+          true,
+        );
+
+
+        foodDropY.setValue(
+          -Math.max(
+            22,
+            tileSize * 0.7,
+          ),
+        );
+
+        foodDropOpacity.setValue(
+          0.35,
+        );
+
+
+        requestAnimationFrame(
+          () => {
+            Animated.parallel([
+              Animated.spring(
+                foodDropY,
+                {
+                  toValue: 0,
+
+                  damping: 14,
+
+                  stiffness: 180,
+
+                  mass: 0.65,
+
+                  useNativeDriver:
+                    true,
+                },
+              ),
+
+              Animated.timing(
+                foodDropOpacity,
+                {
+                  toValue: 1,
+
+                  duration: Math.round(
+                    220 /
+                    levelConfig.speedMultiplier,
+                  ),
+
+                  useNativeDriver:
+                    true,
+                },
+              ),
+            ]).start(
+              () => {
+                setDroppingFoods(
+                  false,
+                );
+
+                setIsBoardAnimating(
+                  false,
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+
+  function playRewardWinFx() {
+    void Haptics.notificationAsync(
+      Haptics.NotificationFeedbackType.Success,
+    );
+
+
+    setBlastSymbol(
+      '🎁',
+    );
+
+
+    blastScale.setValue(
+      0.35,
+    );
+
+    blastOpacity.setValue(
+      1,
+    );
+
+
+    Animated.parallel([
+      Animated.sequence([
+        Animated.spring(
+          blastScale,
+          {
+            toValue: 1.4,
+            speed: 18,
+            bounciness: 14,
+            useNativeDriver: true,
+          },
+        ),
+
+        Animated.timing(
+          blastScale,
+          {
+            toValue: 1,
+            duration: 140,
+            useNativeDriver: true,
+          },
+        ),
+      ]),
+
+      Animated.sequence([
+        Animated.delay(
+          350,
+        ),
+
+        Animated.timing(
+          blastOpacity,
+          {
+            toValue: 0,
+            duration: 500,
+            useNativeDriver: true,
+          },
+        ),
+      ]),
+    ]).start();
+  }
+
+
+  function playFoodSortFx(
+    result: {
+      bombsCreated: number;
+      mythicsCreated: number;
+      specialsCreated: number;
+      powerActivations: number;
+      cascades: number;
+    },
+  ) {
+    let symbol =
+      '✨';
+
+    let scaleTarget =
+      1.25;
+
+
+    if (
+      result.mythicsCreated >
+      0
+    ) {
+      symbol =
+        '✦';
+
+      scaleTarget =
+        2.15;
+
+      void Haptics.notificationAsync(
+        Haptics.NotificationFeedbackType.Success,
+      );
+
+    } else if (
+      result.bombsCreated >
+        0 ||
+      result.powerActivations >
+        0
+    ) {
+      symbol =
+        '💥';
+
+      scaleTarget =
+        1.9;
+
+      void Haptics.impactAsync(
+        Haptics.ImpactFeedbackStyle.Heavy,
+      );
+
+    } else if (
+      result.specialsCreated >
+        0 ||
+      result.cascades >
+        1
+    ) {
+      symbol =
+        '⚡';
+
+      scaleTarget =
+        1.55;
+
+      void Haptics.impactAsync(
+        Haptics.ImpactFeedbackStyle.Medium,
+      );
+
+    } else {
+      void Haptics.impactAsync(
+        Haptics.ImpactFeedbackStyle.Light,
+      );
+    }
+
+
+    setBlastSymbol(
+      symbol,
+    );
+
+
+    blastScale.setValue(
+      0.35,
+    );
+
+    blastOpacity.setValue(
+      0.95,
+    );
+
+
+    Animated.parallel([
+      Animated.spring(
+        blastScale,
+        {
+          toValue:
+            scaleTarget,
+
+          damping: 11,
+
+          stiffness: 220,
+
+          useNativeDriver:
+            true,
+        },
+      ),
+
+      Animated.timing(
+        blastOpacity,
+        {
+          toValue: 0,
+
+          duration: 420,
+
+          useNativeDriver:
+            true,
+        },
+      ),
+    ]).start();
+  }
+
+
   // Purpose: Saves the finger position when
   // the player begins touching a food tile.
   function startTileSwipe(
@@ -1083,6 +2767,20 @@ export default function CompanionFoodSortScreen() {
       y:
         event.nativeEvent.pageY,
     };
+
+
+    setDraggingIndex(
+      index,
+    );
+
+
+    dragOffset.setValue({
+      x: 0,
+      y: 0,
+    });
+
+
+    void Haptics.selectionAsync();
   }
 
 
@@ -1212,6 +2910,8 @@ export default function CompanionFoodSortScreen() {
       swipeDistance <
       minimumSwipe
     ) {
+      resetFoodDrag();
+
       return;
     }
 
@@ -1227,6 +2927,8 @@ export default function CompanionFoodSortScreen() {
     if (
       targetIndex === null
     ) {
+      resetFoodDrag();
+
       setMessage(
         'You cannot swipe outside the board.',
       );
@@ -1255,9 +2957,176 @@ export default function CompanionFoodSortScreen() {
     );
 
 
-    performFoodSwap(
-      index,
-      targetIndex,
+    const rowDifference =
+      Math.floor(
+        targetIndex /
+        FOOD_SORT_COLUMNS,
+      ) -
+      Math.floor(
+        index /
+        FOOD_SORT_COLUMNS,
+      );
+
+
+    const columnDifference =
+      (
+        targetIndex %
+        FOOD_SORT_COLUMNS
+      ) -
+      (
+        index %
+        FOOD_SORT_COLUMNS
+      );
+
+
+    Animated.timing(
+      dragOffset,
+      {
+        toValue: {
+          x:
+            columnDifference *
+            tileSize *
+            0.72,
+
+          y:
+            rowDifference *
+            tileSize *
+            0.72,
+        },
+
+        duration: 80,
+
+        useNativeDriver:
+          true,
+      },
+    ).start(
+      () => {
+        dragOffset.setValue({
+          x: 0,
+          y: 0,
+        });
+
+
+        setDraggingIndex(
+          null,
+        );
+
+
+        performFoodSwap(
+          index,
+          targetIndex,
+        );
+      },
+    );
+  }
+
+
+  const successfulMoves =
+    Math.max(
+      0,
+      levelConfig.moves - moves,
+    );
+
+  const accuracy =
+    calculateAccuracy(
+      successfulMoves,
+      mistakes,
+    );
+
+  const foodsCollected =
+    totalCollectedFood(
+      collected,
+    );
+
+  const collectedSummary =
+    levelConfig.activeFoodIds
+      .filter(
+        foodId =>
+          collected[foodId] > 0,
+      )
+      .map(
+        foodId =>
+          `${activeFoodArt[foodId].label} ${collected[foodId]}`,
+      )
+      .join(' • ');
+
+  const failureMessages:
+    string[] = [];
+
+  if (failureReason === 'time') {
+    failureMessages.push(
+      'Time expired.',
+    );
+  } else if (
+    failureReason === 'mistakes'
+  ) {
+    failureMessages.push(
+      'Too many mistakes.',
+    );
+  } else if (
+    failureReason === 'moves'
+  ) {
+    failureMessages.push(
+      'No moves remained.',
+    );
+  } else if (
+    failureReason === 'verification'
+  ) {
+    failureMessages.push(
+      'Completion could not be verified by Mission Trails.',
+    );
+  }
+
+  if (
+    levelConfig.scoreTarget &&
+    score < levelConfig.scoreTarget
+  ) {
+    failureMessages.push(
+      `Score target not reached: ${score.toLocaleString()} / ${levelConfig.scoreTarget.toLocaleString()}.`,
+    );
+  }
+
+  for (
+    const goal
+    of levelConfig.foodTargets
+  ) {
+    if (
+      collected[goal.foodId] <
+      goal.target
+    ) {
+      failureMessages.push(
+        `Required ${goal.label} not collected: ${collected[goal.foodId]} / ${goal.target}.`,
+      );
+    }
+  }
+
+  if (
+    levelConfig.sortTarget &&
+    foodsCollected <
+      levelConfig.sortTarget
+  ) {
+    failureMessages.push(
+      `Food total not reached: ${foodsCollected} / ${levelConfig.sortTarget}.`,
+    );
+  }
+
+  if (
+    levelConfig.comboTarget &&
+    bestCombo < levelConfig.comboTarget
+  ) {
+    failureMessages.push(
+      `Combo target not reached: ${bestCombo} / ${levelConfig.comboTarget}.`,
+    );
+  }
+
+  const blockersRemaining =
+    countFoodSortObstacles(
+      obstacles,
+    );
+
+  if (blockersRemaining > 0) {
+    failureMessages.push(
+      `${blockersRemaining} blocker${blockersRemaining === 1 ? '' : 's'} remained.`,
     );
   }
 
@@ -1277,6 +3146,14 @@ export default function CompanionFoodSortScreen() {
       />
 
       <ScrollView
+        // Purpose:
+        // Prevents the page from stealing the finger
+        // while a Food Sort tile is being dragged.
+        scrollEnabled={
+          draggingIndex === null &&
+          !isBoardAnimating
+        }
+
         showsVerticalScrollIndicator={
           false
         }
@@ -1401,13 +3278,16 @@ export default function CompanionFoodSortScreen() {
                 : gameStatus ===
                     'lost'
                   ? 'Almost! Let’s try again.'
-                  : 'Match my food before the moves run out!'}
+                  : gameStatus ===
+                      'intro'
+                    ? 'Check our goal, then let’s sort!'
+                    : 'Match my food before time runs out!'}
             </Text>
           </View>
         </View>
 
 
-        {/* SCORE */}
+        {/* LIVE ROUND PROGRESS */}
         <View
           style={
             styles.statRow
@@ -1423,7 +3303,7 @@ export default function CompanionFoodSortScreen() {
                 styles.statLabel
               }
             >
-              GAME SCORE
+              SCORE
             </Text>
 
             <Text
@@ -1432,6 +3312,57 @@ export default function CompanionFoodSortScreen() {
               }
             >
               {score.toLocaleString()}
+            </Text>
+          </View>
+
+          <View
+            style={
+              styles.statCard
+            }
+          >
+            <Text
+              style={
+                styles.statLabel
+              }
+            >
+              MISTAKES
+            </Text>
+
+            <Text
+              style={[
+                styles.statValue,
+                mistakes >=
+                  levelConfig.allowedMistakes - 1
+                  ? styles.movesLow
+                  : undefined,
+              ]}
+            >
+              {mistakes} / {levelConfig.allowedMistakes}
+            </Text>
+          </View>
+
+          <View
+            style={
+              styles.statCard
+            }
+          >
+            <Text
+              style={
+                styles.statLabel
+              }
+            >
+              TIME
+            </Text>
+
+            <Text
+              style={[
+                styles.statValue,
+                timeLeft <= 10
+                  ? styles.movesLow
+                  : undefined,
+              ]}
+            >
+              {timeLeft}s
             </Text>
           </View>
 
@@ -1495,7 +3426,7 @@ export default function CompanionFoodSortScreen() {
                 styles.difficultyName
               }
             >
-              {levelConfig.name}
+              {levelConfig.difficultyLabel} • {levelConfig.name}
             </Text>
 
             <Text
@@ -1504,8 +3435,8 @@ export default function CompanionFoodSortScreen() {
               }
             >
               {levelConfig.bossLevel
-                ? 'Checkpoint challenge • harder goals'
-                : `${levelConfig.moves} moves • goals increase as you climb`}
+                ? `${levelConfig.timeLimit}s checkpoint • ${levelConfig.allowedMistakes} mistake limit`
+                : `${levelConfig.timeLimit}s • ${levelConfig.moves} moves • ${levelConfig.activeFoodIds.length} types • ${levelConfig.distractorCount} distractors`}
             </Text>
           </View>
 
@@ -1517,6 +3448,214 @@ export default function CompanionFoodSortScreen() {
             />
           ) : null}
         </View>
+
+
+        <View
+          style={
+            styles.levelSelectSection
+          }
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Toggle level select"
+            onPress={() =>
+              setShowLevelSelect(
+                previous =>
+                  !previous,
+              )
+            }
+            style={
+              styles.levelSelectToggle
+            }
+          >
+            <View>
+              <Text
+                style={
+                  styles.levelSelectTitle
+                }
+              >
+                LEVEL SELECT
+              </Text>
+
+              <Text
+                style={
+                  styles.levelSelectStatus
+                }
+              >
+                Highest unlocked {highestUnlockedLevel} • Next {currentServerLevel}
+              </Text>
+            </View>
+
+            <Ionicons
+              name={
+                showLevelSelect
+                  ? 'chevron-up'
+                  : 'chevron-down'
+              }
+              size={18}
+              color="#62E7FF"
+            />
+          </Pressable>
+
+          {showLevelSelect ? (
+            <View
+              style={
+                styles.levelGrid
+              }
+            >
+              {Array.from(
+                { length: 30 },
+                (_, index) => {
+                  const level =
+                    index + 1;
+                  const locked =
+                    level >
+                    highestUnlockedLevel;
+                  const completed =
+                    level <
+                    highestUnlockedLevel;
+                  const selected =
+                    level ===
+                    levelConfig.level;
+
+                  return (
+                    <Pressable
+                      key={`food-sort-level-${level}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        locked
+                          ? `Level ${level}, locked`
+                          : `Play level ${level}`
+                      }
+                      disabled={
+                        locked ||
+                        gameStatus === 'playing' ||
+                        isStartingRun ||
+                        isClaimingReward
+                      }
+                      onPress={() =>
+                        selectLevel(
+                          level,
+                        )
+                      }
+                      style={[
+                        styles.levelButton,
+                        completed
+                          ? styles.levelButtonComplete
+                          : undefined,
+                        selected
+                          ? styles.levelButtonSelected
+                          : undefined,
+                        locked
+                          ? styles.levelButtonLocked
+                          : undefined,
+                      ]}
+                    >
+                      {locked ? (
+                        <Ionicons
+                          name="lock-closed"
+                          size={13}
+                          color="#675C70"
+                        />
+                      ) : (
+                        <Text
+                          style={
+                            styles.levelButtonText
+                          }
+                        >
+                          {level}
+                        </Text>
+                      )}
+
+                      {completed ? (
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={10}
+                          color="#6CFFA4"
+                          style={
+                            styles.levelCheck
+                          }
+                        />
+                      ) : null}
+                    </Pressable>
+                  );
+                },
+              )}
+            </View>
+          ) : null}
+        </View>
+
+
+        {gameStatus === 'intro' ? (
+          <View
+            style={
+              styles.levelIntroCard
+            }
+          >
+            <Text
+              style={
+                styles.levelIntroLevel
+              }
+            >
+              LEVEL {levelConfig.level}
+            </Text>
+
+            <Text
+              style={
+                styles.levelIntroGoalLabel
+              }
+            >
+              GOAL
+            </Text>
+
+            <Text
+              style={
+                styles.levelIntroGoal
+              }
+            >
+              {levelConfig.goalSummary}
+            </Text>
+
+            <Text
+              style={
+                styles.levelIntroRules
+              }
+            >
+              {levelConfig.timeLimit}s • {levelConfig.allowedMistakes} mistakes • {levelConfig.moves} moves
+            </Text>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Start level ${levelConfig.level}`}
+              disabled={
+                !runId ||
+                isStartingRun
+              }
+              onPress={
+                beginLevel
+              }
+              style={
+                styles.levelIntroButton
+              }
+            >
+              <Ionicons
+                name="play"
+                size={17}
+                color="#05000B"
+              />
+
+              <Text
+                style={
+                  styles.levelIntroButtonText
+                }
+              >
+                {isStartingRun
+                  ? 'PREPARING...'
+                  : 'START LEVEL'}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
 
 
         {/* GOALS */}
@@ -1538,7 +3677,7 @@ export default function CompanionFoodSortScreen() {
               styles.goalRow
             }
           >
-            {levelConfig.goals.map(
+            {levelConfig.foodTargets.map(
               (goal) => {
                 const amount =
                   collected[
@@ -1564,7 +3703,7 @@ export default function CompanionFoodSortScreen() {
                   >
                     <Image
                       source={
-                        FOOD_ART[
+                        activeFoodArt[
                           goal.foodId
                         ].image
                       }
@@ -1574,17 +3713,35 @@ export default function CompanionFoodSortScreen() {
                       }
                     />
 
-                    <Text
+                    <View
                       style={
-                        styles.goalText
+                        styles.goalCopy
                       }
                     >
-                      {Math.min(
-                        amount,
-                        goal.target,
-                      )}
-                      /{goal.target}
-                    </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={
+                          styles.goalLabel
+                        }
+                      >
+                        {levelConfig.rareFoodRequired &&
+                        goal.category === 'treats'
+                          ? 'Rare Treats'
+                          : goal.label}
+                      </Text>
+
+                      <Text
+                        style={
+                          styles.goalText
+                        }
+                      >
+                        {Math.min(
+                          amount,
+                          goal.target,
+                        )}
+                        {' / '}{goal.target}
+                      </Text>
+                    </View>
 
                     {complete ? (
                       <Ionicons
@@ -1598,6 +3755,97 @@ export default function CompanionFoodSortScreen() {
               },
             )}
           </View>
+
+          {levelConfig.sortTarget ? (
+            <View
+              style={[
+                styles.progressGoal,
+                totalCollectedFood(collected) >=
+                  levelConfig.sortTarget
+                  ? styles.goalComplete
+                  : undefined,
+              ]}
+            >
+              <Text
+                style={
+                  styles.progressGoalLabel
+                }
+              >
+                FOODS SORTED
+              </Text>
+
+              <Text
+                style={
+                  styles.progressGoalValue
+                }
+              >
+                {Math.min(
+                  totalCollectedFood(collected),
+                  levelConfig.sortTarget,
+                )}{' / '}{levelConfig.sortTarget}
+              </Text>
+            </View>
+          ) : null}
+
+          {levelConfig.scoreTarget ? (
+            <View
+              style={[
+                styles.progressGoal,
+                score >= levelConfig.scoreTarget
+                  ? styles.goalComplete
+                  : undefined,
+              ]}
+            >
+              <Text
+                style={
+                  styles.progressGoalLabel
+                }
+              >
+                SCORE TARGET
+              </Text>
+
+              <Text
+                style={
+                  styles.progressGoalValue
+                }
+              >
+                {Math.min(
+                  score,
+                  levelConfig.scoreTarget,
+                ).toLocaleString()}{' / '}{levelConfig.scoreTarget.toLocaleString()}
+              </Text>
+            </View>
+          ) : null}
+
+          {levelConfig.comboTarget ? (
+            <View
+              style={[
+                styles.progressGoal,
+                bestCombo >= levelConfig.comboTarget
+                  ? styles.goalComplete
+                  : undefined,
+              ]}
+            >
+              <Text
+                style={
+                  styles.progressGoalLabel
+                }
+              >
+                COMBO STREAK
+              </Text>
+
+              <Text
+                style={
+                  styles.progressGoalValue
+                }
+              >
+                {Math.min(
+                  bestCombo,
+                  levelConfig.comboTarget,
+                )}{' / '}{levelConfig.comboTarget} • NOW {comboStreak}x
+              </Text>
+            </View>
+          ) : null}
         </View>
 
 
@@ -1665,6 +3913,34 @@ export default function CompanionFoodSortScreen() {
             },
           ]}
         >
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.blastFx,
+
+              {
+                opacity:
+                  blastOpacity,
+
+                transform: [
+                  {
+                    scale:
+                      blastScale,
+                  },
+                ],
+              },
+            ]}
+          >
+            <Text
+              style={
+                styles.blastFxText
+              }
+            >
+              {blastSymbol}
+            </Text>
+          </Animated.View>
+
+
           {Array.from(
             {
               length:
@@ -1713,7 +3989,7 @@ export default function CompanionFoodSortScreen() {
                           accessibilityRole="button"
 
                           accessibilityLabel={
-                            `${FOOD_ART[tile.foodId].label}${tile.special !== 'none' ? ` ${tile.special} power` : ''}`
+                            `${activeFoodArt[tile.foodId].label}${tile.special !== 'none' ? ` ${tile.special} power` : ''}`
                           }
 
                           disabled={
@@ -1721,13 +3997,38 @@ export default function CompanionFoodSortScreen() {
                               'playing' ||
                             !runId ||
                             isStartingRun ||
-                            isClaimingReward
+                            isClaimingReward ||
+                            isBoardAnimating
+                          }
+
+                          // Purpose:
+                          // The food tile owns the touch gesture
+                          // instead of letting ScrollView take it.
+                          onStartShouldSetResponder={() =>
+                            true
+                          }
+
+                          onMoveShouldSetResponder={() =>
+                            true
+                          }
+
+                          onResponderTerminationRequest={() =>
+                            false
                           }
 
                           onPressIn={(
                             event,
                           ) =>
                             startTileSwipe(
+                              index,
+                              event,
+                            )
+                          }
+
+                          onTouchMove={(
+                            event,
+                          ) =>
+                            moveTileSwipe(
                               index,
                               event,
                             )
@@ -1741,6 +4042,13 @@ export default function CompanionFoodSortScreen() {
                               event,
                             )
                           }
+
+                          onTouchCancel={() => {
+                            swipeStartRef.current =
+                              null;
+
+                            resetFoodDrag();
+                          }}
 
                           onPress={() =>
                             pressTile(
@@ -1764,9 +4072,55 @@ export default function CompanionFoodSortScreen() {
                               : undefined,
                           ]}
                         >
-                          <Image
+                          <Animated.View
+                            style={[
+                              styles.foodMatchMotion,
+
+                              poppingIndexes.includes(
+                                index,
+                              )
+                                ? {
+                                    opacity:
+                                      matchPopOpacity,
+
+                                    transform: [
+                                      {
+                                        scale:
+                                          matchPopScale,
+                                      },
+                                    ],
+                                  }
+                                : droppingFoods
+                                  ? {
+                                      opacity:
+                                        foodDropOpacity,
+
+                                      transform: [
+                                        {
+                                          translateY:
+                                            foodDropY,
+                                        },
+                                      ],
+                                    }
+                                  : undefined,
+                            ]}
+                          >
+
+                          <Animated.View
+                            style={[
+                              styles.foodMotion,
+
+                              draggingIndex === index
+                                ? {
+                                    transform:
+                                      dragOffset.getTranslateTransform(),
+                                  }
+                                : undefined,
+                            ]}
+                          >
+<Image
                             source={
-                              FOOD_ART[
+                              activeFoodArt[
                                 tile.foodId
                               ].image
                             }
@@ -1777,6 +4131,8 @@ export default function CompanionFoodSortScreen() {
                               styles.tileImage
                             }
                           />
+                          </Animated.View>
+                          </Animated.View>
 
 
                           {/* Purpose:
@@ -2025,7 +4381,10 @@ export default function CompanionFoodSortScreen() {
                                   : tile.special ===
                                       'column'
                                     ? '↕'
-                                    : '✦'}
+                                    : tile.special ===
+                                        'bomb'
+                                      ? '💣'
+                                      : '✦'}
                               </Text>
                             </View>
                           ) : null}
@@ -2041,13 +4400,32 @@ export default function CompanionFoodSortScreen() {
 
 
         {/* END OF LEVEL */}
-        {gameStatus !==
-        'playing' ? (
-          <View
-            style={
-              styles.resultCard
+        {gameStatus === 'won' ||
+        gameStatus === 'lost' ? (
+          <Modal
+            transparent
+            visible
+            animationType="fade"
+            onRequestClose={() =>
+              router.back()
             }
           >
+            <View
+              style={
+                styles.resultOverlay
+              }
+            >
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={
+                  styles.resultModalContent
+                }
+              >
+                <View
+                  style={
+                    styles.resultCard
+                  }
+                >
             <Ionicons
               name={
                 gameStatus ===
@@ -2071,8 +4449,8 @@ export default function CompanionFoodSortScreen() {
             >
               {gameStatus ===
               'won'
-                ? 'LEVEL COMPLETE!'
-                : 'TRY AGAIN'}
+                ? 'LEVEL COMPLETE'
+                : 'LEVEL FAILED'}
             </Text>
 
             <Text
@@ -2080,8 +4458,183 @@ export default function CompanionFoodSortScreen() {
                 styles.resultScore
               }
             >
-              Game Score:{' '}
-              {score.toLocaleString()}
+              LEVEL {levelConfig.level}
+            </Text>
+
+            <View
+              style={
+                styles.resultStatsGrid
+              }
+            >
+              <View
+                style={
+                  styles.resultStat
+                }
+              >
+                <Text style={styles.resultStatLabel}>SCORE</Text>
+                <Text style={styles.resultStatValue}>{score.toLocaleString()}</Text>
+              </View>
+
+              <View
+                style={
+                  styles.resultStat
+                }
+              >
+                <Text style={styles.resultStatLabel}>ACCURACY</Text>
+                <Text style={styles.resultStatValue}>{accuracy}%</Text>
+              </View>
+
+              <View
+                style={
+                  styles.resultStat
+                }
+              >
+                <Text style={styles.resultStatLabel}>MISTAKES</Text>
+                <Text style={styles.resultStatValue}>{mistakes}</Text>
+              </View>
+
+              <View
+                style={
+                  styles.resultStat
+                }
+              >
+                <Text style={styles.resultStatLabel}>FOODS COLLECTED</Text>
+                <Text style={styles.resultStatValue}>{foodsCollected}</Text>
+              </View>
+            </View>
+
+            {collectedSummary ? (
+              <Text
+                style={
+                  styles.collectedSummary
+                }
+              >
+                {collectedSummary}
+              </Text>
+            ) : null}
+
+            {gameStatus === 'lost' ? (
+              <View
+                style={
+                  styles.failurePanel
+                }
+              >
+                {failureMessages.map(
+                  failure => (
+                    <Text
+                      key={failure}
+                      style={
+                        styles.failureText
+                      }
+                    >
+                      • {failure}
+                    </Text>
+                  ),
+                )}
+              </View>
+            ) : null}
+
+            {gameStatus === 'won' ? (
+              <View
+                style={
+                  styles.leaderboardResult
+                }
+              >
+                <View
+                  style={
+                    styles.leaderboardResultStat
+                  }
+                >
+                  <Text
+                    style={
+                      styles.leaderboardResultLabel
+                    }
+                  >
+                    EXPLORER SCORE EARNED
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.leaderboardResultValue
+                    }
+                  >
+                    +{earnedExplorerPoints.toLocaleString()}
+                  </Text>
+                </View>
+
+
+                <View
+                  style={
+                    styles.leaderboardResultDivider
+                  }
+                />
+
+
+                <View
+                  style={
+                    styles.leaderboardResultStat
+                  }
+                >
+                  <Text
+                    style={
+                      styles.leaderboardResultLabel
+                    }
+                  >
+                    TOTAL SCORE
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.leaderboardResultValue
+                    }
+                  >
+                    {totalExplorerScore === null
+                      ? '...'
+                      : totalExplorerScore.toLocaleString()}
+                  </Text>
+                </View>
+
+
+                <View
+                  style={
+                    styles.leaderboardResultDivider
+                  }
+                />
+
+
+                <View
+                  style={
+                    styles.leaderboardResultStat
+                  }
+                >
+                  <Text
+                    style={
+                      styles.leaderboardResultLabel
+                    }
+                  >
+                    GLOBAL RANK
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.leaderboardResultValue
+                    }
+                  >
+                    {globalRank
+                      ? `#${globalRank}`
+                      : '—'}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+
+
+            <Text
+              style={
+                styles.resultRewardLabel
+              }
+            >
+              REWARD
             </Text>
 
             <Text
@@ -2089,22 +4642,80 @@ export default function CompanionFoodSortScreen() {
                 styles.resultNote
               }
             >
-              {isClaimingReward
-                ? 'Verifying your secure Mission Trails reward...'
-                : rewardMessage ??
-                  'Your level result has been sent to Mission Trails.'}
+              {gameStatus === 'lost'
+                ? rewardMessage ??
+                  'Complete the level to earn its reward.'
+                : isClaimingReward
+                  ? 'Verifying your secure Mission Trails reward...'
+                  : rewardMessage ??
+                    'Reward verified.'}
             </Text>
 
+            {gameStatus === 'won' ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="View global leaderboard"
+                onPress={() =>
+                  router.push(
+                    '/leaderboard',
+                  )
+                }
+                style={
+                  styles.leaderboardButton
+                }
+              >
+                <Ionicons
+                  name="trophy"
+                  size={18}
+                  color="#05000B"
+                />
+
+                <Text
+                  style={
+                    styles.leaderboardButtonText
+                  }
+                >
+                  VIEW LEADERBOARD
+                </Text>
+              </Pressable>
+            ) : null}
+
+
             <Pressable
+              accessibilityRole="button"
+              disabled={
+                isStartingRun ||
+                isClaimingReward ||
+                (
+                  gameStatus === 'won' &&
+                  levelConfig.level + 1 >
+                    highestUnlockedLevel
+                )
+              }
               onPress={
-                restartGame
+                gameStatus === 'won'
+                  ? startNextLevel
+                  : restartGame
               }
-              style={
-                styles.restartButton
-              }
+              style={[
+                styles.restartButton,
+                isStartingRun ||
+                isClaimingReward ||
+                (
+                  gameStatus === 'won' &&
+                  levelConfig.level + 1 >
+                    highestUnlockedLevel
+                )
+                  ? styles.resultButtonDisabled
+                  : undefined,
+              ]}
             >
               <Ionicons
-                name="refresh"
+                name={
+                  gameStatus === 'won'
+                    ? 'arrow-forward'
+                    : 'refresh'
+                }
                 size={18}
                 color="#FFFFFF"
               />
@@ -2119,7 +4730,29 @@ export default function CompanionFoodSortScreen() {
                   : 'TRY AGAIN'}
               </Text>
             </Pressable>
-          </View>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Exit Food Sort"
+              onPress={() =>
+                router.back()
+              }
+              style={
+                styles.exitButton
+              }
+            >
+              <Text
+                style={
+                  styles.exitButtonText
+                }
+              >
+                EXIT
+              </Text>
+            </Pressable>
+                </View>
+              </ScrollView>
+            </View>
+          </Modal>
         ) : null}
 
 
@@ -2129,7 +4762,7 @@ export default function CompanionFoodSortScreen() {
           }
         >
           Match 3 or more identical foods.
-          Invalid swaps do not use a move.
+          Invalid swaps count as mistakes.
         </Text>
       </ScrollView>
     </LinearGradient>
@@ -2440,6 +5073,149 @@ const styles =
       marginTop: 3,
     },
 
+    levelSelectSection: {
+      width: '100%',
+      maxWidth: 430,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: '#49305A',
+      backgroundColor: 'rgba(15, 7, 24, 0.96)',
+      overflow: 'hidden',
+    },
+
+    levelSelectToggle: {
+      minHeight: 54,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 14,
+      gap: 12,
+    },
+
+    levelSelectTitle: {
+      color: '#FFFFFF',
+      fontSize: 11,
+      fontWeight: '900',
+      letterSpacing: 0.9,
+    },
+
+    levelSelectStatus: {
+      color: '#8E8298',
+      fontSize: 9,
+      fontWeight: '700',
+      marginTop: 2,
+    },
+
+    levelGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 7,
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+    },
+
+    levelButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: '#4D365A',
+      backgroundColor: '#13091A',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    levelButtonComplete: {
+      borderColor: '#397E59',
+      backgroundColor: 'rgba(22, 72, 45, 0.55)',
+    },
+
+    levelButtonSelected: {
+      borderWidth: 2,
+      borderColor: '#62E7FF',
+    },
+
+    levelButtonLocked: {
+      borderColor: '#2D2532',
+      backgroundColor: 'rgba(7, 5, 11, 0.75)',
+    },
+
+    levelButtonText: {
+      color: '#FFFFFF',
+      fontSize: 12,
+      fontWeight: '900',
+      fontVariant: [
+        'tabular-nums',
+      ],
+    },
+
+    levelCheck: {
+      position: 'absolute',
+      right: 2,
+      bottom: 2,
+    },
+
+    levelIntroCard: {
+      width: '100%',
+      maxWidth: 430,
+      borderRadius: 22,
+      borderWidth: 2,
+      borderColor: '#B84DFF',
+      backgroundColor: 'rgba(29, 8, 45, 0.98)',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingVertical: 18,
+      gap: 7,
+    },
+
+    levelIntroLevel: {
+      color: '#62E7FF',
+      fontSize: 22,
+      fontWeight: '900',
+      letterSpacing: 1.2,
+    },
+
+    levelIntroGoalLabel: {
+      color: '#FF63E6',
+      fontSize: 10,
+      fontWeight: '900',
+      letterSpacing: 1.5,
+    },
+
+    levelIntroGoal: {
+      color: '#FFFFFF',
+      fontSize: 18,
+      fontWeight: '900',
+      lineHeight: 25,
+      textAlign: 'center',
+    },
+
+    levelIntroRules: {
+      color: '#B9A8C5',
+      fontSize: 11,
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+
+    levelIntroButton: {
+      minWidth: 180,
+      minHeight: 46,
+      borderRadius: 99,
+      backgroundColor: '#62E7FF',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      marginTop: 5,
+    },
+
+    levelIntroButtonText: {
+      color: '#05000B',
+      fontSize: 12,
+      fontWeight: '900',
+      letterSpacing: 0.7,
+    },
+
     goalSection: {
       width: '100%',
       maxWidth: 430,
@@ -2462,11 +5238,16 @@ const styles =
       flexDirection:
         'row',
 
+      flexWrap:
+        'wrap',
+
       gap: 8,
     },
 
     goalCard: {
       flex: 1,
+
+      minWidth: 118,
 
       minHeight: 60,
 
@@ -2494,6 +5275,16 @@ const styles =
       paddingHorizontal: 5,
     },
 
+    goalCopy: {
+      flexShrink: 1,
+    },
+
+    goalLabel: {
+      color: '#A99BB5',
+      fontSize: 8,
+      fontWeight: '800',
+    },
+
     goalComplete: {
       borderColor:
         '#4FCF79',
@@ -2514,6 +5305,40 @@ const styles =
 
       fontWeight:
         '900',
+
+      fontVariant: [
+        'tabular-nums',
+      ],
+    },
+
+    progressGoal: {
+      width: '100%',
+      minHeight: 42,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: '#403049',
+      backgroundColor: 'rgba(8, 5, 16, 0.96)',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 12,
+      marginTop: 8,
+    },
+
+    progressGoalLabel: {
+      color: '#A99BB5',
+      fontSize: 9,
+      fontWeight: '900',
+      letterSpacing: 0.7,
+    },
+
+    progressGoalValue: {
+      color: '#FFFFFF',
+      fontSize: 13,
+      fontWeight: '900',
+      fontVariant: [
+        'tabular-nums',
+      ],
     },
 
     rewardCard: {
@@ -2601,6 +5426,8 @@ const styles =
     },
 
     board: {
+      position:
+        'relative',
       padding:
         BOARD_PADDING,
 
@@ -2671,6 +5498,64 @@ const styles =
       backgroundColor:
         '#182B34',
     },
+
+    foodMatchMotion: {
+      width: '100%',
+      height: '100%',
+
+      alignItems:
+        'center',
+
+      justifyContent:
+        'center',
+    },
+
+
+    foodMotion: {
+      // Purpose:
+      // Gives the Animated.View a real box.
+      // The Image inside uses percentage sizing.
+      width: '100%',
+      height: '100%',
+
+      alignItems:
+        'center',
+
+      justifyContent:
+        'center',
+
+      zIndex: 20,
+    },
+
+
+    blastFx: {
+      position:
+        'absolute',
+
+      left: '25%',
+      right: '25%',
+      top: '25%',
+      bottom: '25%',
+
+      alignItems:
+        'center',
+
+      justifyContent:
+        'center',
+
+      zIndex: 999,
+      elevation: 30,
+
+    },
+
+
+    blastFxText: {
+      fontSize: 72,
+
+      textAlign:
+        'center',
+    },
+
 
     tileImage: {
       width: '97%',
@@ -3028,6 +5913,19 @@ const styles =
         '900',
     },
 
+    resultOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(2, 0, 7, 0.88)',
+    },
+
+    resultModalContent: {
+      flexGrow: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 30,
+    },
+
     resultCard: {
       width: '100%',
       maxWidth: 430,
@@ -3069,6 +5967,200 @@ const styles =
 
       marginTop: 5,
     },
+
+    resultStatsGrid: {
+      width: '100%',
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: 12,
+    },
+
+    resultStat: {
+      width: '48%',
+      minHeight: 62,
+      borderRadius: 13,
+      borderWidth: 1,
+      borderColor: '#403049',
+      backgroundColor: 'rgba(8, 5, 16, 0.92)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 8,
+    },
+
+    resultStatLabel: {
+      color: '#8E8298',
+      fontSize: 8,
+      fontWeight: '900',
+      letterSpacing: 0.7,
+      textAlign: 'center',
+    },
+
+    resultStatValue: {
+      color: '#FFFFFF',
+      fontSize: 19,
+      fontWeight: '900',
+      fontVariant: [
+        'tabular-nums',
+      ],
+      marginTop: 3,
+    },
+
+    collectedSummary: {
+      color: '#C7B9D0',
+      fontSize: 10,
+      fontWeight: '700',
+      lineHeight: 15,
+      textAlign: 'center',
+      marginTop: 9,
+    },
+
+    failurePanel: {
+      width: '100%',
+      borderRadius: 13,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 90, 169, 0.45)',
+      backgroundColor: 'rgba(84, 15, 48, 0.35)',
+      padding: 11,
+      gap: 4,
+      marginTop: 10,
+    },
+
+    failureText: {
+      color: '#FFD2E7',
+      fontSize: 10,
+      fontWeight: '700',
+      lineHeight: 15,
+    },
+
+    resultRewardLabel: {
+      color: '#72F2C3',
+      fontSize: 9,
+      fontWeight: '900',
+      letterSpacing: 1,
+      marginTop: 12,
+    },
+
+    leaderboardResult: {
+      width: '100%',
+
+      flexDirection:
+        'row',
+
+      alignItems:
+        'stretch',
+
+      justifyContent:
+        'space-between',
+
+      marginTop: 12,
+
+      borderRadius: 16,
+
+      borderWidth: 1,
+
+      borderColor:
+        'rgba(98, 231, 255, 0.32)',
+
+      backgroundColor:
+        'rgba(5, 22, 31, 0.82)',
+
+      overflow:
+        'hidden',
+    },
+
+
+    leaderboardResultStat: {
+      flex: 1,
+
+      minHeight: 74,
+
+      alignItems:
+        'center',
+
+      justifyContent:
+        'center',
+
+      paddingHorizontal: 6,
+
+      paddingVertical: 10,
+    },
+
+
+    leaderboardResultDivider: {
+      width: 1,
+
+      backgroundColor:
+        'rgba(98, 231, 255, 0.18)',
+    },
+
+
+    leaderboardResultLabel: {
+      color:
+        '#8DA8AF',
+
+      fontSize: 7,
+
+      fontWeight:
+        '900',
+
+      letterSpacing: 0.7,
+
+      textAlign:
+        'center',
+    },
+
+
+    leaderboardResultValue: {
+      color:
+        '#62E7FF',
+
+      fontSize: 20,
+
+      fontWeight:
+        '900',
+
+      marginTop: 4,
+    },
+
+
+    leaderboardButton: {
+      width: '100%',
+
+      minHeight: 48,
+
+      borderRadius: 15,
+
+      backgroundColor:
+        '#62E7FF',
+
+      flexDirection:
+        'row',
+
+      alignItems:
+        'center',
+
+      justifyContent:
+        'center',
+
+      gap: 8,
+
+      marginTop: 4,
+    },
+
+
+    leaderboardButtonText: {
+      color:
+        '#05000B',
+
+      fontSize: 11,
+
+      fontWeight:
+        '900',
+
+      letterSpacing: 0.8,
+    },
+
 
     resultNote: {
       color: '#A99BB5',
@@ -3117,6 +6209,28 @@ const styles =
       fontWeight:
         '900',
 
+      letterSpacing: 0.7,
+    },
+
+    resultButtonDisabled: {
+      opacity: 0.45,
+    },
+
+    exitButton: {
+      minWidth: 180,
+      minHeight: 44,
+      borderRadius: 99,
+      borderWidth: 1,
+      borderColor: '#60496E',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 9,
+    },
+
+    exitButtonText: {
+      color: '#DCCEE5',
+      fontSize: 12,
+      fontWeight: '900',
       letterSpacing: 0.7,
     },
 

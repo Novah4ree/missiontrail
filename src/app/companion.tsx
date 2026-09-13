@@ -356,36 +356,21 @@ const PLAY_GAMES: {
   title: string;
   subtitle: string;
   icon: IoniconName;
+  route: './companion-food-sort' | './companion-matching-cards';
 }[] = [
   {
     id: 'food-sort',
     title: 'Companion Food Sort',
-    subtitle: 'Match food • 20 moves',
+    subtitle: 'Swipe • Match • Explode • Climb Levels',
     icon: 'nutrition-outline',
+    route: './companion-food-sort',
   },
   {
-    id: 'stars',
-    title: 'Chase Stars',
-    subtitle: 'Speed challenge',
-    icon: 'sparkles',
-  },
-  {
-    id: 'meteor',
-    title: 'Catch Meteor',
-    subtitle: 'Reaction challenge',
-    icon: 'planet-outline',
-  },
-  {
-    id: 'memory',
-    title: 'Memory Match',
-    subtitle: 'Companion puzzle',
+    id: 'matching-cards',
+    title: 'Matching Cards',
+    subtitle: 'Flip • Remember • Match • Climb Levels',
     icon: 'grid-outline',
-  },
-  {
-    id: 'treasure',
-    title: 'Treasure Hunt',
-    subtitle: 'Search together',
-    icon: 'map-outline',
+    route: './companion-matching-cards',
   },
 ];
 
@@ -2733,6 +2718,15 @@ function PlayView({
 }) {
   const router = useRouter();
 
+  console.log(
+    'PLAY_GAMES RUNTIME:',
+    PLAY_GAMES.map((game) => ({
+      id: game.id,
+      title: game.title,
+      route: game.route,
+    })),
+  );
+
   return (
     <>
       <SubHeader
@@ -2754,7 +2748,7 @@ function PlayView({
         </Text>
 
         <Text style={styles.subHeroText}>
-          Pick an activity for your next companion mini-game.
+          Play with your companion and earn rewards.
         </Text>
       </View>
 
@@ -2762,17 +2756,9 @@ function PlayView({
         {PLAY_GAMES.map((game) => (
           <Pressable
             key={game.id}
-            onPress={() => {
-              if (game.id === 'food-sort') {
-                router.push('/companion-food-sort');
-                return;
-              }
-
-              Alert.alert(
-                game.title,
-                `${game.title} is still being built.`,
-              );
-            }}
+            onPress={() =>
+              router.push(game.route)
+            }
             style={styles.gameCard}
           >
             <View style={styles.gameIcon}>
@@ -4654,8 +4640,10 @@ const styles = StyleSheet.create({
   },
 
   gameGrid: {
+    width: '100%',
     flexDirection: 'row',
     flexWrap: 'wrap',
+    justifyContent: 'space-between',
     gap: 10,
   },
 
@@ -4672,9 +4660,9 @@ const styles = StyleSheet.create({
   },
 
   gameIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
+    width: 82,
+    height: 82,
+    borderRadius: 25,
     backgroundColor: '#4B1476',
     alignItems: 'center',
     justifyContent: 'center',

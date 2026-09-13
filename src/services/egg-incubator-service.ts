@@ -48,8 +48,8 @@ const DEFAULT_STATE: EggIncubatorState = {
 
   // Starter inventory while we build the system.
   inventory: {
-    'water-egg': 1,
-    'fire-egg': 1,
+    'tidal-heart-egg': 1,
+    'inferno-core-egg': 1,
   },
 
   companions: [],

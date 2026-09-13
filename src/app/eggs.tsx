@@ -44,19 +44,14 @@ export default function EggsScreen() {
     dailyActivity.todayDistanceMiles ?? 0
   );
 
-  // Only show eggs that currently have artwork.
+  // Every catalog egg now resolves artwork through its elemental type.
   const ownedEggs = useMemo(
-    () =>
-      COMPANION_EGGS.filter(
-        (egg) =>
-          egg.id === 'water-egg' ||
-          egg.id === 'fire-egg'
-      ),
+    () => COMPANION_EGGS,
     []
   );
 
   const [selectedEggId, setSelectedEggId] =
-    useState('water-egg');
+    useState('tidal-heart-egg');
 
   const [hatchedCompanion, setHatchedCompanion] =
     useState<Companion | null>(null);

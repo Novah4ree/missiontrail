@@ -150,6 +150,7 @@ export function filterMeetupsForMap(
     const start = new Date(meetup.startTime);
     return Number.isFinite(start.getTime())
       && isSameLocalDay(start, now)
+      && isMeetupStillActive(meetup, now)
       && canUserViewMeetup(meetup, context.currentUserId)
       && (!meetup.isCancelled || joined);
   });
@@ -267,6 +268,28 @@ function isSameLocalDay(left: Date, right: Date): boolean {
     && left.getDate() === right.getDate();
 }
 
+/**
+ * Returns true only while a Meetup still has a valid schedule
+ * and its recorded end time has not passed.
+ */
+// Purpose: Prevents expired Meetups from appearing in discovery or maps.
+export function isMeetupStillActive(
+  meetup: Meetup,
+  now = new Date(),
+): boolean {
+  const startTimestamp = Date.parse(meetup.startTime);
+  const endTimestamp = Date.parse(meetup.endTime);
+
+  if (
+    !Number.isFinite(startTimestamp) ||
+    !Number.isFinite(endTimestamp)
+  ) {
+    return false;
+  }
+
+  return endTimestamp > now.getTime();
+}
+
 /** Checks Saturday and Sunday for the current or upcoming local weekend. */
 // Purpose: Determines whether is this weekend.
 function isThisWeekend(date: Date, now: Date): boolean {
@@ -290,6 +313,7 @@ export function filterMeetups(
   const now = context.now ?? new Date();
   return meetups.filter((meetup) => {
     if (meetup.isCancelled) return false;
+    if (!isMeetupStillActive(meetup, now)) return false;
     if (filter === 'all') return true;
     if (filter === 'food_and_chill') return meetup.category === 'food';
     if (filter === 'friends_attending') {

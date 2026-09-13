@@ -56,6 +56,7 @@ import { RELICS, type Relic } from "@/constants/relics";
 import { useDailyProgress } from "@/hooks/use-daily-progress";
 import { useAccountAccess } from "@/hooks/use-account-access";
 import { useSecureRelicField } from "@/hooks/use-secure-relic-field";
+import { usePreciseWalkTrack } from "@/hooks/use-precise-walk-track";
 import { useDailyActivity } from "@/providers/activity-progress-provider";
 import { getDevelopmentMeetupsToday } from "@/services/development-meetup-data";
 import { loadActiveTrailActivity } from "@/services/trail-activity-service";
@@ -520,10 +521,22 @@ export default function HomeScreen() {
   // visualGpsPoints is only used to draw the map trail, glow and footprints.
   // This prevents normal stationary GPS drift from looking like the player
   // walked around buildings, yards, streets, etc.
-  const visualGpsPoints = useMemo(
-    () => buildVisualGpsTrack(gpsPoints),
-    [gpsPoints],
-  );
+  // Raw GPS stays untouched for secure relic verification.
+  //
+  // The map trail uses step + compass dead reckoning so indoor
+  // GPS drift cannot throw footprints across streets/houses.
+  // Visual position is allowed to move only when BOTH systems agree:
+  // 1. Core Motion confirms physical steps occurred.
+  // 2. A stable, high-quality GPS cluster supports the new position.
+  //
+  // Never fall back to raw GPS for the visible trail. During poor indoor GPS,
+  // freezing the visual position is much safer than showing the player inside
+  // somebody else's house.
+  const visualGpsPoints = usePreciseWalkTrack({
+    steps: dailyActivity.todaySteps,
+    gpsPoints,
+    headingDegrees: phoneHeading,
+  });
 
   // Purpose: Shows realistic walking miles from the phone's live step count.
   //
@@ -543,8 +556,9 @@ export default function HomeScreen() {
 
   const mapCoordinates = visualGpsPoints.map(makeMapCoordinate);
 
+  // Never let an unfiltered raw GPS fix move the visible player marker.
   const stablePlayerLocation =
-    getLatestGpsPoint(visualGpsPoints) ?? latestGpsPoint;
+    getLatestGpsPoint(visualGpsPoints);
 
   // UI/map calculations use the stabilized walking position.
   // Secure relic verification still receives the original accepted GPS samples.
@@ -1175,7 +1189,7 @@ export default function HomeScreen() {
         showsMyLocationButton={false}
         showsCompass={false}
         showsScale
-        showsPointsOfInterest
+        showsPointsOfInterests
         showsBuildings
         showsIndoors
         showsTraffic={false}
@@ -1549,7 +1563,7 @@ function buildVisualGpsTrack(
     return (
       accuracy === null ||
       accuracy === undefined ||
-      accuracy <= MAX_ACCEPTED_GPS_ACCURACY_METERS
+      accuracy <= 12
     );
   });
 
@@ -1608,7 +1622,7 @@ function buildVisualGpsTrack(
 
     // Ignore impossible GPS teleporting.
     // 8 m/s is roughly 18 MPH.
-    if (impliedSpeedMetersPerSecond > 8) {
+    if (impliedSpeedMetersPerSecond > 5) {
       continue;
     }
 
@@ -1884,12 +1898,14 @@ function renderFootprintMarkers(
   selectedFootprint: (typeof footprintOptions)[number],
   huntStage: RelicHuntStage,
 ) {
-  const uniqueLocations = getWalkingFootprintLocations(locations);
+  // These locations are already stabilized by usePreciseWalkTrack.
+  // Do not run them through the old multi-meter GPS filter again.
+  const uniqueLocations = deduplicateGpsLocations(locations);
   const intensity = getRelicHuntIntensity(huntStage);
 
   // Footprint spacing stays constant. Relic hunt intensity may change the
   // glow, but it must never make old footprints jump around or respawn.
-  const sampleStride = 2;
+  const sampleStride = 1;
   const walkedLocations = uniqueLocations.slice(0, -1);
   // The newest GPS point belongs exclusively to the live-position marker.
   // Keeping it out of the trail prevents two native markers from competing at
@@ -2463,7 +2479,7 @@ function RelicCompass({
         <Animated.View style={[styles.compassRadarPulse, huntPulseStyle]} />
         {/* Moving compass rose */}
         <Animated.View
-          style={[StyleSheet.absoluteFillObject, dialAnimatedStyle]}
+          style={[StyleSheet.absoluteFill, dialAnimatedStyle]}
         >
           <Animated.Text
             style={[

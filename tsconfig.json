@@ -10,7 +10,11 @@
       "@/assets/*": [
         "./assets/*"
       ]
-    }
+    },
+    "types": [
+      "node"
+    ],
+    "jsx": "react-jsx"
   },
   "include": [
     "**/*.ts",
@@ -21,6 +25,10 @@
   "exclude": [
     "supabase/functions",
     "node_modules",
-    "backups"
+    "backups",
+    "**/*.before-*.ts",
+    "**/*.before-*.tsx",
+    "**/*.backup.ts",
+    "**/*.backup.tsx"
   ]
 }

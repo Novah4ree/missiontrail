@@ -287,7 +287,7 @@ export const RELIC_ASSETS = {
     lore: 'A luminous drop said to have fallen when the first horizon formed.', mapPlacement: { distanceFeet: 5620, bearingDegrees: 190 },
   },
   comicEgg: {
-    id: 'comic-egg', name: 'Cosmic Egg', icon: require('../../assets/images/footprints/eggs/cosmic/Astral Nexus Egg.png'),
+    id: 'comic-egg', name: 'Cosmic Egg', icon: require('../../assets/eggs/mythic/cosmic/Astral Nexus Egg.png'),
     rarity: 'Epic', effectFamily: 'cosmic', primaryColor: '#A78BFA', secondaryColor: '#34D399',
     particleColors: ['#A78BFA', '#34D399', '#F9A8D4'], xp: 75,
     lore: 'No scholar agrees what waits inside—or why it hums beneath starlight.', mapPlacement: { distanceFeet: 5780, bearingDegrees: 250 },

@@ -16,17 +16,18 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "Mission Trails uses Face ID to securely sign you in.",
         "NSCameraUsageDescription": "Mission Trails uses your camera to discover hidden relics in augmented reality."
-      }
+      },
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#080013",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "foregroundImage": "./assets/images/App_Icon.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.MissionTrail0.x2",
+      "package": "com.novah4ree.missiontrails",
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
@@ -99,7 +100,10 @@
             "cameraUsagePermission": "Mission Trails uses your camera to discover hidden relics in augmented reality."
           }
         }
-      ]
+      ],
+      "expo-apple-authentication",
+      "expo-image",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true,

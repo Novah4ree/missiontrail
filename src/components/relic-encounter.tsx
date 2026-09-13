@@ -149,7 +149,7 @@ export function RelicEncounter({
     >
       <View style={styles.screen}>
         {visible ? (
-          <View style={StyleSheet.absoluteFillObject}>
+          <View style={StyleSheet.absoluteFill}>
             <RelicARWorld
               relicId={relic.id}
               relicIcon={relic.icon}

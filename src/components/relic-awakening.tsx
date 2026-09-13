@@ -1207,7 +1207,7 @@ export function RelicAwakening({
 const styles =
   StyleSheet.create({
     screen: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       zIndex: 9999,
       elevation: 9999,
       backgroundColor: '#020004',

@@ -51,7 +51,7 @@ export function RelicARWorld({
           scene: RelicARScene,
         }}
         viroAppProps={viroAppProps}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
     </View>
   );

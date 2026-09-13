@@ -43,9 +43,57 @@ export type VerifiedMissionProgress = {
   claimedAt: string | null;
 };
 
+export type ProgressionCurrentMission = {
+  missionNumber: number;
+  title: string;
+  tier: string;
+  metric: string;
+  progress: number;
+  target: number;
+  missionPoints: number;
+  eggHuntReward: boolean;
+  status: 'active' | 'completed';
+};
+
+export type ProgressionSummary = {
+  daily: {
+    date: string;
+    steps: number;
+  };
+
+  weekly: {
+    weekStart: string;
+    steps: number;
+  };
+
+  lifetime: {
+    steps: number;
+  };
+
+  personalRecord: {
+    highestDailySteps: number;
+    date: string | null;
+  };
+
+  scores: {
+    missionPoints: number;
+    gamePoints: number;
+    stepPoints: number;
+    overallPoints: number;
+  };
+
+  eggHuntsAvailable: number;
+
+  currentMission: ProgressionCurrentMission | null;
+};
+
 export type VerifiedDailyProgress = {
   totalXp: number;
   dailyStreak: number;
+
+  // Permanent Mission Trails progression.
+  progression: ProgressionSummary | null;
+
   verifiedSteps: number;
   companion: {
     companionId: string | null;

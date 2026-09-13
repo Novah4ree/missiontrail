@@ -1,11 +1,24 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { supabase } from "../../lib/supabase";
 import { useDailyProgress } from "@/hooks/use-daily-progress";
 import { getPlayerLevelProgress } from "@/utils/player-level";
+
+type LeaderboardEntry = {
+  rank_position: number;
+  user_id: string;
+  display_name: string;
+  username: string;
+  avatar_url: string | null;
+  explorer_score: number;
+  is_current_user: boolean;
+};
+
 
 // Purpose: Renders the leaderboard screen interface.
 export default function LeaderboardScreen() {
@@ -18,6 +31,141 @@ export default function LeaderboardScreen() {
   const playerLevel = getPlayerLevelProgress(totalXp);
 
   const currentUserDistance = (progress?.verifiedDistanceMeters ?? 0) / 1000;
+
+
+  const [
+    leaderboardEntries,
+    setLeaderboardEntries,
+  ] =
+    useState<LeaderboardEntry[]>([]);
+
+
+  const [
+    leaderboardLoading,
+    setLeaderboardLoading,
+  ] =
+    useState(true);
+
+
+  const [
+    leaderboardError,
+    setLeaderboardError,
+  ] =
+    useState<string | null>(null);
+
+
+  // Purpose:
+  // Loads the real global Explorer Score ranking.
+  async function loadLeaderboard() {
+    setLeaderboardLoading(true);
+    setLeaderboardError(null);
+
+    try {
+      const {
+        data,
+        error,
+      } = await supabase.rpc(
+        "server_get_explorer_leaderboard",
+        {
+          p_limit: 50,
+        },
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      const rows =
+        Array.isArray(data)
+          ? data
+          : [];
+
+      setLeaderboardEntries(
+        rows.map(
+          (row) => ({
+            rank_position:
+              Number(
+                row.rank_position ??
+                0,
+              ),
+
+            user_id:
+              String(
+                row.user_id ??
+                "",
+              ),
+
+            display_name:
+              String(
+                row.display_name ??
+                "Explorer",
+              ),
+
+            username:
+              String(
+                row.username ??
+                "explorer",
+              ),
+
+            avatar_url:
+              row.avatar_url
+                ? String(
+                    row.avatar_url,
+                  )
+                : null,
+
+            explorer_score:
+              Number(
+                row.explorer_score ??
+                0,
+              ),
+
+            is_current_user:
+              row.is_current_user ===
+              true,
+          }),
+        ),
+      );
+    } catch (error) {
+      console.warn(
+        "[Leaderboard] Could not load rankings.",
+        error,
+      );
+
+      setLeaderboardError(
+        "Global rankings could not be loaded.",
+      );
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  }
+
+
+  useEffect(() => {
+    void loadLeaderboard();
+  }, []);
+
+
+  // Purpose:
+  // Reloads both the player's Explorer Score and
+  // global rankings whenever Leaderboard opens.
+  useFocusEffect(
+    useCallback(
+      () => {
+        void loadLeaderboard();
+
+        return undefined;
+      },
+      [],
+    ),
+  );
+
+  const currentUserRanking =
+    leaderboardEntries.find(
+      (entry) =>
+        entry.is_current_user,
+    );
+
 
   // Purpose: Implements the return to live map operation.
   function returnToLiveMap() {
@@ -65,26 +213,170 @@ export default function LeaderboardScreen() {
           </View>
         </View>
 
-        {/* EMPTY LEADERBOARD */}
-        <View style={styles.emptyLeaderboard}>
-          <View style={styles.emptyIcon}>
-            <Ionicons name="trophy-outline" size={40} color="#74eaff" />
+        {/* REAL GLOBAL LEADERBOARD */}
+        <View style={styles.rankingPanel}>
+          <View style={styles.rankingHeader}>
+            <View>
+              <Text style={styles.rankingEyebrow}>
+                GLOBAL EXPLORERS
+              </Text>
+
+              <Text style={styles.rankingTitle}>
+                Explorer Score Rankings
+              </Text>
+            </View>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Refresh leaderboard"
+              onPress={() =>
+                void loadLeaderboard()
+              }
+              style={styles.refreshButton}
+            >
+              <Ionicons
+                name="refresh"
+                size={18}
+                color="#74eaff"
+              />
+            </Pressable>
           </View>
 
-          <Text style={styles.emptyTitle}>No Explorers Ranked Yet</Text>
 
-          <Text style={styles.emptyText}>
-            Rankings will appear here once real explorers begin earning verified
-            distance.
-          </Text>
+          {leaderboardLoading ? (
+            <View style={styles.rankingStatus}>
+              <Ionicons
+                name="hourglass-outline"
+                size={28}
+                color="#74eaff"
+              />
+
+              <Text style={styles.rankingStatusText}>
+                Loading explorers...
+              </Text>
+            </View>
+          ) : leaderboardError ? (
+            <View style={styles.rankingStatus}>
+              <Ionicons
+                name="cloud-offline-outline"
+                size={28}
+                color="#ff63f7"
+              />
+
+              <Text style={styles.rankingStatusText}>
+                {leaderboardError}
+              </Text>
+            </View>
+          ) : leaderboardEntries.length === 0 ? (
+            <View style={styles.rankingStatus}>
+              <Ionicons
+                name="trophy-outline"
+                size={34}
+                color="#74eaff"
+              />
+
+              <Text style={styles.rankingStatusText}>
+                No Explorer Score has been earned yet.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.rankingList}>
+              {leaderboardEntries.map(
+                (entry) => {
+                  const medal =
+                    entry.rank_position === 1
+                      ? "🥇"
+                      : entry.rank_position === 2
+                        ? "🥈"
+                        : entry.rank_position === 3
+                          ? "🥉"
+                          : null;
+
+
+                  return (
+                    <View
+                      key={entry.user_id}
+                      style={[
+                        styles.rankingRow,
+
+                        entry.is_current_user
+                          ? styles.rankingRowCurrent
+                          : undefined,
+                      ]}
+                    >
+                      <View style={styles.rankNumberWrap}>
+                        <Text style={styles.rankNumber}>
+                          {medal ??
+                            `#${entry.rank_position}`}
+                        </Text>
+                      </View>
+
+
+                      <View style={styles.explorerAvatar}>
+                        <Ionicons
+                          name="person"
+                          size={19}
+                          color={
+                            entry.is_current_user
+                              ? "#ff63f7"
+                              : "#74eaff"
+                          }
+                        />
+                      </View>
+
+
+                      <View style={styles.explorerCopy}>
+                        <Text
+                          numberOfLines={1}
+                          style={styles.explorerName}
+                        >
+                          {entry.display_name}
+                          {entry.is_current_user
+                            ? "  • YOU"
+                            : ""}
+                        </Text>
+
+                        <Text
+                          numberOfLines={1}
+                          style={styles.explorerUsername}
+                        >
+                          @{entry.username}
+                        </Text>
+                      </View>
+
+
+                      <View style={styles.explorerScoreWrap}>
+                        <Text style={styles.explorerScore}>
+                          {entry.explorer_score.toLocaleString()}
+                        </Text>
+
+                        <Text style={styles.explorerScoreLabel}>
+                          SCORE
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                },
+              )}
+            </View>
+          )}
         </View>
+
 
         {/* CURRENT USER */}
         <View style={styles.userCard}>
           <View>
             <Text style={styles.userLabel}>YOUR PROGRESS</Text>
 
-            <Text style={styles.userName}>You</Text>
+            <Text style={styles.userName}>
+              You
+            </Text>
+
+            <Text style={styles.userRank}>
+              {currentUserRanking
+                ? `Global Rank #${currentUserRanking.rank_position}`
+                : "Global Rank —"}
+            </Text>
           </View>
 
           <View style={styles.userStats}>
@@ -157,6 +449,140 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     marginTop: 3,
+  },
+
+  rankingPanel: {
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(168, 85, 247, 0.45)",
+    backgroundColor: "rgba(6, 4, 26, 0.92)",
+    padding: 14,
+    gap: 12,
+  },
+
+  rankingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+
+  rankingEyebrow: {
+    color: "#ff63f7",
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+  },
+
+  rankingTitle: {
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "900",
+    marginTop: 3,
+  },
+
+  refreshButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: "rgba(116, 234, 255, 0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0, 229, 255, 0.06)",
+  },
+
+  rankingStatus: {
+    minHeight: 150,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+
+  rankingStatusText: {
+    color: "#a9a5c0",
+    fontSize: 13,
+    textAlign: "center",
+  },
+
+  rankingList: {
+    gap: 8,
+  },
+
+  rankingRow: {
+    minHeight: 70,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(116, 234, 255, 0.13)",
+    backgroundColor: "rgba(10, 7, 31, 0.92)",
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
+
+  rankingRowCurrent: {
+    borderColor: "rgba(255, 99, 247, 0.85)",
+    backgroundColor: "rgba(54, 9, 68, 0.72)",
+  },
+
+  rankNumberWrap: {
+    width: 38,
+    alignItems: "center",
+  },
+
+  rankNumber: {
+    color: "#facc15",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  explorerAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    borderColor: "rgba(116, 234, 255, 0.38)",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(116, 234, 255, 0.06)",
+  },
+
+  explorerCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  explorerName: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  explorerUsername: {
+    color: "#8e88a5",
+    fontSize: 10,
+    marginTop: 2,
+  },
+
+  explorerScoreWrap: {
+    minWidth: 68,
+    alignItems: "flex-end",
+  },
+
+  explorerScore: {
+    color: "#74eaff",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+
+  explorerScoreLabel: {
+    color: "#77718d",
+    fontSize: 7,
+    fontWeight: "900",
+    letterSpacing: 1,
+    marginTop: 1,
   },
 
   emptyLeaderboard: {
@@ -237,6 +663,15 @@ const styles = StyleSheet.create({
   userStats: {
     alignItems: "flex-end",
   },
+
+  userRank: {
+    color: "#ff63f7",
+    fontSize: 10,
+    fontWeight: "900",
+    marginTop: 3,
+  },
+
+
 
   userLevel: {
     color: "#facc15",

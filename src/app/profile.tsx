@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -383,6 +383,25 @@ export default function ProfileScreen() {
   useEffect(() => {
     void loadRealProfile();
   }, []);
+
+
+  // Purpose:
+  // Refreshes Explorer Score and profile data every
+  // time the player returns to Profile.
+  useFocusEffect(
+    useCallback(
+      () => {
+        void Promise.all([
+          loadRealProfile(),
+          refreshProgress(),
+          dailyActivity.refreshActivity(),
+        ]);
+
+        return undefined;
+      },
+      [],
+    ),
+  );
 
   // Purpose: Loads real profile.
   async function loadRealProfile() {

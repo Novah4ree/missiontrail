@@ -146,12 +146,23 @@ export async function syncDeviceSteps(
   userId: string,
   localDate: string,
   steps: number,
+  activitySteps = steps,
 ) {
   return (await invokeProgress({
     action: 'sync-steps',
-    localDate,
+
+    // Existing mission-eligible step total.
     steps,
-    idempotencyKey: `${userId}:${localDate}:${steps}`,
+
+    // Actual Mission Trails steps taken today.
+    // These feed lifetime steps, weekly steps, permanent
+    // missions, records, scores and Egg Hunt milestones.
+    activitySteps,
+
+    localDate,
+
+    idempotencyKey:
+      `${userId}:${localDate}:${steps}:${activitySteps}`,
   }, userId)).progress;
 }
 

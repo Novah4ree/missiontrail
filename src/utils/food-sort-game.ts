@@ -30,6 +30,7 @@ export type FoodSortSpecial =
   | 'none'
   | 'row'
   | 'column'
+  | 'bomb'
   | 'mythic';
 
 
@@ -48,6 +49,12 @@ export type FoodSortCollected =
   Record<
     FoodSortFoodId,
     number
+  >;
+
+
+export type FoodSortSpawnWeights =
+  Partial<
+    Record<FoodSortFoodId, number>
   >;
 
 
@@ -77,6 +84,8 @@ export type FoodSortResolution = {
 
   specialsCreated: number;
 
+  bombsCreated: number;
+
   mythicsCreated: number;
 
   powerActivations: number;
@@ -100,34 +109,74 @@ export function createEmptyCollected():
 
 
 // Purpose: Picks one random food.
-function randomFoodId():
+function randomFoodId(
+  availableFoodIds:
+    readonly FoodSortFoodId[] =
+      FOOD_SORT_FOOD_IDS,
+
+  spawnWeights:
+    FoodSortSpawnWeights = {},
+):
   FoodSortFoodId {
-  const index =
-    Math.floor(
-      Math.random() *
-      FOOD_SORT_FOOD_IDS.length,
+  const totalWeight =
+    availableFoodIds.reduce(
+      (total, foodId) =>
+        total +
+        Math.max(
+          0.01,
+          spawnWeights[foodId] ?? 1,
+        ),
+      0,
     );
 
-  return FOOD_SORT_FOOD_IDS[
-    index
+  let roll =
+    Math.random() *
+    totalWeight;
+
+  for (const foodId of availableFoodIds) {
+    roll -= Math.max(
+      0.01,
+      spawnWeights[foodId] ?? 1,
+    );
+
+    if (roll <= 0) {
+      return foodId;
+    }
+  }
+
+  return availableFoodIds[
+    availableFoodIds.length - 1
   ];
 }
 
 
 // Purpose: Creates one unique board tile.
 function createTile(
-  foodId =
-    randomFoodId(),
+  foodId:
+    FoodSortFoodId | undefined =
+      undefined,
 
   special:
     FoodSortSpecial =
       'none',
+
+  availableFoodIds:
+    readonly FoodSortFoodId[] =
+      FOOD_SORT_FOOD_IDS,
+
+  spawnWeights:
+    FoodSortSpawnWeights = {},
 ): FoodSortTile {
   const tile = {
     id:
       `food-sort-${nextTileNumber}`,
 
-    foodId,
+    foodId:
+      foodId ??
+      randomFoodId(
+        availableFoodIds,
+        spawnWeights,
+      ),
 
     special,
   };
@@ -140,8 +189,46 @@ function createTile(
 
 // Purpose: Creates a 6x6 board without
 // starting three-in-a-row matches.
-export function createFoodSortBoard():
+export function createFoodSortBoard(
+  requestedFoodIds:
+    readonly FoodSortFoodId[] =
+      FOOD_SORT_FOOD_IDS,
+
+  spawnWeights:
+    FoodSortSpawnWeights = {},
+):
   FoodSortTile[] {
+  const availableFoodIds =
+    Array.from(
+      new Set(
+        requestedFoodIds,
+      ),
+    );
+
+  // Match-3 needs at least three distinct foods. Level configs
+  // always provide three or more; this fallback keeps the engine
+  // safe for any future caller.
+  for (
+    const foodId
+    of FOOD_SORT_FOOD_IDS
+  ) {
+    if (
+      availableFoodIds.length >= 3
+    ) {
+      break;
+    }
+
+    if (
+      !availableFoodIds.includes(
+        foodId,
+      )
+    ) {
+      availableFoodIds.push(
+        foodId,
+      );
+    }
+  }
+
   const board:
     FoodSortTile[] = [];
 
@@ -218,7 +305,7 @@ export function createFoodSortBoard():
 
 
     const availableFoods =
-      FOOD_SORT_FOOD_IDS.filter(
+      availableFoodIds.filter(
         (foodId) =>
           !blockedFoods.has(
             foodId,
@@ -227,12 +314,10 @@ export function createFoodSortBoard():
 
 
     const foodId =
-      availableFoods[
-        Math.floor(
-          Math.random() *
-          availableFoods.length,
-        )
-      ];
+      randomFoodId(
+        availableFoods,
+        spawnWeights,
+      );
 
 
     board.push(
@@ -668,6 +753,66 @@ function expandSpecialEffects(
 
 
     // -----------------------------
+    // NOVA BOMB
+    //
+    // Clears a 3x3 area centered
+    // around the bomb.
+    // -----------------------------
+    if (
+      tile.special ===
+      'bomb'
+    ) {
+      const centerRow =
+        Math.floor(
+          index /
+          FOOD_SORT_COLUMNS,
+        );
+
+      const centerColumn =
+        index %
+        FOOD_SORT_COLUMNS;
+
+
+      for (
+        let rowOffset = -1;
+        rowOffset <= 1;
+        rowOffset += 1
+      ) {
+        for (
+          let columnOffset = -1;
+          columnOffset <= 1;
+          columnOffset += 1
+        ) {
+          const row =
+            centerRow +
+            rowOffset;
+
+          const column =
+            centerColumn +
+            columnOffset;
+
+
+          if (
+            row < 0 ||
+            row >= FOOD_SORT_ROWS ||
+            column < 0 ||
+            column >= FOOD_SORT_COLUMNS
+          ) {
+            continue;
+          }
+
+
+          affected.push(
+            row *
+              FOOD_SORT_COLUMNS +
+            column,
+          );
+        }
+      }
+    }
+
+
+    // -----------------------------
     // MYTHIC TREAT
     //
     // Clears every food matching
@@ -734,6 +879,12 @@ function collapseFoodSortBoard(
       FoodSortTile |
       null
     >,
+
+  availableFoodIds:
+    readonly FoodSortFoodId[],
+
+  spawnWeights:
+    FoodSortSpawnWeights,
 ): FoodSortTile[] {
   const nextBoard:
     Array<
@@ -793,7 +944,12 @@ function collapseFoodSortBoard(
           FOOD_SORT_COLUMNS +
         column
       ] =
-        createTile();
+        createTile(
+          undefined,
+          'none',
+          availableFoodIds,
+          spawnWeights,
+        );
 
 
       writeRow -= 1;
@@ -813,6 +969,13 @@ function collapseFoodSortBoard(
 export function resolveFoodSortBoard(
   startingBoard:
     FoodSortTile[],
+
+  availableFoodIds:
+    readonly FoodSortFoodId[] =
+      FOOD_SORT_FOOD_IDS,
+
+  spawnWeights:
+    FoodSortSpawnWeights = {},
 ): FoodSortResolution {
   let board =
     [...startingBoard];
@@ -827,6 +990,8 @@ export function resolveFoodSortBoard(
   let cascades = 0;
 
   let specialsCreated = 0;
+
+  let bombsCreated = 0;
 
   let mythicsCreated = 0;
 
@@ -908,10 +1073,13 @@ export function resolveFoodSortBoard(
       }
 
 
-      // 5+ MATCH
+      // 6+ MATCH
+      //
+      // Creates the strongest special:
+      // Mythic Burst.
       if (
         group.indices.length >=
-        5
+        6
       ) {
         specialsToCreate.set(
           specialIndex,
@@ -922,7 +1090,26 @@ export function resolveFoodSortBoard(
       }
 
 
+      // 5 MATCH
+      //
+      // Creates a Nova Bomb.
+      if (
+        group.indices.length ===
+        5
+      ) {
+        specialsToCreate.set(
+          specialIndex,
+          'bomb',
+        );
+
+        continue;
+      }
+
+
       // 4 MATCH
+      //
+      // Horizontal match -> row blaster.
+      // Vertical match -> column blaster.
       specialsToCreate.set(
         specialIndex,
 
@@ -1019,6 +1206,15 @@ export function resolveFoodSortBoard(
 
       if (
         special ===
+        'bomb'
+      ) {
+        bombsCreated +=
+          1;
+      }
+
+
+      if (
+        special ===
         'mythic'
       ) {
         mythicsCreated +=
@@ -1044,8 +1240,11 @@ export function resolveFoodSortBoard(
       score +=
         special ===
         'mythic'
-          ? 150
-          : 75;
+          ? 250
+          : special ===
+              'bomb'
+            ? 150
+            : 75;
     }
 
 
@@ -1058,6 +1257,8 @@ export function resolveFoodSortBoard(
     board =
       collapseFoodSortBoard(
         boardWithHoles,
+        availableFoodIds,
+        spawnWeights,
       );
   }
 
@@ -1068,6 +1269,7 @@ export function resolveFoodSortBoard(
     score,
     cascades,
     specialsCreated,
+    bombsCreated,
     mythicsCreated,
     powerActivations,
   };

@@ -1,5 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { memo, useCallback, useMemo } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   FlatList,
   Pressable,
@@ -62,7 +68,20 @@ export function MeetupsTodaySection({
 }: Props) {
   const window = useWindowDimensions();
   const cardWidth = Math.min(350, Math.max(280, window.width - 48));
-  const now = useMemo(() => providedNow ?? new Date(), [providedNow]);
+  // Purpose: Keeps Meetup expiration current while this screen stays open.
+  const [liveNow, setLiveNow] = useState(() => new Date());
+
+  useEffect(() => {
+    if (providedNow) return;
+
+    const timer = setInterval(() => {
+      setLiveNow(new Date());
+    }, 30_000);
+
+    return () => clearInterval(timer);
+  }, [providedNow]);
+
+  const now = providedNow ?? liveNow;
 
   // One stable context lets all utility functions use the same location and clock.
   const popularityContext = useMemo<MeetupPopularityContext>(() => ({
