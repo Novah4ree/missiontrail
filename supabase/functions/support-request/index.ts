@@ -80,16 +80,20 @@ Deno.serve(async (request) => {
     // Avoid accepting coordinates or other structured location payloads here.
     // An unsafe-location report is a human-readable report, not another precise
     // location tracking channel.
-    const { data, error } = await admin
-      .schema("private")
-      .from("support_requests")
-      .insert({ user_id: authData.user.id, category, message })
-      .select("id")
-      .single();
+    const { data: ticketId, error: supportError } = await admin.rpc(
+      "server_create_support_request",
+      {
+        p_user_id: authData.user.id,
+        p_category: category,
+        p_message: message,
+      },
+    );
 
-    if (error || !data?.id) throw new Error("SUPPORT_SAVE_FAILED");
+    if (supportError || typeof ticketId !== "string") {
+      throw new Error("SUPPORT_SAVE_FAILED");
+    }
 
-    return jsonResponse({ submitted: true, ticketId: data.id, requestId }, 201);
+    return jsonResponse({ submitted: true, ticketId, requestId }, 201);
   } catch (error) {
     console.error("Support request failed", {
       requestId,
