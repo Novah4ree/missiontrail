@@ -43,6 +43,9 @@ verify_jwt = true
 [functions.delete-account]
 verify_jwt = true
 
+[functions.support-request]
+verify_jwt = true
+
 [functions.verify-onboarding-id]
 verify_jwt = false
 
