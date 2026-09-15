@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -139,11 +139,6 @@ export default function LeaderboardScreen() {
       setLeaderboardLoading(false);
     }
   }
-
-
-  useEffect(() => {
-    void loadLeaderboard();
-  }, []);
 
 
   // Purpose:

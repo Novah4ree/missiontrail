@@ -15,7 +15,6 @@ import {
 } from 'react-native';
 import { FontAwesome, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
@@ -32,7 +31,6 @@ const BIOMETRIC_REFRESH_TOKEN_KEY =
 // Purpose: Renders the login screen interface.
 export default function LoginScreen() {
   const router = useRouter();
-  const homeRedirectUrl = Linking.createURL('/home-backup');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

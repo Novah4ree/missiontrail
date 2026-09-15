@@ -188,9 +188,9 @@ function VerifiedTrailDetailsScreen() {
   const [meetupSectionY, setMeetupSectionY] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [routeMessage, setRouteMessage] = useState<string | null>(null);
-  const [forecast, setForecast] = useState<TrailDailyForecast | null>(null);
-  const [isForecastLoading, setIsForecastLoading] = useState(false);
-  const [forecastError, setForecastError] = useState<string | null>(null);
+  const [forecast] = useState<TrailDailyForecast | null>(null);
+  const [isForecastLoading] = useState(false);
+  const [forecastError] = useState<string | null>(null);
 
   const [calculatedElevationFeet, setCalculatedElevationFeet] = useState<
     number | null
@@ -302,76 +302,87 @@ function VerifiedTrailDetailsScreen() {
   useEffect(() => {
     if (!trail) return;
 
-    // Use existing elevation data when the trail already provides it.
-    if (
-      typeof trail.elevationGainFeet === "number" &&
-      Number.isFinite(trail.elevationGainFeet) &&
-      trail.elevationGainFeet >= 0
-    ) {
-      setCalculatedElevationFeet(trail.elevationGainFeet);
-      setIsElevationLoading(false);
-      return;
-    }
-
-    const rawCoordinates = trail.geometry?.coordinates;
-
-    if (!rawCoordinates || rawCoordinates.length < 2) {
-      setCalculatedElevationFeet(null);
-      setIsElevationLoading(false);
-      return;
-    }
-
-    // Convert the trail geometry into guaranteed longitude/latitude pairs.
-    const coordinates: [number, number][] = rawCoordinates
-      .filter(
-        (coordinate) =>
-          Array.isArray(coordinate) &&
-          coordinate.length >= 2 &&
-          Number.isFinite(Number(coordinate[0])) &&
-          Number.isFinite(Number(coordinate[1])),
-      )
-      .map(
-        (coordinate) =>
-          [Number(coordinate[0]), Number(coordinate[1])] as [number, number],
-      );
-
-    if (coordinates.length < 2) {
-      setCalculatedElevationFeet(null);
-      setIsElevationLoading(false);
-      return;
-    }
-
     let active = true;
 
-    // Purpose: Loads elevation.
-    async function loadElevation() {
-      setIsElevationLoading(true);
+    const elevationTimer = setTimeout(() => {
+      if (!active) return;
 
-      try {
-        const elevation = await calculateTrailElevationGain(coordinates);
+      // Use existing elevation data when the trail already provides it.
+      if (
+        typeof trail.elevationGainFeet === "number" &&
+        Number.isFinite(trail.elevationGainFeet) &&
+        trail.elevationGainFeet >= 0
+      ) {
+        setCalculatedElevationFeet(trail.elevationGainFeet);
+        setIsElevationLoading(false);
+        return;
+      }
 
+      const rawCoordinates = trail.geometry?.coordinates;
+
+      if (!rawCoordinates || rawCoordinates.length < 2) {
+        setCalculatedElevationFeet(null);
+        setIsElevationLoading(false);
+        return;
+      }
+
+      // Convert the trail geometry into guaranteed longitude/latitude pairs.
+      const coordinates: [number, number][] = rawCoordinates
+        .filter(
+          (coordinate) =>
+            Array.isArray(coordinate) &&
+            coordinate.length >= 2 &&
+            Number.isFinite(Number(coordinate[0])) &&
+            Number.isFinite(Number(coordinate[1])),
+        )
+        .map(
+          (coordinate) =>
+            [Number(coordinate[0]), Number(coordinate[1])] as [number, number],
+        );
+
+      if (coordinates.length < 2) {
+        setCalculatedElevationFeet(null);
+        setIsElevationLoading(false);
+        return;
+      }
+
+      // Purpose: Loads elevation.
+      async function loadElevation() {
         if (active) {
-          setCalculatedElevationFeet(elevation);
-        }
-      } catch (error) {
-        if (__DEV__) {
-          console.warn("[Trail details] Elevation calculation failed.", error);
+          setIsElevationLoading(true);
         }
 
-        if (active) {
-          setCalculatedElevationFeet(null);
-        }
-      } finally {
-        if (active) {
-          setIsElevationLoading(false);
+        try {
+          const elevation =
+            await calculateTrailElevationGain(coordinates);
+
+          if (active) {
+            setCalculatedElevationFeet(elevation);
+          }
+        } catch (error) {
+          if (__DEV__) {
+            console.warn(
+              "[Trail details] Elevation calculation failed.",
+              error,
+            );
+          }
+
+          if (active) {
+            setCalculatedElevationFeet(null);
+          }
+        } finally {
+          if (active) {
+            setIsElevationLoading(false);
+          }
         }
       }
-    }
 
-    void loadElevation();
+      void loadElevation();
+    }, 0);
 
     return () => {
       active = false;
+      clearTimeout(elevationTimer);
     };
   }, [trail]);
 
@@ -1028,7 +1039,7 @@ function capitalize(value: string) {
 }
 // Purpose: Calculates trail distance miles.
 function calculateTrailDistanceMiles(
-  coordinates?: ReadonlyArray<ReadonlyArray<number>>,
+  coordinates?: readonly (readonly number[])[],
 ): number | null {
   if (!coordinates || coordinates.length < 2) {
     return null;

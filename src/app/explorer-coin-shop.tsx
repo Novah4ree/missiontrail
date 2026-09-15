@@ -351,7 +351,11 @@ export default function ExplorerCoinShopScreen() {
   // -------------------------------------------------------
 
   useEffect(() => {
-    void loadWallet();
+    const walletTimer = setTimeout(() => {
+      void loadWallet();
+    }, 0);
+
+    return () => clearTimeout(walletTimer);
   }, [loadWallet]);
 
 

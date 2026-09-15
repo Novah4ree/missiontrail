@@ -1,10 +1,12 @@
-import { router as expoRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams } from 'expo-router';
-import { useRouter } from 'expo-router';
+import {
+  router as expoRouter,
+  useLocalSearchParams,
+  useRouter,
+} from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState, type ComponentProps } from 'react';
+import { useCallback, useEffect, useState, type ComponentProps } from 'react';
 import {
   Alert,
   Animated,
@@ -422,7 +424,9 @@ export default function CompanionScreen() {
   const [buyingFoodId, setBuyingFoodId] =
     useState<string | null>(null);
 
-  const petScale = useRef(new Animated.Value(1)).current;
+  const [petScale] = useState(
+    () => new Animated.Value(1),
+  );
 
   // Purpose: Temporary stats used only when the
   // presentation companion has not been saved yet.
@@ -590,7 +594,7 @@ export default function CompanionScreen() {
     }, 1800);
   }
 
-  async function loadFoodInventory() {
+  const loadFoodInventory = useCallback(async () => {
     setFoodInventoryLoading(true);
 
     // Purpose: Provides temporary presentation food
@@ -650,7 +654,7 @@ export default function CompanionScreen() {
     } finally {
       setFoodInventoryLoading(false);
     }
-  }
+  }, [isPresentationDemo]);
 
   async function loadFoodShop() {
     setShopLoading(true);
@@ -751,19 +755,23 @@ export default function CompanionScreen() {
       return;
     }
 
-    // Purpose: Demo companion uses local food.
-    // Real companions continue using Supabase.
-    if (isPresentationDemo) {
-      setFoodPanel('inventory');
-      void loadFoodInventory();
-      return;
-    }
+    const loadTimer = setTimeout(() => {
+      // Purpose: Demo companion uses local food.
+      // Real companions continue using Supabase.
+      if (isPresentationDemo) {
+        setFoodPanel('inventory');
+        void loadFoodInventory();
+        return;
+      }
 
-    void Promise.all([
-      loadFoodInventory(),
-      loadFoodShop(),
-    ]);
-  }, [view, isPresentationDemo]);
+      void Promise.all([
+        loadFoodInventory(),
+        loadFoodShop(),
+      ]);
+    }, 0);
+
+    return () => clearTimeout(loadTimer);
+  }, [view, isPresentationDemo, loadFoodInventory]);
 
   async function purchaseFood(
     foodId: string,
@@ -3021,47 +3029,6 @@ function SubHeader({
 
       <View style={styles.headerSpacer} />
     </View>
-  );
-}
-
-function ActionButton({
-  icon,
-  label,
-  accent,
-  onPress,
-}: {
-  icon: IoniconName;
-  label: string;
-  accent: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={styles.actionButton}
-    >
-      <View
-        style={[
-          styles.actionIcon,
-          {
-            borderColor: accent,
-            shadowColor: accent,
-          },
-        ]}
-      >
-        <Ionicons
-          name={icon}
-          size={27}
-          color={accent}
-        />
-      </View>
-
-      <Text style={styles.actionLabel}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 

@@ -1,0 +1,32 @@
+🔍 [expo-iap] Config values: horizonAppId=undefined, isHorizonEnabled=false, isFireOsEnabled=false, isVegaEnabled=false, isOnsideEnabled=false
+📦 [expo-iap] Using OpenIAP from CocoaPods
+Using src/app as the root directory for Expo Router.
+React Compiler enabled
+Starting Metro Bundler
+
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+iOS Bundling failed 6850ms node_modules/expo-router/entry.js (1924 modules)
+
+Error: Unable to resolve module ../../assets/eggs/legendary/luna/Moonveil Egg.png from /Users/novah4ree/Desktop/MissionTrail-2.0-main/src/data/companion-eggs.ts: 
+
+None of these files exist:
+  * Moonveil Egg.png
+  * assets/eggs/legendary/luna/Moonveil Egg.png
+[0m [90m 103 |[39m     element[33m:[39m [32m'luna'[39m[33m,[39m
+ [90m 104 |[39m     rarity[33m:[39m [32m'legendary'[39m[33m,[39m
+[31m[1m>[22m[39m[90m 105 |[39m     image[33m:[39m require([32m'../../assets/eggs/legendary/luna/Moonveil Egg.png'[39m)[33m,[39m
+ [90m     |[39m                     [31m[1m^[22m[39m
+ [90m 106 |[39m   }[33m,[39m
+ [90m 107 |[39m   {
+ [90m 108 |[39m     id[33m:[39m [32m'spirit'[39m[33m,[39m[0m
+
+Import stack:
+
+ src/data/companion-eggs.ts
+ | import "../../assets/eggs/legendary/luna/Moonveil Egg.png"
+
+ src/app/eggs.tsx
+ | import "../data/companion-eggs"
+
+ src/app (require.context)
+

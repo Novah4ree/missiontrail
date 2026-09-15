@@ -190,50 +190,10 @@ function validateUserInformation(
 //
 // ======================================================
 
-async function getImageBlob(
-  imageUri: string
-): Promise<Blob> {
-  try {
-    const response = await fetch(imageUri);
-
-    if (!response.ok) {
-      throw new Error(
-        `Image fetch failed: ${response.status}`
-      );
-    }
-
-    return await response.blob();
-
-  } catch (error) {
-    console.error(
-      'Unable to prepare ID image:',
-      error
-    );
-
-    throw new IdVerificationError(
-      'The selected ID image could not be prepared for verification.'
-    );
-  }
-}
-
 
 // ======================================================
 // DETERMINE IMAGE TYPE
 // ======================================================
-
-function determineImageType(
-  blob: Blob
-): string {
-  if (
-    blob.type === 'image/jpeg' ||
-    blob.type === 'image/png' ||
-    blob.type === 'image/webp'
-  ) {
-    return blob.type;
-  }
-
-  return 'image/jpeg';
-}
 
 
 // ======================================================

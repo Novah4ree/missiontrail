@@ -59,10 +59,6 @@ export function useSecureRelicField({
   const lastRadarLocationRef = useRef<LocationObject | null>(null);
   const scanInFlightRef = useRef(false);
 
-  // A single weak GPS reading should not erase an active relic hunt.
-  // Keep the last known-good signal briefly while GPS recovers.
-  const lastGoodSignalAtRef = useRef(0);
-
   const selectedAssignmentIdRef = useRef<string | null>(null);
   const targetModeRef = useRef<"auto" | "manual">("auto");
   const huntStageRef = useRef<RelicHuntStage>("SEARCHING");
@@ -114,8 +110,11 @@ export function useSecureRelicField({
 
   useEffect(() => {
     if (!revealed || !collectionExpiresAt) {
-      setRelicEnergyWarning(false);
-      return;
+      const resetTimer = setTimeout(() => {
+        setRelicEnergyWarning(false);
+      }, 0);
+
+      return () => clearTimeout(resetTimer);
     }
 
     const expirationTime = Date.parse(collectionExpiresAt);
@@ -127,19 +126,12 @@ export function useSecureRelicField({
     // No countdown is displayed.
     // Give exactly one warning when about 2 minutes remain.
     const warningTime = expirationTime - 2 * 60 * 1000;
-    const delay = warningTime - Date.now();
+    const delay = Math.max(0, warningTime - Date.now());
 
-    const showWarning = () => {
+    const timer = setTimeout(() => {
       setRelicEnergyWarning(true);
       setMessage("Relic energy fading. Claim this relic soon.");
-    };
-
-    if (delay <= 0) {
-      showWarning();
-      return;
-    }
-
-    const timer = setTimeout(showWarning, delay);
+    }, delay);
 
     return () => clearTimeout(timer);
   }, [collectionExpiresAt, revealed]);
@@ -536,8 +528,6 @@ export function useSecureRelicField({
           console.log("[RELIC TARGET HELD]", {
             assignmentId: previousTargetId,
             status: result.status,
-            distanceFeet,
-            bearingDegrees,
           });
         }
 

@@ -1,0 +1,80 @@
+diff --git a/node_modules/@reactvision/react-viro/dist/plugins/withViro.d.ts b/node_modules/@reactvision/react-viro/dist/plugins/withViro.d.ts
+index 0e89b2b..15b3a69 100644
+--- a/node_modules/@reactvision/react-viro/dist/plugins/withViro.d.ts
++++ b/node_modules/@reactvision/react-viro/dist/plugins/withViro.d.ts
+@@ -1,4 +1,4 @@
+-import { ConfigPlugin } from "@expo/config-plugins";
++import { ConfigPlugin } from "expo/config-plugins";
+ export type XrMode = "GVR" | "AR" | "OVR_MOBILE" | "QUEST";
+ /**
+  * Anchor provider type.
+diff --git a/node_modules/@reactvision/react-viro/dist/plugins/withViroAndroid.d.ts b/node_modules/@reactvision/react-viro/dist/plugins/withViroAndroid.d.ts
+index 009f872..0d4f56c 100644
+--- a/node_modules/@reactvision/react-viro/dist/plugins/withViroAndroid.d.ts
++++ b/node_modules/@reactvision/react-viro/dist/plugins/withViroAndroid.d.ts
+@@ -1,3 +1,3 @@
+-import { ConfigPlugin } from "@expo/config-plugins";
++import { ConfigPlugin } from "expo/config-plugins";
+ import { ViroConfigurationOptions } from "./withViro";
+ export declare const withViroAndroid: ConfigPlugin<ViroConfigurationOptions>;
+diff --git a/node_modules/@reactvision/react-viro/dist/plugins/withViroAndroid.js b/node_modules/@reactvision/react-viro/dist/plugins/withViroAndroid.js
+index 5718592..7a15a14 100644
+--- a/node_modules/@reactvision/react-viro/dist/plugins/withViroAndroid.js
++++ b/node_modules/@reactvision/react-viro/dist/plugins/withViroAndroid.js
+@@ -4,7 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
+ };
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.withViroAndroid = void 0;
+-const config_plugins_1 = require("@expo/config-plugins");
++const config_plugins_1 = require("expo/config-plugins");
+ const fs_1 = __importDefault(require("fs"));
+ const path_1 = __importDefault(require("path"));
+ const insertLinesHelper_1 = require("./util/insertLinesHelper");
+diff --git a/node_modules/@reactvision/react-viro/dist/plugins/withViroIos.d.ts b/node_modules/@reactvision/react-viro/dist/plugins/withViroIos.d.ts
+index f7dbec7..92b2e40 100644
+--- a/node_modules/@reactvision/react-viro/dist/plugins/withViroIos.d.ts
++++ b/node_modules/@reactvision/react-viro/dist/plugins/withViroIos.d.ts
+@@ -1,4 +1,4 @@
+-import { ConfigPlugin } from "@expo/config-plugins";
++import { ConfigPlugin } from "expo/config-plugins";
+ import { ViroConfigurationOptions } from "./withViro";
+ export declare const withDefaultInfoPlist: ConfigPlugin<ViroConfigurationOptions>;
+ export declare const withViroIos: ConfigPlugin<ViroConfigurationOptions>;
+diff --git a/node_modules/@reactvision/react-viro/dist/plugins/withViroIos.js b/node_modules/@reactvision/react-viro/dist/plugins/withViroIos.js
+index 404a50c..8ac02b8 100644
+--- a/node_modules/@reactvision/react-viro/dist/plugins/withViroIos.js
++++ b/node_modules/@reactvision/react-viro/dist/plugins/withViroIos.js
+@@ -4,7 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
+ };
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.withViroIos = exports.withDefaultInfoPlist = void 0;
+-const config_plugins_1 = require("@expo/config-plugins");
++const config_plugins_1 = require("expo/config-plugins");
+ const fs_1 = __importDefault(require("fs"));
+ const insertLinesHelper_1 = require("./util/insertLinesHelper");
+ const withViro_1 = require("./withViro");
+diff --git a/node_modules/@reactvision/react-viro/dist/plugins/withViroVisionOS.d.ts b/node_modules/@reactvision/react-viro/dist/plugins/withViroVisionOS.d.ts
+index 866b35f..3502abd 100644
+--- a/node_modules/@reactvision/react-viro/dist/plugins/withViroVisionOS.d.ts
++++ b/node_modules/@reactvision/react-viro/dist/plugins/withViroVisionOS.d.ts
+@@ -19,6 +19,6 @@
+  * After running `expo prebuild`, run `pod install` in ios/ then build the
+  * <AppName>Vision target in Xcode targeting the visionOS simulator.
+  */
+-import { ConfigPlugin } from "@expo/config-plugins";
++import { ConfigPlugin } from "expo/config-plugins";
+ export declare const withViroVisionOS: ConfigPlugin;
+ export default withViroVisionOS;
+diff --git a/node_modules/@reactvision/react-viro/dist/plugins/withViroVisionOS.js b/node_modules/@reactvision/react-viro/dist/plugins/withViroVisionOS.js
+index e254376..86570b1 100644
+--- a/node_modules/@reactvision/react-viro/dist/plugins/withViroVisionOS.js
++++ b/node_modules/@reactvision/react-viro/dist/plugins/withViroVisionOS.js
+@@ -25,7 +25,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
+ };
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.withViroVisionOS = void 0;
+-const config_plugins_1 = require("@expo/config-plugins");
++const config_plugins_1 = require("expo/config-plugins");
+ const fs_1 = __importDefault(require("fs"));
+ const path_1 = __importDefault(require("path"));
+ // ─── Constants ────────────────────────────────────────────────────────────────

@@ -227,7 +227,11 @@ export function ActivityProgressProvider({
   const stepSyncFailureCountRef = useRef(0);
   const [stepSyncScheduleVersion, setStepSyncScheduleVersion] = useState(0);
   const currentUserIdRef = useRef(userId);
-  currentUserIdRef.current = userId;
+
+  useEffect(() => {
+    currentUserIdRef.current = userId;
+  }, [userId]);
+
   const previousLevelRef = useRef<number | null>(null);
   const [levelUp, setLevelUp] = useState<{
     fromLevel: number;
@@ -724,8 +728,11 @@ export function ActivityProgressProvider({
     activeTrailRef.current = activeTrailActivity;
     isNearDestinationRef.current = false;
     if (!activeTrailActivity) {
-      setDestinationStepWarning(null);
-      return;
+      const clearWarningTimer = setTimeout(() => {
+        setDestinationStepWarning(null);
+      }, 0);
+
+      return () => clearTimeout(clearWarningTimer);
     }
 
     let active = true;
@@ -800,8 +807,15 @@ export function ActivityProgressProvider({
   useEffect(() => subscribeToVerifiedProgress(setProgress), []);
 
   useEffect(() => {
-    void Promise.all([refreshProgress(), refreshActivity()]);
+    const refreshTimer = setTimeout(() => {
+      void Promise.all([
+        refreshProgress(),
+        refreshActivity(),
+      ]);
+    }, 0);
+
     return () => {
+      clearTimeout(refreshTimer);
       pedometerSubscriptionRef.current?.remove();
       pedometerSubscriptionRef.current = null;
     };
@@ -1067,6 +1081,8 @@ export function ActivityProgressProvider({
     permissionStatus,
     progress?.localDate,
     progress?.verifiedSteps,
+    progress?.progression?.daily.date,
+    progress?.progression?.daily.steps,
     stepSyncScheduleVersion,
     userId,
   ]);
@@ -1083,7 +1099,12 @@ export function ActivityProgressProvider({
 
   useEffect(() => {
     previousLevelRef.current = null;
-    setLevelUp(null);
+
+    const resetLevelTimer = setTimeout(() => {
+      setLevelUp(null);
+    }, 0);
+
+    return () => clearTimeout(resetLevelTimer);
   }, [userId]);
 
   const verifiedDistanceMeters =

@@ -86,7 +86,7 @@ export function useNearbyTrails() {
   const [favoriteBusyIds, setFavoriteBusyIds] = useState<string[]>([]);
   const [filters, setFilters] = useState<TrailFilters>(EMPTY_TRAIL_FILTERS);
   const [query, setQueryValue] = useState('');
-  const [filterQuery, setFilterQuery] = useState('');
+  const [, setFilterQuery] = useState('');
   const [isSearchingQuery, setIsSearchingQuery] = useState(false);
   const [isLocationSearchActive, setIsLocationSearchActive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);

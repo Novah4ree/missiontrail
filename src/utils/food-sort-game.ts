@@ -875,10 +875,8 @@ function expandSpecialEffects(
 // and fills new foods at the top.
 function collapseFoodSortBoard(
   board:
-    Array<
-      FoodSortTile |
-      null
-    >,
+    (FoodSortTile |
+      null)[],
 
   availableFoodIds:
     readonly FoodSortFoodId[],
@@ -887,10 +885,8 @@ function collapseFoodSortBoard(
     FoodSortSpawnWeights,
 ): FoodSortTile[] {
   const nextBoard:
-    Array<
-      FoodSortTile |
-      null
-    > =
+    (FoodSortTile |
+      null)[] =
     new Array(
       FOOD_SORT_BOARD_SIZE,
     ).fill(null);
@@ -1149,10 +1145,8 @@ export function resolveFoodSortBoard(
 
 
     const boardWithHoles:
-      Array<
-        FoodSortTile |
-        null
-      > = [...board];
+      (FoodSortTile |
+        null)[] = [...board];
 
 
     // --------------------------------------

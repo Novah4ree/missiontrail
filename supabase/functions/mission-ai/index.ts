@@ -1,31 +1,169 @@
-Deno.serve(async (req) => {
+export {};
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200,
+) {
+  return Response.json(body, {
+    status,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+    },
+  });
+}
+
+async function getAuthenticatedUser(
+  req: Request,
+): Promise<{ id: string } | null> {
+  const authorization =
+    req.headers.get("Authorization");
+
+  const apiKey =
+    req.headers.get("apikey");
+
+  const supabaseUrl =
+    Deno.env.get("SUPABASE_URL");
+
+  if (
+    !authorization ||
+    !apiKey ||
+    !supabaseUrl
+  ) {
+    return null;
+  }
+
   try {
-    if (req.method === "OPTIONS") {
-      return new Response("ok", {
+    const response = await fetch(
+      `${supabaseUrl}/auth/v1/user`,
+      {
         headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Headers":
-            "authorization, x-client-info, apikey, content-type",
+          Authorization: authorization,
+          apikey: apiKey,
         },
-      });
+      },
+    );
+
+    if (!response.ok) {
+      return null;
     }
 
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    const user = await response.json();
 
-    if (!OPENAI_API_KEY) {
-      return Response.json(
-        { error: "OPENAI_API_KEY is missing" },
-        { status: 500 },
+    if (
+      !user ||
+      typeof user.id !== "string"
+    ) {
+      return null;
+    }
+
+    return {
+      id: user.id,
+    };
+  } catch (error) {
+    console.error(
+      "[MISSION AI] User verification failed:",
+      error,
+    );
+
+    return null;
+  }
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", {
+      headers: corsHeaders,
+    });
+  }
+
+  if (req.method !== "POST") {
+    return jsonResponse(
+      {
+        error: "Method not allowed",
+      },
+      405,
+    );
+  }
+
+  try {
+    const user =
+      await getAuthenticatedUser(req);
+
+    if (!user) {
+      return jsonResponse(
+        {
+          error: "Authentication required",
+        },
+        401,
       );
     }
 
-    const body = await req.json();
-    const message = body?.message;
+    const openAiApiKey =
+      Deno.env.get("OPENAI_API_KEY");
 
-    if (!message || typeof message !== "string") {
-      return Response.json(
-        { error: "message is required" },
-        { status: 400 },
+    if (!openAiApiKey) {
+      console.error(
+        "[MISSION AI] OPENAI_API_KEY is missing",
+      );
+
+      return jsonResponse(
+        {
+          error: "AI service is unavailable",
+        },
+        500,
+      );
+    }
+
+    let body: unknown;
+
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse(
+        {
+          error: "Invalid JSON body",
+        },
+        400,
+      );
+    }
+
+    const message =
+      typeof (
+        body as {
+          message?: unknown;
+        }
+      )?.message === "string"
+        ? (
+            body as {
+              message: string;
+            }
+          ).message.trim()
+        : "";
+
+    if (!message) {
+      return jsonResponse(
+        {
+          error: "message is required",
+        },
+        400,
+      );
+    }
+
+    if (message.length > 800) {
+      return jsonResponse(
+        {
+          error:
+            "Message must be 800 characters or fewer",
+        },
+        400,
       );
     }
 
@@ -34,56 +172,110 @@ Deno.serve(async (req) => {
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
+          Authorization:
+            `Bearer ${openAiApiKey}`,
+          "Content-Type":
+            "application/json",
         },
         body: JSON.stringify({
           model: "gpt-5.6",
+
+          instructions:
+            "You are the Mission Trails concierge. " +
+            "Keep answers short, friendly, and focused on walking, trails, missions, relics, eggs, companions, and Mission Trails app help. " +
+            "Never encourage trespassing, entering restricted or private property, unsafe road crossings, driving while playing, or entering dangerous areas. " +
+            "Do not request a user's precise home address. " +
+            "Give a clear action-oriented next step.",
+
           input: message,
+
+          max_output_tokens: 500,
         }),
       },
     );
 
-    const data = await openaiResponse.json();
+    const data =
+      await openaiResponse.json();
 
     if (!openaiResponse.ok) {
-      console.error("OpenAI error:", data);
-
-      return Response.json(
+      console.error(
+        "[MISSION AI] OpenAI request failed:",
         {
-          error: "OpenAI request failed",
-          details: data,
+          status:
+            openaiResponse.status,
+
+          message:
+            data?.error?.message ??
+            "Unknown OpenAI error",
         },
-        { status: openaiResponse.status },
+      );
+
+      return jsonResponse(
+        {
+          error:
+            openaiResponse.status === 429
+              ? "AI service is temporarily busy"
+              : "AI request failed",
+        },
+        openaiResponse.status === 429
+          ? 429
+          : 502,
       );
     }
 
     const text =
       data?.output
-        ?.flatMap((item: any) => item?.content ?? [])
-        ?.find((item: any) => item?.type === "output_text")
-        ?.text ?? "";
+        ?.flatMap(
+          (item: {
+            content?: unknown[];
+          }) =>
+            item?.content ?? [],
+        )
+        ?.find(
+          (item: {
+            type?: string;
+          }) =>
+            item?.type ===
+            "output_text",
+        )
+        ?.text?.trim() ?? "";
 
-    return Response.json(
-      { text },
-      {
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Content-Type": "application/json",
+    if (!text) {
+      console.error(
+        "[MISSION AI] Empty OpenAI response",
+      );
+
+      return jsonResponse(
+        {
+          error:
+            "AI returned an empty response",
         },
+        502,
+      );
+    }
+
+    console.log(
+      "[MISSION AI] Successful request",
+      {
+        userId: user.id,
       },
     );
-  } catch (error) {
-    console.error(error);
 
-    return Response.json(
+    return jsonResponse({
+      text,
+    });
+  } catch (error) {
+    console.error(
+      "[MISSION AI] Unexpected error:",
+      error,
+    );
+
+    return jsonResponse(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : "Unknown server error",
+          "Mission AI service error",
       },
-      { status: 500 },
+      500,
     );
   }
 });

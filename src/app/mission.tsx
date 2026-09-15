@@ -224,8 +224,14 @@ export default function MissionScreen() {
   }, []);
 
   useEffect(() => {
-    void refreshWeather();
-    return () => weatherAbortRef.current?.abort();
+    const weatherTimer = setTimeout(() => {
+      void refreshWeather();
+    }, 0);
+
+    return () => {
+      clearTimeout(weatherTimer);
+      weatherAbortRef.current?.abort();
+    };
   }, [refreshWeather]);
 
   useFocusEffect(useCallback(() => {

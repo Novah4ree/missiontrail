@@ -23,7 +23,7 @@ export type FoodSortObstacleCell = {
 
 
 export type FoodSortObstacleBoard =
-  Array<FoodSortObstacleCell | null>;
+  (FoodSortObstacleCell | null)[];
 
 
 export type FoodSortObstacleResult = {

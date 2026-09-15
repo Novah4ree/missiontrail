@@ -124,23 +124,6 @@ export function SecureRelicCard({
   const showRetry =
     field.status === "offline_retry" || field.status === "expired";
 
-  // Remember the last real relic bearing.
-  // GPS can lose a usable bearing when the player reaches 0 FT,
-  // but we still want the hunt card to show the last direction.
-  const lastBearingDegrees = useRef<number | null>(field.bearingDegrees);
-
-  useEffect(() => {
-    const nextBearing = field.bearingDegrees ?? navigationBearing;
-
-    // Temporary GPS/server nulls must never erase a valid direction.
-    if (nextBearing !== null) {
-      lastBearingDegrees.current = nextBearing;
-    }
-  }, [field.bearingDegrees, navigationBearing]);
-
-  const effectiveBearingDegrees =
-    field.bearingDegrees ?? navigationBearing ?? lastBearingDegrees.current;
-
   // Prefer the precise numeric bearing when available.
   // If the server only gives us a cardinal direction such as NE,
   // still show useful relic navigation instead of hiding the arrow.
@@ -150,7 +133,7 @@ export function SecureRelicCard({
   const normalizedDirection = rawNavigationDirection
     ?.trim()
     .toUpperCase()
-    .replace(/[\s_-]+/g, "");
+    .replace(/[\\s_-]+/g, "");
 
   const directionAliases: Record<string, string> = {
     N: "N",
@@ -182,7 +165,8 @@ export function SecureRelicCard({
     ? (directionAliases[normalizedDirection] ?? null)
     : null;
 
-  const validDirections = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  const effectiveBearingDegrees =
+    field.bearingDegrees ?? navigationBearing;
 
   const calculatedDirection =
     directDirection ??
@@ -190,33 +174,62 @@ export function SecureRelicCard({
       ? getDirection(effectiveBearingDegrees)
       : null);
 
-  // GPS/server updates can briefly return null while the same relic
-  // is still selected. Never let that make the arrow disappear.
-  const directionTargetRef = useRef<string | null>(
-    field.selectedAssignmentId ?? null,
-  );
+  const currentTargetId =
+    field.selectedAssignmentId ?? null;
 
-  const lastStableDirectionRef = useRef<string | null>(calculatedDirection);
+  // Remember the last useful direction without reading or mutating
+  // refs during render. A temporary null assignment is treated as
+  // the same relic so GPS refreshes do not make the arrow disappear.
+  const [directionMemory, setDirectionMemory] = useState<{
+    targetId: string | null;
+    direction: string | null;
+  }>(() => ({
+    targetId: currentTargetId,
+    direction: calculatedDirection,
+  }));
 
-  const currentTargetId = field.selectedAssignmentId ?? null;
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDirectionMemory((current) => {
+        // A real new relic target resets remembered navigation.
+        if (
+          currentTargetId !== null &&
+          current.targetId !== currentTargetId
+        ) {
+          return {
+            targetId: currentTargetId,
+            direction: calculatedDirection,
+          };
+        }
 
-  // A temporary null assignment happens during GPS/server refreshes.
-  // Do NOT treat that as a different relic.
-  if (
-    currentTargetId !== null &&
-    directionTargetRef.current !== currentTargetId
-  ) {
-    // This is an actual new relic target.
-    directionTargetRef.current = currentTargetId;
-    lastStableDirectionRef.current = calculatedDirection;
-  } else if (calculatedDirection) {
-    // Same relic: continuously remember the newest valid direction.
-    lastStableDirectionRef.current = calculatedDirection;
-  }
+        // Same relic: remember the newest valid direction.
+        if (
+          calculatedDirection &&
+          current.direction !== calculatedDirection
+        ) {
+          return {
+            targetId:
+              currentTargetId ?? current.targetId,
+            direction: calculatedDirection,
+          };
+        }
 
-  // If GPS/server data briefly becomes null, keep showing the
-  // last real direction instead of making the UI disappear.
-  const direction = calculatedDirection ?? lastStableDirectionRef.current;
+        return current;
+      });
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
+  }, [calculatedDirection, currentTargetId]);
+
+  const canUseRememberedDirection =
+    currentTargetId === null ||
+    directionMemory.targetId === currentTargetId;
+
+  const direction =
+    calculatedDirection ??
+    (canUseRememberedDirection
+      ? directionMemory.direction
+      : null);
 
   const directionArrows: Record<string, string> = {
     N: "↑",
@@ -446,13 +459,6 @@ function getDirection(bearing: number) {
   const directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 
   return directions[Math.round(bearing / 45) % 8];
-}
-
-// Purpose: Converts a bearing into the matching directional arrow.
-function getDirectionArrow(bearing: number) {
-  const arrows = ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"];
-
-  return arrows[Math.round(bearing / 45) % 8];
 }
 
 // Purpose: Describes the relic signal strength shown to the player.

@@ -173,6 +173,7 @@ function VerifiedTrailsScreen() {
   const { focus } = useLocalSearchParams<{ focus?: string }>();
   const safeArea = useSafeAreaInsets();
   const discovery = useNearbyTrails();
+  const refreshMeetups = discovery.refreshMeetups;
 
   // Purpose:
   // Reloads current Supabase Meetups whenever the user
@@ -184,11 +185,11 @@ function VerifiedTrailsScreen() {
     useCallback(
       () => {
 
-        void discovery.refreshMeetups();
+        void refreshMeetups();
 
       },
       [
-        discovery.refreshMeetups,
+        refreshMeetups,
       ]
     )
   );
@@ -213,8 +214,23 @@ function VerifiedTrailsScreen() {
   // Mission's explore action asks this screen to highlight the first GPS-sorted trail.
   useEffect(() => {
     const nearestTrail = discovery.trails[0];
-    if (focus !== 'nearest' || discovery.locationStatus !== 'granted' || !nearestTrail) return;
-    setSelectedTrailId((currentTrailId) => currentTrailId ?? nearestTrail.id);
+
+    if (
+      focus !== 'nearest' ||
+      discovery.locationStatus !== 'granted' ||
+      !nearestTrail
+    ) {
+      return;
+    }
+
+    const selectionTimer = setTimeout(() => {
+      setSelectedTrailId(
+        (currentTrailId) =>
+          currentTrailId ?? nearestTrail.id,
+      );
+    }, 0);
+
+    return () => clearTimeout(selectionTimer);
   }, [discovery.locationStatus, discovery.trails, focus]);
 
   // Moves the camera to a valid device or simulator GPS fix.

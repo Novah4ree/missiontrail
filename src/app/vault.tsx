@@ -164,11 +164,6 @@ export default function VaultScreen() {
     (relic) => (relicQuantityById[relic.id] ?? 0) > 0,
   );
 
-  const totalRelicCopies = Object.values(relicQuantityById).reduce(
-    (total, quantity) => total + quantity,
-    0,
-  );
-
   // Purpose: Implements the rarity total operation.
   const rarityTotal = (rarity: RelicRarity) =>
     RELICS.filter((relic) => relic.rarity === rarity).reduce(

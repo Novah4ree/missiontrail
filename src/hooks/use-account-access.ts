@@ -117,9 +117,11 @@ export function useAccountAccess() {
   // first appears.
   useEffect(
     () => {
+      const refreshTimer = setTimeout(() => {
+        void refresh();
+      }, 0);
 
-      void refresh();
-
+      return () => clearTimeout(refreshTimer);
     },
     [
       refresh,

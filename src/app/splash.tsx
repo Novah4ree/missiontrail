@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -18,7 +18,9 @@ import { useRouter } from 'expo-router';
 // Purpose: Renders the cosmic sky glow interface.
 function CosmicSkyGlow() {
 
-  const glowAnim = useRef(new Animated.Value(0)).current;
+  const [glowAnim] = useState(
+    () => new Animated.Value(0),
+  );
 
   useEffect(() => {
 
@@ -107,8 +109,12 @@ function CosmicSkyGlow() {
 // Purpose: Renders the skyline glow interface.
 function SkylineGlow() {
 
-  const purplePulse = useRef(new Animated.Value(0)).current;
-  const bluePulse = useRef(new Animated.Value(0)).current;
+  const [purplePulse] = useState(
+    () => new Animated.Value(0),
+  );
+  const [bluePulse] = useState(
+    () => new Animated.Value(0),
+  );
 
   useEffect(() => {
 
@@ -201,9 +207,15 @@ function SkylineGlow() {
 // Purpose: Renders the water aurora glow interface.
 function WaterAuroraGlow() {
 
-  const leftAurora = useRef(new Animated.Value(0)).current;
-  const centerAurora = useRef(new Animated.Value(0)).current;
-  const rightAurora = useRef(new Animated.Value(0)).current;
+  const [leftAurora] = useState(
+    () => new Animated.Value(0),
+  );
+  const [centerAurora] = useState(
+    () => new Animated.Value(0),
+  );
+  const [rightAurora] = useState(
+    () => new Animated.Value(0),
+  );
 
   useEffect(() => {
 
@@ -380,9 +392,12 @@ const COSMIC_STAR_CONFIG: Star[] = [
 // Purpose: Renders the cosmic stars interface.
 function CosmicStars() {
 
-  const starAnimations = useRef(
-    COSMIC_STAR_CONFIG.map(() => new Animated.Value(0))
-  ).current;
+  const [starAnimations] = useState(
+    () =>
+      COSMIC_STAR_CONFIG.map(
+        () => new Animated.Value(0),
+      ),
+  );
 
   useEffect(() => {
 
@@ -603,11 +618,13 @@ const CITY_WINDOW_COLORS = ['#60a5fa', '#3b82f6', '#93c5fd', '#c084fc'] as const
 // Purpose: Renders the city window lights interface.
 function CityWindowLights() {
 
-  const windowPulses = useRef([
-    new Animated.Value(0),
-    new Animated.Value(0),
-    new Animated.Value(0),
-  ]).current;
+  const [windowPulses] = useState(
+    () => [
+      new Animated.Value(0),
+      new Animated.Value(0),
+      new Animated.Value(0),
+    ],
+  );
 
   useEffect(() => {
 
@@ -806,8 +823,12 @@ function RightTrailSparkles(props: Omit<TrailSparklePathProps, 'positions'>) {
 function TrailEdgeSparkles() {
 
   const { width, height } = useWindowDimensions();
-  const leftProgress = useRef(new Animated.Value(0)).current;
-  const rightProgress = useRef(new Animated.Value(0)).current;
+  const [leftProgress] = useState(
+    () => new Animated.Value(0),
+  );
+  const [rightProgress] = useState(
+    () => new Animated.Value(0),
+  );
 
   useEffect(() => {
     // Student note: Creates trail loop.

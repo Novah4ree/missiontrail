@@ -62,7 +62,6 @@ import { getDevelopmentMeetupsToday } from "@/services/development-meetup-data";
 import { loadActiveTrailActivity } from "@/services/trail-activity-service";
 import { queueGpsLocation } from "@/services/verified-distance";
 import type { Meetup } from "@/types/meetups";
-import type { MysteryZone } from "@/types/relic-proximity";
 import type { ActiveTrailActivity } from "@/types/trails";
 import {
   calculateDistanceMeters,
@@ -80,7 +79,6 @@ import {
 } from "@/utils/meetup-discovery";
 import { collectRelic, getPlayerProgress } from "@/utils/player-progress";
 import { getRelicHuntIntensity, type RelicHuntStage } from "@/utils/relic-hunt";
-import { formatRelicSignalDistance } from "@/utils/relic-radar";
 import { useAuth } from "../../context/auth";
 import MissionTrailBot from "./MissionTrailBot";
 
@@ -594,35 +592,23 @@ export default function HomeScreen() {
   // Purpose:
   // Hides all meetup markers unless the user's account
   // has ID-verified Meetup access.
-  const visibleMapMeetups = useMemo(
-    () => {
-      if (!canUseMeetups) {
-        return [];
-      }
+  const visibleMapMeetups = (() => {
+    if (!canUseMeetups) {
+      return [];
+    }
 
-      return filterMeetupsForMap(mapMeetups, {
-        currentUserId: meetupViewerId,
-        friendUserIds: meetupFriendIds,
-        maxMarkers: 40,
-        radiusMiles: meetupRadiusMiles,
-        userLocation: playerCoordinate,
-      });
-    },
-    [
-      canUseMeetups,
-      mapMeetups,
-      meetupFriendIds,
-      meetupRadiusMiles,
-      meetupViewerId,
-      playerCoordinate,
-    ],
-  );
-  const selectedMeetup = useMemo(
-    () =>
-      visibleMapMeetups.find((meetup) => meetup.id === selectedMeetupId) ??
-      null,
-    [selectedMeetupId, visibleMapMeetups],
-  );
+    return filterMeetupsForMap(mapMeetups, {
+      currentUserId: meetupViewerId,
+      friendUserIds: meetupFriendIds,
+      maxMarkers: 40,
+      radiusMiles: meetupRadiusMiles,
+      userLocation: playerCoordinate,
+    });
+  })();
+  const selectedMeetup =
+    visibleMapMeetups.find(
+      (meetup) => meetup.id === selectedMeetupId,
+    ) ?? null;
   const meetupSheetBottom = safeArea.bottom + 10 + tabBarHeight + 10;
   const meetupSheetAvailableHeight = Math.max(
     0,
@@ -645,17 +631,14 @@ export default function HomeScreen() {
     [relicFieldOrigin],
   );
 
-  const nearestRelic = useMemo(
-    () =>
-      playerCoordinate
-        ? findNearestUncollectedRelic(
-            playerCoordinate,
-            placedRelics,
-            collectedRelicIds,
-          )
-        : null,
-    [collectedRelicIds, placedRelics, playerCoordinate],
-  );
+  const nearestRelic =
+    playerCoordinate
+      ? findNearestUncollectedRelic(
+          playerCoordinate,
+          placedRelics,
+          collectedRelicIds,
+        )
+      : null;
 
   const distanceToRelic =
     playerCoordinate && nearestRelic
@@ -700,80 +683,6 @@ export default function HomeScreen() {
       350,
     );
   }, [secureRelicField.targetMode, selectedMysteryZone]);
-
-  const nearestMysteryZone = useMemo(() => {
-    if (!playerCoordinate || secureRelicField.zones.length === 0) {
-      return null;
-    }
-
-    return secureRelicField.zones.reduce<MysteryZone | null>(
-      (closest, zone) => {
-        if (!closest) {
-          return zone;
-        }
-
-        const zoneCoordinate = {
-          latitude: zone.latitude,
-          longitude: zone.longitude,
-        };
-
-        const closestCoordinate = {
-          latitude: closest.latitude,
-          longitude: closest.longitude,
-        };
-
-        const zoneDistance = calculateDistanceMeters(
-          playerCoordinate,
-          zoneCoordinate,
-        );
-
-        const closestDistance = calculateDistanceMeters(
-          playerCoordinate,
-          closestCoordinate,
-        );
-
-        return zoneDistance < closestDistance ? zone : closest;
-      },
-      null,
-    );
-  }, [playerCoordinate, secureRelicField.zones]);
-
-  const compassZone = selectedMysteryZone ?? nearestMysteryZone;
-
-  const zoneBearing =
-    playerCoordinate && compassZone
-      ? getBearingDegrees(playerCoordinate, {
-          latitude: compassZone.latitude,
-          longitude: compassZone.longitude,
-        })
-      : null;
-
-  const zoneDistanceFeet =
-    playerCoordinate && compassZone
-      ? Math.round(
-          calculateDistanceMeters(playerCoordinate, {
-            latitude: compassZone.latitude,
-            longitude: compassZone.longitude,
-          }) / 0.3048,
-        )
-      : null;
-
-  const compassBearing = ENABLE_RELIC_TEST_MODE
-    ? relicBearing
-    : secureRelicField.selectedSignal?.encounterType === "ambient"
-      ? null
-      : (secureRelicField.bearingDegrees ?? zoneBearing);
-
-  const compassDirection =
-    compassBearing === null ? null : getCardinalDirection(compassBearing);
-
-  const compassDistanceFeet = ENABLE_RELIC_TEST_MODE
-    ? distanceToRelic === null
-      ? null
-      : Math.round(distanceToRelic / 0.3048)
-    : (secureRelicField.selectedSignal?.distanceFeet ??
-      secureRelicField.distanceFeet ??
-      zoneDistanceFeet);
 
   // Step 1: Load saved progress once so a collected relic stays collected after a restart.
   useEffect(() => {
@@ -888,7 +797,7 @@ export default function HomeScreen() {
         point,
       ]);
     },
-    [session?.user.id],
+    [session],
   );
 
   // =====================
@@ -1538,114 +1447,6 @@ function isOverSpeedLimit(location: Location.LocationObject) {
 }
 
 // =======================
-// SPEED IN MPH
-// =======================
-
-// Purpose: Returns speed mph.
-// =====================
-// VISUAL GPS SMOOTHING
-// =====================
-
-// This does NOT alter the GPS data used for relic verification.
-// It only cleans the trail that the player sees on the map.
-// Purpose: Smooths accepted GPS points into the walking trail shown on the map.
-function buildVisualGpsTrack(
-  points: Location.LocationObject[],
-): Location.LocationObject[] {
-  if (points.length <= 1) {
-    return points;
-  }
-
-  // Don't draw obviously poor GPS fixes when better samples exist.
-  const accuratePoints = points.filter((point) => {
-    const accuracy = point.coords.accuracy;
-
-    return (
-      accuracy === null ||
-      accuracy === undefined ||
-      accuracy <= 12
-    );
-  });
-
-  const source = accuratePoints.length > 0 ? accuratePoints : points.slice(-1);
-
-  if (source.length <= 1) {
-    return source;
-  }
-
-  const cleaned: Location.LocationObject[] = [source[0]];
-
-  for (let index = 1; index < source.length; index += 1) {
-    const point = source[index];
-    const previous = cleaned[cleaned.length - 1];
-
-    const distanceMeters = calculateDistanceMeters(
-      {
-        latitude: previous.coords.latitude,
-        longitude: previous.coords.longitude,
-      },
-      {
-        latitude: point.coords.latitude,
-        longitude: point.coords.longitude,
-      },
-    );
-
-    const elapsedSeconds = Math.max(
-      0.001,
-      (point.timestamp - previous.timestamp) / 1000,
-    );
-
-    const impliedSpeedMetersPerSecond = distanceMeters / elapsedSeconds;
-
-    const maximumVisualAccuracy = Math.max(
-      previous.coords.accuracy ?? 0,
-      point.coords.accuracy ?? 0,
-    );
-
-    // Purpose: Requires movement to exceed normal GPS uncertainty.
-    // Keep enough filtering to stop stationary GPS wobble without making
-    // normal walking look frozen. At walking speed this updates roughly every
-    // few steps instead of waiting 10-30 meters.
-    const visualMovementThreshold = Math.max(
-      2,
-      Math.min(4, maximumVisualAccuracy * 0.2),
-    );
-
-    // Ignore tiny stationary GPS movements.
-    //
-    // We compare against the last ACCEPTED visual point,
-    // so real walking will eventually accumulate enough
-    // distance to create the next footprint.
-    if (distanceMeters < visualMovementThreshold) {
-      continue;
-    }
-
-    // Ignore impossible GPS teleporting.
-    // 8 m/s is roughly 18 MPH.
-    if (impliedSpeedMetersPerSecond > 5) {
-      continue;
-    }
-
-    cleaned.push(point);
-  }
-
-  return cleaned.slice(-60);
-}
-
-// =====================
-// SPEED IN MPH
-// =====================
-
-// Purpose: Converts the location's meters-per-second speed into miles per hour.
-function getSpeedMph(location?: Location.LocationObject) {
-  if (!location?.coords.speed || location.coords.speed < 0) {
-    return 0;
-  }
-
-  return location.coords.speed * 2.23694;
-}
-
-// =======================
 // LIVE STATS
 // =======================
 
@@ -1818,77 +1619,6 @@ function renderWalkedPath(coordinates: ReturnType<typeof makeMapCoordinate>[]) {
       />
     </>
   );
-}
-
-// =======================
-// FOOTPRINT MARKERS
-// =======================
-
-const FOOTPRINT_MIN_MOVEMENT_METERS = 2;
-
-// Purpose: Measures visual GPS movement without changing secure GPS evidence.
-function getFootprintDistanceMeters(
-  left: Location.LocationObject,
-  right: Location.LocationObject,
-) {
-  // Purpose: Converts degrees to radians for the distance calculation.
-  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
-
-  const latitude1 = toRadians(left.coords.latitude);
-  const latitude2 = toRadians(right.coords.latitude);
-  const latitudeDelta = latitude2 - latitude1;
-  const longitudeDelta = toRadians(
-    right.coords.longitude - left.coords.longitude,
-  );
-
-  const rawHaversine =
-    Math.sin(latitudeDelta / 2) ** 2 +
-    Math.cos(latitude1) *
-      Math.cos(latitude2) *
-      Math.sin(longitudeDelta / 2) ** 2;
-
-  const haversine = Math.max(0, Math.min(1, rawHaversine));
-
-  return 6_371_000 * 2 * Math.asin(Math.sqrt(haversine));
-}
-
-// Purpose: Keeps visual footprints frozen during normal GPS drift.
-function getWalkingFootprintLocations(locations: Location.LocationObject[]) {
-  const uniqueLocations = deduplicateGpsLocations(locations);
-
-  if (uniqueLocations.length <= 1) {
-    return uniqueLocations;
-  }
-
-  const walkingLocations: Location.LocationObject[] = [uniqueLocations[0]];
-
-  for (const location of uniqueLocations.slice(1)) {
-    const previous = walkingLocations.at(-1);
-
-    if (!previous) {
-      walkingLocations.push(location);
-      continue;
-    }
-
-    const distanceMeters = getFootprintDistanceMeters(previous, location);
-
-    // buildVisualGpsTrack already filtered GPS noise. Do NOT apply another
-    // accuracy-sized movement gate here or ordinary walking can appear frozen.
-    const speedMetersPerSecond = Math.max(0, location.coords.speed ?? 0);
-
-    const movingByDistance =
-      distanceMeters >= FOOTPRINT_MIN_MOVEMENT_METERS;
-
-    const speedLooksPlausible =
-      speedMetersPerSecond <= speedLimitMetersPerSecond;
-
-    // Purpose: Moves footprints only after movement clears GPS uncertainty.
-    if (movingByDistance && speedLooksPlausible) {
-      walkingLocations.push(location);
-    }
-  }
-
-  return walkingLocations;
 }
 
 // Purpose: Renders footprint markers.
@@ -2276,288 +2006,6 @@ function HuntEnergyOverlay({ stage }: { stage: RelicHuntStage }) {
   );
 }
 
-// Purpose: Renders the relic compass interface.
-function RelicCompass({
-  relicBearing,
-  phoneHeading,
-  direction,
-  distanceFeet,
-  huntStage,
-}: {
-  relicBearing: number | null;
-  phoneHeading: number | null;
-  direction: string | null;
-  distanceFeet?: number | null;
-  huntStage: RelicHuntStage;
-}) {
-  const reduceMotion = useReducedMotion();
-  const huntIntensity = getRelicHuntIntensity(huntStage);
-
-  const hasRelicTarget = relicBearing !== null && direction !== null;
-
-  const hasPhoneHeading = phoneHeading !== null;
-
-  const hasGuidance = hasRelicTarget && hasPhoneHeading;
-
-  // -------------------------------------------------
-  // PHONE COMPASS DIAL
-  // -------------------------------------------------
-
-  const dialRotation = useSharedValue(0);
-
-  useEffect(() => {
-    if (phoneHeading === null) {
-      return;
-    }
-
-    // The compass rose moves opposite the way the phone turns.
-    const target = (360 - phoneHeading) % 360;
-
-    const currentNormalized = ((dialRotation.value % 360) + 360) % 360;
-
-    let difference = target - currentNormalized;
-
-    // Always take the shortest rotation path.
-    if (difference > 180) {
-      difference -= 360;
-    } else if (difference < -180) {
-      difference += 360;
-    }
-
-    const nextRotation = dialRotation.value + difference;
-
-    dialRotation.value = reduceMotion
-      ? nextRotation
-      : withTiming(nextRotation, {
-          duration: 180,
-          easing: Easing.out(Easing.cubic),
-        });
-  }, [dialRotation, phoneHeading, reduceMotion]);
-
-  const dialAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      {
-        rotateZ: `${dialRotation.value}deg`,
-      },
-    ],
-  }));
-
-  // Keep N / E / S / W letters upright while their
-  // positions rotate around the compass.
-  const labelCounterRotationStyle = useAnimatedStyle(() => ({
-    transform: [
-      {
-        rotateZ: `${-dialRotation.value}deg`,
-      },
-    ],
-  }));
-
-  // -------------------------------------------------
-  // RELIC NAVIGATION ARROW
-  // -------------------------------------------------
-
-  const relativeBearing =
-    relicBearing === null || phoneHeading === null
-      ? null
-      : (relicBearing - phoneHeading + 360) % 360;
-
-  const needleRotation = useSharedValue(0);
-
-  useEffect(() => {
-    if (relativeBearing === null) {
-      return;
-    }
-
-    const target = ((relativeBearing % 360) + 360) % 360;
-
-    const currentNormalized = ((needleRotation.value % 360) + 360) % 360;
-
-    let difference = target - currentNormalized;
-
-    if (difference > 180) {
-      difference -= 360;
-    } else if (difference < -180) {
-      difference += 360;
-    }
-
-    const nextRotation = needleRotation.value + difference;
-
-    needleRotation.value = reduceMotion
-      ? nextRotation
-      : withTiming(nextRotation, {
-          duration: 220,
-          easing: Easing.out(Easing.cubic),
-        });
-  }, [needleRotation, reduceMotion, relativeBearing]);
-
-  const needleAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      {
-        rotateZ: `${needleRotation.value}deg`,
-      },
-    ],
-  }));
-
-  const huntPulse = useSharedValue(0);
-
-  useEffect(() => {
-    if (reduceMotion || huntIntensity === 0) {
-      huntPulse.value = 0;
-      return;
-    }
-    const duration =
-      [2_200, 2_200, 1_600, 1_100, 750, 520][huntIntensity] ?? 2_200;
-    huntPulse.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration, easing: Easing.inOut(Easing.quad) }),
-        withTiming(0, { duration, easing: Easing.inOut(Easing.quad) }),
-      ),
-      -1,
-    );
-  }, [huntIntensity, huntPulse, reduceMotion]);
-
-  const huntPulseStyle = useAnimatedStyle(() => ({
-    opacity: 0.12 + huntIntensity * 0.04 + huntPulse.value * 0.2,
-    transform: [
-      { scale: 1 + huntPulse.value * (0.04 + huntIntensity * 0.008) },
-    ],
-  }));
-
-  // -------------------------------------------------
-  // TEXT GUIDANCE
-  // -------------------------------------------------
-
-  const phoneDirection =
-    phoneHeading === null ? null : getCardinalDirection(phoneHeading);
-
-  const headingText =
-    phoneHeading === null
-      ? "WAITING FOR COMPASS"
-      : `FACING ${phoneDirection?.toUpperCase() ?? ""} · ${Math.round(
-          phoneHeading,
-        )}°`;
-
-  const turnInstruction = (() => {
-    if (!hasPhoneHeading) {
-      return "COMPASS STARTING";
-    }
-
-    if (!hasRelicTarget || relativeBearing === null) {
-      return "FIND A RELIC";
-    }
-
-    if (relativeBearing <= 15 || relativeBearing >= 345) {
-      return "STRAIGHT AHEAD";
-    }
-
-    if (relativeBearing >= 165 && relativeBearing <= 195) {
-      return "BEHIND YOU";
-    }
-
-    return relativeBearing < 180 ? "TURN RIGHT" : "TURN LEFT";
-  })();
-
-  const signalText = huntStage.replaceAll("_", " ");
-
-  return (
-    <View
-      accessible
-      accessibilityLabel={
-        hasGuidance
-          ? `Relic navigator. ${signalText}. ${headingText}. Relic is ${direction}. ${turnInstruction}.`
-          : `Compass. ${headingText}.`
-      }
-      pointerEvents="none"
-      style={[
-        styles.relicCompass,
-        !hasRelicTarget && styles.relicCompassWaiting,
-      ]}
-    >
-      <Text style={styles.compassTitle}>RELIC NAVIGATOR</Text>
-
-      <View style={styles.compassDial}>
-        <Animated.View style={[styles.compassRadarPulse, huntPulseStyle]} />
-        {/* Moving compass rose */}
-        <Animated.View
-          style={[StyleSheet.absoluteFill, dialAnimatedStyle]}
-        >
-          <Animated.Text
-            style={[
-              styles.compassPoint,
-              styles.compassNorth,
-              labelCounterRotationStyle,
-            ]}
-          >
-            N
-          </Animated.Text>
-
-          <Animated.Text
-            style={[
-              styles.compassPoint,
-              styles.compassEast,
-              labelCounterRotationStyle,
-            ]}
-          >
-            E
-          </Animated.Text>
-
-          <Animated.Text
-            style={[
-              styles.compassPoint,
-              styles.compassSouth,
-              labelCounterRotationStyle,
-            ]}
-          >
-            S
-          </Animated.Text>
-
-          <Animated.Text
-            style={[
-              styles.compassPoint,
-              styles.compassWest,
-              labelCounterRotationStyle,
-            ]}
-          >
-            W
-          </Animated.Text>
-        </Animated.View>
-
-        {/* Gold arrow points toward relic */}
-        {hasGuidance ? (
-          <Animated.View
-            style={[styles.compassNeedleLayer, needleAnimatedStyle]}
-          >
-            <Ionicons name="arrow-up" size={29} color="#facc15" />
-          </Animated.View>
-        ) : (
-          // Cyan arrow represents the direction
-          // the top of the phone is facing.
-          <Ionicons name="arrow-up" size={25} color="#6FE7FF" />
-        )}
-
-        <View style={styles.compassCenterDot} />
-      </View>
-
-      {/* This ALWAYS tells us whether the sensor works */}
-      <Text style={styles.compassDirection}>{headingText}</Text>
-
-      <Text style={styles.compassHint}>{turnInstruction}</Text>
-
-      {hasRelicTarget && direction ? (
-        <Text style={styles.compassHint}>RELIC {direction.toUpperCase()}</Text>
-      ) : null}
-
-      {distanceFeet !== null && distanceFeet !== undefined ? (
-        <Text style={styles.compassDistance}>
-          {formatRelicSignalDistance(distanceFeet)}
-        </Text>
-      ) : null}
-
-      <Text style={styles.compassStage}>{signalText}</Text>
-    </View>
-  );
-}
-
 // Purpose: Returns aura glow background.
 function getAuraGlowBackground(auraColor: string) {
   return `${auraColor}24`;
@@ -2924,41 +2372,7 @@ function ActiveTrailCard({ activity }: { activity: ActiveTrailActivity }) {
       </View>
     </View>
   );
-}
-
-// =======================
-// GPS STATUS BADGE
-// =======================
-
-// Purpose: Renders gps status badge.
-function renderGpsStatusBadge(
-  isTracking: boolean,
-
-  currentSpeedMph: number,
-
-  safeBottom: number,
-) {
-  return (
-    <View
-      style={[
-        styles.mapCenterBadge,
-
-        {
-          bottom: safeBottom + tabBarHeight + 28,
-        },
-      ]}
-      pointerEvents="none"
-    >
-      <Text style={styles.mapCenterTitle}>GPS ACTIVE</Text>
-
-      <Text style={styles.mapCenterText}>
-        {isTracking ? "Tracking footsteps" : "Tracking paused"} |{" "}
-        {currentSpeedMph.toFixed(1)} MPH
-      </Text>
-    </View>
-  );
-}
-// =======================
+}// =======================
 // SIDE MAP BUTTONS
 // =======================
 

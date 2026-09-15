@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -47,44 +47,51 @@ export function EggHatchAnimation({
   companionRarity,
   onClose,
 }: Props) {
-  const shakeX = useRef(
-    new Animated.Value(0)
-  ).current;
+  /*
+   * Animated.Value objects must remain stable across renders.
+   * Lazy useState initialization gives us that stability without
+   * reading ref.current during render.
+   */
+  const [shakeX] = useState(
+    () => new Animated.Value(0),
+  );
 
-  const rotate = useRef(
-    new Animated.Value(0)
-  ).current;
+  const [rotate] = useState(
+    () => new Animated.Value(0),
+  );
 
-  const eggScale = useRef(
-    new Animated.Value(1)
-  ).current;
+  const [eggScale] = useState(
+    () => new Animated.Value(1),
+  );
 
-  const eggOpacity = useRef(
-    new Animated.Value(1)
-  ).current;
+  const [eggOpacity] = useState(
+    () => new Animated.Value(1),
+  );
 
-  const crackOpacity = useRef(
-    new Animated.Value(0)
-  ).current;
+  const [crackOpacity] = useState(
+    () => new Animated.Value(0),
+  );
 
-  const burstScale = useRef(
-    new Animated.Value(0)
-  ).current;
+  const [burstScale] = useState(
+    () => new Animated.Value(0),
+  );
 
-  const burstOpacity = useRef(
-    new Animated.Value(0)
-  ).current;
+  const [burstOpacity] = useState(
+    () => new Animated.Value(0),
+  );
 
-  const revealOpacity = useRef(
-    new Animated.Value(0)
-  ).current;
+  const [revealOpacity] = useState(
+    () => new Animated.Value(0),
+  );
 
-  const revealScale = useRef(
-    new Animated.Value(0.5)
-  ).current;
+  const [revealScale] = useState(
+    () => new Animated.Value(0.5),
+  );
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      return;
+    }
 
     shakeX.setValue(0);
     rotate.setValue(0);
@@ -98,8 +105,10 @@ export function EggHatchAnimation({
 
     void playEggHatchHaptics();
 
-    // Purpose: Implements the shake operation.
-    const shake = (x: number, rotation: number) =>
+    const shake = (
+      x: number,
+      rotation: number,
+    ) =>
       Animated.parallel([
         Animated.timing(shakeX, {
           toValue: x,
@@ -113,7 +122,7 @@ export function EggHatchAnimation({
         }),
       ]);
 
-    Animated.sequence([
+    const animation = Animated.sequence([
       Animated.delay(150),
 
       shake(-8, -1),
@@ -194,7 +203,13 @@ export function EggHatchAnimation({
           useNativeDriver: true,
         }),
       ]),
-    ]).start();
+    ]);
+
+    animation.start();
+
+    return () => {
+      animation.stop();
+    };
   }, [
     visible,
     burstOpacity,
@@ -213,6 +228,11 @@ export function EggHatchAnimation({
     outputRange: ['-10deg', '10deg'],
   });
 
+  const burstRingScale = burstScale.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.1, 4],
+  });
+
   return (
     <Modal
       visible={visible}
@@ -226,47 +246,49 @@ export function EggHatchAnimation({
         </Text>
 
         <View style={styles.stage}>
-          {PARTICLES.map((particle, index) => (
-            <Animated.View
-              key={index}
-              style={[
-                styles.particle,
-                {
-                  backgroundColor: glowColor,
-                  opacity: burstOpacity,
-                  transform: [
-                    {
-                      translateX:
-                        burstScale.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [
-                            0,
-                            particle.x,
-                          ],
-                        }),
-                    },
-                    {
-                      translateY:
-                        burstScale.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [
-                            0,
-                            particle.y,
-                          ],
-                        }),
-                    },
-                    {
-                      scale:
-                        burstScale.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0.4, 1.4],
-                        }),
-                    },
-                  ],
-                },
-              ]}
-            />
-          ))}
+          {PARTICLES.map((particle, index) => {
+            const particleX =
+              burstScale.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, particle.x],
+              });
+
+            const particleY =
+              burstScale.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, particle.y],
+              });
+
+            const particleScale =
+              burstScale.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.4, 1.4],
+              });
+
+            return (
+              <Animated.View
+                key={`${particle.x}-${particle.y}-${index}`}
+                style={[
+                  styles.particle,
+                  {
+                    backgroundColor: glowColor,
+                    opacity: burstOpacity,
+                    transform: [
+                      {
+                        translateX: particleX,
+                      },
+                      {
+                        translateY: particleY,
+                      },
+                      {
+                        scale: particleScale,
+                      },
+                    ],
+                  },
+                ]}
+              />
+            );
+          })}
 
           <Animated.View
             style={[
@@ -276,11 +298,7 @@ export function EggHatchAnimation({
                 opacity: burstOpacity,
                 transform: [
                   {
-                    scale:
-                      burstScale.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0.1, 4],
-                      }),
+                    scale: burstRingScale,
                   },
                 ],
               },
@@ -293,9 +311,15 @@ export function EggHatchAnimation({
               {
                 opacity: eggOpacity,
                 transform: [
-                  { translateX: shakeX },
-                  { rotate: eggRotation },
-                  { scale: eggScale },
+                  {
+                    translateX: shakeX,
+                  },
+                  {
+                    rotate: eggRotation,
+                  },
+                  {
+                    scale: eggScale,
+                  },
                 ],
               },
             ]}
@@ -359,7 +383,9 @@ export function EggHatchAnimation({
               {
                 opacity: revealOpacity,
                 transform: [
-                  { scale: revealScale },
+                  {
+                    scale: revealScale,
+                  },
                 ],
               },
             ]}
@@ -481,7 +507,7 @@ const styles = StyleSheet.create({
   },
 
   cracks: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
   },
 
   crack: {
@@ -498,28 +524,44 @@ const styles = StyleSheet.create({
   crackOne: {
     left: 116,
     top: 72,
-    transform: [{ rotate: '32deg' }],
+    transform: [
+      {
+        rotate: '32deg',
+      },
+    ],
   },
 
   crackTwo: {
     left: 92,
     top: 108,
     height: 42,
-    transform: [{ rotate: '-45deg' }],
+    transform: [
+      {
+        rotate: '-45deg',
+      },
+    ],
   },
 
   crackThree: {
     right: 88,
     top: 118,
     height: 48,
-    transform: [{ rotate: '48deg' }],
+    transform: [
+      {
+        rotate: '48deg',
+      },
+    ],
   },
 
   crackFour: {
     left: 120,
     top: 148,
     height: 35,
-    transform: [{ rotate: '-18deg' }],
+    transform: [
+      {
+        rotate: '-18deg',
+      },
+    ],
   },
 
   burst: {

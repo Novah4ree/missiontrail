@@ -1,0 +1,4871 @@
+import { router as expoRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
+import {
+  Alert,
+  Animated,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type ImageSourcePropType,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { MissionBottomTabBar } from '@/components/mission-bottom-tab-bar';
+import { getCompanionById } from '@/data/companions';
+import { useDailyProgress } from '@/hooks/use-daily-progress';
+import {
+  clampPercent,
+  formatCompanionName,
+  getEnergyPercent,
+} from '@/utils/companion-progress';
+import { getPlayerLevelProgress } from '@/utils/player-level';
+import { supabase } from '../../lib/supabase';
+
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
+type CompanionView =
+  | 'home'
+  | 'feed'
+  | 'evolve'
+  | 'play'
+  | 'profile'
+  | 'skins';
+
+type FoodPreview = {
+  id: string;
+  name: string;
+  category: string;
+  rarity: 'common' | 'uncommon' | 'rare' | 'mythic';
+  hp: number;
+  xp: number;
+  source: ImageSourcePropType;
+};
+
+type FoodInventoryMap = Record<string, number>;
+
+type FoodPanel = 'inventory' | 'shop';
+
+type FoodShopItem = {
+  food_id: string;
+  display_name: string;
+  category: string;
+  rarity: string;
+  companion_hp: number;
+  user_xp: number;
+  shop_price: number | null;
+  purchasable: boolean;
+};
+
+type FoodShopMap = Record<string, FoodShopItem>;
+
+const companionImage = require('../../assets/images/tabIcons/companion.png');
+const explorerCoinImage = require('../../assets/images/MissionTrailsCoin/ExplorerCoins.png');
+
+const FOOD_PREVIEWS: FoodPreview[] = [
+  // Treats / Happiness
+  {
+    id: 'aurora-pudding',
+    name: 'Aurora Pudding',
+    category: 'Happiness',
+    rarity: 'common',
+    hp: 6,
+    xp: 4,
+    source: require('../../assets/images/companionfoodicons/bakedtreatssweets-happines/aurorapudding.png'),
+  },
+  {
+    id: 'comet-cupcake',
+    name: 'Comet Cupcake',
+    category: 'Happiness',
+    rarity: 'common',
+    hp: 5,
+    xp: 3,
+    source: require('../../assets/images/companionfoodicons/bakedtreatssweets-happines/cometcupcake.png'),
+  },
+  {
+    id: 'galaxy-donut',
+    name: 'Galaxy Donut',
+    category: 'Happiness',
+    rarity: 'common',
+    hp: 7,
+    xp: 5,
+    source: require('../../assets/images/companionfoodicons/bakedtreatssweets-happines/galaxydonut.png'),
+  },
+  {
+    id: 'novah-waffle',
+    name: 'Novah Waffle',
+    category: 'Happiness',
+    rarity: 'common',
+    hp: 6,
+    xp: 4,
+    source: require('../../assets/images/companionfoodicons/bakedtreatssweets-happines/novahwaffle.png'),
+  },
+  {
+    id: 'pixel-macaron',
+    name: 'Pixel Macaron',
+    category: 'Happiness',
+    rarity: 'common',
+    hp: 3,
+    xp: 2,
+    source: require('../../assets/images/companionfoodicons/bakedtreatssweets-happines/pixelmacaron.png'),
+  },
+  {
+    id: 'star-biscuit',
+    name: 'Star Biscuit',
+    category: 'Happiness',
+    rarity: 'common',
+    hp: 2,
+    xp: 1,
+    source: require('../../assets/images/companionfoodicons/bakedtreatssweets-happines/starbiscuit.png'),
+  },
+
+  // Fruit / Quick Energy
+  {
+    id: 'cosmic-berry',
+    name: 'Cosmic Berry',
+    category: 'Quick Energy',
+    rarity: 'uncommon',
+    hp: 9,
+    xp: 7,
+    source: require('../../assets/images/companionfoodicons/fruitsquick-energy/cosmicberry.png'),
+  },
+  {
+    id: 'ember-carrot',
+    name: 'Ember Carrot',
+    category: 'Quick Energy',
+    rarity: 'common',
+    hp: 8,
+    xp: 6,
+    source: require('../../assets/images/companionfoodicons/fruitsquick-energy/embercarrot.png'),
+  },
+  {
+    id: 'icy-frost-melon',
+    name: 'Icy Frost Melon',
+    category: 'Quick Energy',
+    rarity: 'uncommon',
+    hp: 10,
+    xp: 8,
+    source: require('../../assets/images/companionfoodicons/fruitsquick-energy/icyfrostmelon.png'),
+  },
+  {
+    id: 'neon-apple',
+    name: 'Neon Apple',
+    category: 'Quick Energy',
+    rarity: 'common',
+    hp: 6,
+    xp: 5,
+    source: require('../../assets/images/companionfoodicons/fruitsquick-energy/neonapple.png'),
+  },
+  {
+    id: 'plasma-grapes',
+    name: 'Plasma Grapes',
+    category: 'Quick Energy',
+    rarity: 'uncommon',
+    hp: 11,
+    xp: 9,
+    source: require('../../assets/images/companionfoodicons/fruitsquick-energy/plasmagrapes.png'),
+  },
+  {
+    id: 'rainbow-starfruit',
+    name: 'Rainbow Starfruit',
+    category: 'Quick Energy',
+    rarity: 'uncommon',
+    hp: 12,
+    xp: 10,
+    source: require('../../assets/images/companionfoodicons/fruitsquick-energy/rainbowstarfruit.png'),
+  },
+  {
+    id: 'solar-mango',
+    name: 'Solar Mango',
+    category: 'Quick Energy',
+    rarity: 'common',
+    hp: 7,
+    xp: 6,
+    source: require('../../assets/images/companionfoodicons/fruitsquick-energy/solarmango.png'),
+  },
+
+  // Drinks / Recovery
+  {
+    id: 'dream-tea',
+    name: 'Dream Tea',
+    category: 'Recovery',
+    rarity: 'uncommon',
+    hp: 10,
+    xp: 8,
+    source: require('../../assets/images/companionfoodicons/drinks-recovery/dreamtea.png'),
+  },
+  {
+    id: 'electro-water-bottle',
+    name: 'Electro Water Bottle',
+    category: 'Recovery',
+    rarity: 'uncommon',
+    hp: 15,
+    xp: 12,
+    source: require('../../assets/images/companionfoodicons/drinks-recovery/electrowaterbottle.png'),
+  },
+  {
+    id: 'moon-milk',
+    name: 'Moon Milk',
+    category: 'Recovery',
+    rarity: 'uncommon',
+    hp: 12,
+    xp: 10,
+    source: require('../../assets/images/companionfoodicons/drinks-recovery/moonmilk.png'),
+  },
+  {
+    id: 'stamina-smooth',
+    name: 'Stamina Smooth',
+    category: 'Recovery',
+    rarity: 'uncommon',
+    hp: 14,
+    xp: 11,
+    source: require('../../assets/images/companionfoodicons/drinks-recovery/staminasmooth.png'),
+  },
+  {
+    id: 'sunbeam-soup',
+    name: 'Sunbeam Soup',
+    category: 'Recovery',
+    rarity: 'uncommon',
+    hp: 9,
+    xp: 7,
+    source: require('../../assets/images/companionfoodicons/drinks-recovery/sunbeamsoup.png'),
+  },
+
+  // Full Meals
+  {
+    id: 'energy-steak',
+    name: 'Energy Steak',
+    category: 'Full Meal',
+    rarity: 'rare',
+    hp: 38,
+    xp: 32,
+    source: require('../../assets/images/companionfoodicons/proteinfullmeals-hungerrestoration/energysteak.png'),
+  },
+  {
+    id: 'meteor-burger',
+    name: 'Meteor Burger',
+    category: 'Full Meal',
+    rarity: 'rare',
+    hp: 32,
+    xp: 26,
+    source: require('../../assets/images/companionfoodicons/proteinfullmeals-hungerrestoration/meteorburger.png'),
+  },
+  {
+    id: 'power-bowl',
+    name: 'Power Bowl',
+    category: 'Full Meal',
+    rarity: 'rare',
+    hp: 28,
+    xp: 23,
+    source: require('../../assets/images/companionfoodicons/proteinfullmeals-hungerrestoration/powerbowl.png'),
+  },
+  {
+    id: 'salmon',
+    name: 'Salmon',
+    category: 'Full Meal',
+    rarity: 'rare',
+    hp: 35,
+    xp: 29,
+    source: require('../../assets/images/companionfoodicons/proteinfullmeals-hungerrestoration/salmon.png'),
+  },
+  {
+    id: 'turbo-drumstick',
+    name: 'Turbo Drumstick',
+    category: 'Full Meal',
+    rarity: 'rare',
+    hp: 40,
+    xp: 34,
+    source: require('../../assets/images/companionfoodicons/proteinfullmeals-hungerrestoration/turbodrumstick.png'),
+  },
+
+  // Mythic Boosts
+  {
+    id: 'crystal-rock',
+    name: 'Crystal Rock',
+    category: 'Mythic Boost',
+    rarity: 'mythic',
+    hp: 48,
+    xp: 40,
+    source: require('../../assets/images/companionfoodicons/mythicboost/crystalrock.png'),
+  },
+  {
+    id: 'cyber-lollipop',
+    name: 'Cyber Lollipop',
+    category: 'Mythic Boost',
+    rarity: 'mythic',
+    hp: 45,
+    xp: 38,
+    source: require('../../assets/images/companionfoodicons/mythicboost/cyberlollipop.png'),
+  },
+  {
+    id: 'infinity-candy',
+    name: 'Infinity Candy',
+    category: 'Mythic Boost',
+    rarity: 'mythic',
+    hp: 60,
+    xp: 50,
+    source: require('../../assets/images/companionfoodicons/mythicboost/infinitycandy.png'),
+  },
+  {
+    id: 'jelly-beans',
+    name: 'Jelly Beans',
+    category: 'Mythic Boost',
+    rarity: 'mythic',
+    hp: 50,
+    xp: 42,
+    source: require('../../assets/images/companionfoodicons/mythicboost/jellybeans.png'),
+  },
+  {
+    id: 'quantum-gummy',
+    name: 'Quantum Gummy',
+    category: 'Mythic Boost',
+    rarity: 'mythic',
+    hp: 65,
+    xp: 55,
+    source: require('../../assets/images/companionfoodicons/mythicboost/quantumgummy.png'),
+  },
+  {
+    id: 'stardust-taffy',
+    name: 'Stardust Taffy',
+    category: 'Mythic Boost',
+    rarity: 'mythic',
+    hp: 55,
+    xp: 46,
+    source: require('../../assets/images/companionfoodicons/mythicboost/stardusttaffy.png'),
+  },
+  {
+    id: 'time-crystal-cake',
+    name: 'Time Crystal Cake',
+    category: 'Mythic Boost',
+    rarity: 'mythic',
+    hp: 80,
+    xp: 70,
+    source: require('../../assets/images/companionfoodicons/mythicboost/timecrystalcake.png'),
+  },
+];
+
+const PLAY_GAMES: {
+  id: string;
+  title: string;
+  subtitle: string;
+  icon: IoniconName;
+  route: './companion-food-sort' | './companion-matching-cards';
+}[] = [
+  {
+    id: 'food-sort',
+    title: 'Companion Food Sort',
+    subtitle: 'Swipe • Match • Explode • Climb Levels',
+    icon: 'nutrition-outline',
+    route: './companion-food-sort',
+  },
+  {
+    id: 'matching-cards',
+    title: 'Matching Cards',
+    subtitle: 'Flip • Remember • Match • Climb Levels',
+    icon: 'grid-outline',
+    route: './companion-matching-cards',
+  },
+];
+
+// Purpose: Renders the full Companion hub and its UI sections.
+export default function CompanionScreen() {
+  const safeArea = useSafeAreaInsets();
+
+  // Purpose: Receives the temporary companion from
+  // the Egg Hatch presentation demo.
+  const { demoCompanionId } =
+    useLocalSearchParams<{
+      demoCompanionId?: string | string[];
+    }>();
+
+  const normalizedDemoCompanionId =
+    Array.isArray(demoCompanionId)
+      ? demoCompanionId[0]
+      : demoCompanionId;
+
+
+  const {
+    progress,
+    isLoading,
+    message,
+    refresh,
+  } = useDailyProgress();
+
+  const [view, setView] = useState<CompanionView>('home');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [selectedFoodId, setSelectedFoodId] = useState<string | null>(null);
+  const [feedMessage, setFeedMessage] = useState<string | null>(null);
+  const [petMessage, setPetMessage] = useState<string | null>(null);
+  const [foodInventory, setFoodInventory] = useState<FoodInventoryMap>({});
+  const [foodInventoryLoading, setFoodInventoryLoading] = useState(false);
+  const [isFeeding, setIsFeeding] = useState(false);
+
+  const [foodPanel, setFoodPanel] =
+    useState<FoodPanel>('inventory');
+
+  const [coinBalance, setCoinBalance] =
+    useState(0);
+
+  const [foodShop, setFoodShop] =
+    useState<FoodShopMap>({});
+
+  const [shopLoading, setShopLoading] =
+    useState(false);
+
+  const [buyingFoodId, setBuyingFoodId] =
+    useState<string | null>(null);
+
+  const petScale = useRef(new Animated.Value(1)).current;
+
+  // Purpose: Temporary stats used only when the
+  // presentation companion has not been saved yet.
+  const [demoBondPercent, setDemoBondPercent] =
+    useState(72);
+
+  const [demoEnergyPercent, setDemoEnergyPercent] =
+    useState(84);
+
+
+  const companion = progress?.companion;
+
+  // Purpose: Finds the temporary hatched companion
+  // when no permanent active companion exists yet.
+  const demoCompanionDefinition =
+    normalizedDemoCompanionId
+      ? getCompanionById(
+          normalizedDemoCompanionId
+        )
+      : undefined;
+
+  const effectiveCompanionId =
+    companion?.companionId ??
+    demoCompanionDefinition?.id;
+
+  const isPresentationDemo =
+    Boolean(
+      !companion?.companionId &&
+      demoCompanionDefinition
+    );
+
+  const companionName =
+    formatCompanionName(
+      effectiveCompanionId
+    ) ??
+    demoCompanionDefinition?.name ??
+    'Your Companion';
+
+  const companionDefinition =
+    effectiveCompanionId
+      ? getCompanionById(
+          effectiveCompanionId
+        )
+      : undefined;
+
+  const bondPercent =
+    clampPercent(
+      companion?.bondPercent ??
+        (
+          isPresentationDemo
+            ? demoBondPercent
+            : 0
+        )
+    );
+
+  const energyPercent =
+    isPresentationDemo
+      ? demoEnergyPercent
+      : getEnergyPercent(
+          companion?.energy ?? 0,
+          companion?.maximumEnergy ?? 100,
+        );
+
+  // Purpose: Temporary care stats for the 2D presentation
+  // companion. Real backend values can replace these later.
+  const companionCareData =
+    companion as unknown as
+      | {
+          hungerPercent?: number;
+          happinessPercent?: number;
+          healthPercent?: number;
+          careStreak?: number;
+        }
+      | undefined;
+
+  const hungerPercent =
+    isPresentationDemo
+      ? 78
+      : clampPercent(
+          Number(
+            companionCareData?.hungerPercent ?? 0
+          )
+        );
+
+  const happinessPercent =
+    isPresentationDemo
+      ? 86
+      : clampPercent(
+          Number(
+            companionCareData?.happinessPercent ?? 0
+          )
+        );
+
+  const healthPercent =
+    isPresentationDemo
+      ? 92
+      : clampPercent(
+          Number(
+            companionCareData?.healthPercent ?? 0
+          )
+        );
+
+  const careStreak =
+    isPresentationDemo
+      ? 3
+      : Math.max(
+          0,
+          Number(
+            companionCareData?.careStreak ?? 0
+          )
+        );
+
+  const playerLevel =
+    getPlayerLevelProgress(progress?.totalXp ?? 0);
+
+  const todayDistanceKm =
+    (progress?.verifiedDistanceMeters ?? 0) / 1000;
+
+  const todaySteps =
+    progress?.verifiedSteps ?? 0;
+
+  function openView(nextView: CompanionView) {
+    setMenuOpen(false);
+    setView(nextView);
+  }
+
+  function returnHome() {
+    setMenuOpen(false);
+    setView('home');
+  }
+
+  function petCompanion() {
+    setPetMessage('Your companion loved that 💜');
+
+    // Purpose: Gives visible Bond feedback during
+    // the temporary presentation demo.
+    if (isPresentationDemo) {
+      setDemoBondPercent(
+        (current) =>
+          Math.min(
+            100,
+            current + 1
+          )
+      );
+    }
+
+
+    Animated.sequence([
+      Animated.spring(petScale, {
+        toValue: 1.14,
+        useNativeDriver: true,
+        speed: 24,
+        bounciness: 12,
+      }),
+      Animated.spring(petScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        speed: 20,
+        bounciness: 8,
+      }),
+    ]).start();
+
+    setTimeout(() => {
+      setPetMessage(null);
+    }, 1800);
+  }
+
+  async function loadFoodInventory() {
+    setFoodInventoryLoading(true);
+
+    // Purpose: Provides temporary presentation food
+    // without changing the real Supabase inventory.
+    if (isPresentationDemo) {
+      setFoodInventory({
+        'cosmic-berry': 3,
+        'aurora-pudding': 2,
+        'meteor-burger': 1,
+      });
+
+      setFoodInventoryLoading(false);
+      return;
+    }
+
+
+    try {
+      const { data, error } = await supabase
+        .from('companion_food_inventory')
+        .select('food_id, quantity');
+
+      if (error) {
+        throw error;
+      }
+
+      const nextInventory: FoodInventoryMap = {};
+
+      for (const row of data ?? []) {
+        const foodId =
+          typeof row.food_id === 'string'
+            ? row.food_id
+            : '';
+
+        const quantity =
+          typeof row.quantity === 'number'
+            ? row.quantity
+            : Number(row.quantity ?? 0);
+
+        if (foodId) {
+          nextInventory[foodId] =
+            Number.isFinite(quantity)
+              ? Math.max(0, quantity)
+              : 0;
+        }
+      }
+
+      setFoodInventory(nextInventory);
+    } catch (error) {
+      console.warn(
+        '[Companion] Could not load food inventory.',
+        error,
+      );
+
+      setFeedMessage(
+        'Could not load your Companion Food inventory.',
+      );
+    } finally {
+      setFoodInventoryLoading(false);
+    }
+  }
+
+  async function loadFoodShop() {
+    setShopLoading(true);
+
+    try {
+      const [
+        walletResult,
+        shopResult,
+      ] = await Promise.all([
+        supabase.rpc(
+          'server_get_coin_wallet',
+        ),
+        supabase.rpc(
+          'server_get_companion_food_shop',
+        ),
+      ]);
+
+      if (walletResult.error) {
+        throw walletResult.error;
+      }
+
+      if (shopResult.error) {
+        throw shopResult.error;
+      }
+
+      const wallet =
+        walletResult.data &&
+        typeof walletResult.data === 'object'
+          ? walletResult.data as Record<string, unknown>
+          : {};
+
+      const balance =
+        Number(wallet.balance ?? 0);
+
+      setCoinBalance(
+        Number.isFinite(balance)
+          ? Math.max(0, balance)
+          : 0,
+      );
+
+      const nextShop: FoodShopMap = {};
+
+      for (const row of shopResult.data ?? []) {
+        const foodId =
+          typeof row.food_id === 'string'
+            ? row.food_id
+            : '';
+
+        if (!foodId) {
+          continue;
+        }
+
+        const rawPrice =
+          row.shop_price === null ||
+          row.shop_price === undefined
+            ? null
+            : Number(row.shop_price);
+
+        nextShop[foodId] = {
+          food_id: foodId,
+          display_name:
+            String(row.display_name ?? ''),
+          category:
+            String(row.category ?? ''),
+          rarity:
+            String(row.rarity ?? ''),
+          companion_hp:
+            Number(row.companion_hp ?? 0),
+          user_xp:
+            Number(row.user_xp ?? 0),
+          shop_price:
+            rawPrice !== null &&
+            Number.isFinite(rawPrice)
+              ? rawPrice
+              : null,
+          purchasable:
+            Boolean(row.purchasable),
+        };
+      }
+
+      setFoodShop(nextShop);
+    } catch (error) {
+      console.warn(
+        '[Companion] Could not load Food Shop.',
+        error,
+      );
+
+      setFeedMessage(
+        'Could not load the Companion Food Shop.',
+      );
+    } finally {
+      setShopLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (view !== 'feed') {
+      return;
+    }
+
+    // Purpose: Demo companion uses local food.
+    // Real companions continue using Supabase.
+    if (isPresentationDemo) {
+      setFoodPanel('inventory');
+      void loadFoodInventory();
+      return;
+    }
+
+    void Promise.all([
+      loadFoodInventory(),
+      loadFoodShop(),
+    ]);
+  }, [view, isPresentationDemo]);
+
+  async function purchaseFood(
+    foodId: string,
+  ) {
+    if (buyingFoodId) {
+      return;
+    }
+
+    const food =
+      FOOD_PREVIEWS.find(
+        (item) => item.id === foodId,
+      );
+
+    const shopItem =
+      foodShop[foodId];
+
+    if (!food || !shopItem) {
+      setFeedMessage(
+        'That shop item could not be found.',
+      );
+      return;
+    }
+
+    if (
+      !shopItem.purchasable ||
+      shopItem.shop_price === null
+    ) {
+      setFeedMessage(
+        `${food.name} is Mission / Event exclusive.`,
+      );
+      return;
+    }
+
+    if (coinBalance < shopItem.shop_price) {
+      setFeedMessage(
+        `You need ${shopItem.shop_price.toLocaleString()} Explorer Coins to buy ${food.name}.`,
+      );
+      return;
+    }
+
+    setBuyingFoodId(foodId);
+    setFeedMessage(null);
+
+    try {
+      const { data, error } =
+        await supabase.rpc(
+          'server_purchase_companion_food',
+          {
+            p_food_id: foodId,
+            p_quantity: 1,
+          },
+        );
+
+      if (error) {
+        throw error;
+      }
+
+      const result =
+        Array.isArray(data)
+          ? data[0]
+          : data;
+
+      if (!result) {
+        throw new Error(
+          'Purchase server returned no result.',
+        );
+      }
+
+      if (!result.purchased) {
+        const code =
+          String(result.result_code ?? '');
+
+        if (code === 'INSUFFICIENT_COINS') {
+          setFeedMessage(
+            'You do not have enough Explorer Coins.',
+          );
+        } else if (
+          code === 'NOT_PURCHASABLE'
+        ) {
+          setFeedMessage(
+            `${food.name} is Mission / Event exclusive.`,
+          );
+        } else if (
+          code === 'UNAUTHORIZED'
+        ) {
+          setFeedMessage(
+            'Sign in again before purchasing food.',
+          );
+        } else {
+          setFeedMessage(
+            'That food could not be purchased.',
+          );
+        }
+
+        await loadFoodShop();
+        return;
+      }
+
+      const newBalance =
+        Number(result.new_balance ?? 0);
+
+      const newFoodQuantity =
+        Number(
+          result.new_food_quantity ?? 0,
+        );
+
+      const price =
+        Number(
+          result.total_price ??
+          shopItem.shop_price,
+        );
+
+      setCoinBalance(
+        Number.isFinite(newBalance)
+          ? Math.max(0, newBalance)
+          : 0,
+      );
+
+      setFoodInventory((current) => ({
+        ...current,
+        [foodId]:
+          Number.isFinite(newFoodQuantity)
+            ? Math.max(0, newFoodQuantity)
+            : current[foodId] ?? 0,
+      }));
+
+      setFeedMessage(
+        `${food.name} purchased for ${price.toLocaleString()} Explorer Coins! 🪙`,
+      );
+    } catch (error) {
+      console.warn(
+        '[Companion] Food purchase failed.',
+        error,
+      );
+
+      setFeedMessage(
+        'Purchase failed. Your coins were not intentionally changed by the client.',
+      );
+    } finally {
+      setBuyingFoodId(null);
+    }
+  }
+
+  async function feedSelectedFood() {
+    if (isFeeding) {
+      return;
+    }
+
+    if (!selectedFoodId) {
+      setFeedMessage('Choose a food first.');
+      return;
+    }
+
+    const selectedFood =
+      FOOD_PREVIEWS.find(
+        (food) => food.id === selectedFoodId,
+      );
+
+    if (!selectedFood) {
+      setFeedMessage('That food could not be found.');
+      return;
+    }
+
+    // Purpose: Simulates companion feeding only for
+    // presentation mode. Real companions still use
+    // server_consume_companion_food.
+    if (isPresentationDemo) {
+      const currentQuantity =
+        foodInventory[selectedFoodId] ?? 0;
+
+      if (currentQuantity <= 0) {
+        setFeedMessage(
+          `${selectedFood.name} is out of stock.`
+        );
+        return;
+      }
+
+      setIsFeeding(true);
+
+      setFoodInventory(
+        (current) => ({
+          ...current,
+          [selectedFoodId]:
+            Math.max(
+              0,
+              (
+                current[selectedFoodId] ??
+                0
+              ) - 1
+            ),
+        })
+      );
+
+      setDemoBondPercent(
+        (current) =>
+          Math.min(
+            100,
+            current + 2
+          )
+      );
+
+      setDemoEnergyPercent(
+        (current) =>
+          Math.min(
+            100,
+            current +
+              Math.max(
+                3,
+                Math.round(
+                  selectedFood.hp / 3
+                )
+              )
+          )
+      );
+
+      setFeedMessage(
+        `${selectedFood.name} fed! +${selectedFood.hp} HP • +${selectedFood.xp} XP • Bond +2 💜`
+      );
+
+      Animated.sequence([
+        Animated.spring(
+          petScale,
+          {
+            toValue: 1.18,
+            useNativeDriver: true,
+            speed: 24,
+            bounciness: 14,
+          }
+        ),
+
+        Animated.spring(
+          petScale,
+          {
+            toValue: 1,
+            useNativeDriver: true,
+            speed: 20,
+            bounciness: 8,
+          }
+        ),
+      ]).start();
+
+      setTimeout(() => {
+        setIsFeeding(false);
+      }, 500);
+
+      return;
+    }
+
+
+    const quantity =
+      foodInventory[selectedFoodId] ?? 0;
+
+    if (quantity <= 0) {
+      setFeedMessage(
+        `${selectedFood.name} is locked. Earn it from verified mission rewards.`,
+      );
+      return;
+    }
+
+    if (!companion?.companionId) {
+      setFeedMessage(
+        'Hatch and select a companion before feeding.',
+      );
+      return;
+    }
+
+    setIsFeeding(true);
+    setFeedMessage(null);
+
+    try {
+      const { data, error } = await supabase.rpc(
+        'server_consume_companion_food',
+        {
+          p_food_id: selectedFoodId,
+        },
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      const result =
+        Array.isArray(data)
+          ? data[0]
+          : data;
+
+      if (!result) {
+        throw new Error(
+          'Food server returned no result.',
+        );
+      }
+
+      if (!result.consumed) {
+        const code =
+          String(result.result_code ?? '');
+
+        if (code === 'OUT_OF_STOCK') {
+          setFeedMessage(
+            `${selectedFood.name} is no longer available.`,
+          );
+        } else if (code === 'NO_ACTIVE_COMPANION') {
+          setFeedMessage(
+            'Select an active companion before feeding.',
+          );
+        } else if (code === 'UNAUTHORIZED') {
+          setFeedMessage(
+            'Sign in again before feeding your companion.',
+          );
+        } else {
+          setFeedMessage(
+            'Your companion could not eat that food.',
+          );
+        }
+
+        await loadFoodInventory();
+        return;
+      }
+
+      const hpAwarded =
+        Number(result.hp_awarded ?? selectedFood.hp);
+
+      const oldLevel =
+        Number(result.old_companion_level ?? 1);
+
+      const newLevel =
+        Number(result.new_companion_level ?? oldLevel);
+
+      const remaining =
+        Number(result.remaining_quantity ?? 0);
+
+      if (newLevel > oldLevel) {
+        setFeedMessage(
+          `${selectedFood.name} fed! +${hpAwarded} Growth HP • Care updated • Companion Lv ${oldLevel} → Lv ${newLevel} ⚡`,
+        );
+      } else {
+        setFeedMessage(
+          `${selectedFood.name} fed! +${hpAwarded} Growth HP • Care updated • x${remaining} left`,
+        );
+      }
+
+      await Promise.all([
+        loadFoodInventory(),
+        refresh(),
+      ]);
+
+      if (remaining <= 0) {
+        setSelectedFoodId(null);
+      }
+    } catch (error) {
+      console.warn(
+        '[Companion] Feeding failed.',
+        error,
+      );
+
+      setFeedMessage(
+        'Feeding failed. Your food was not intentionally removed by the client.',
+      );
+    } finally {
+      setIsFeeding(false);
+    }
+  }
+
+  return (
+    <LinearGradient
+      colors={[
+        '#030007',
+        '#090012',
+        '#160326',
+        '#05000B',
+      ]}
+      style={styles.screen}
+    >
+      <StatusBar style="light" />
+
+      <View
+        pointerEvents="none"
+        style={styles.backgroundGlowOne}
+      />
+
+      <View
+        pointerEvents="none"
+        style={styles.backgroundGlowTwo}
+      />
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: safeArea.top + 14,
+            paddingBottom: safeArea.bottom + 190,
+          },
+        ]}
+      >
+        {view === 'home' ? (
+          <HomeView
+            companionName={companionName}
+            companionDefinition={companionDefinition}
+            isLoading={isLoading}
+            hasCompanion={Boolean(effectiveCompanionId)}
+            bondPercent={bondPercent}
+            bondTier={companion?.bondTier ?? 1}
+            energyPercent={energyPercent}
+            hungerPercent={hungerPercent}
+            happinessPercent={happinessPercent}
+            healthPercent={healthPercent}
+            careStreak={careStreak}
+            totalXp={playerLevel.totalXp}
+            playerLevel={playerLevel.level}
+            todayDistanceKm={todayDistanceKm}
+            todaySteps={todaySteps}
+            menuOpen={menuOpen}
+            petScale={petScale}
+            petMessage={petMessage}
+            onToggleMenu={() => setMenuOpen((current) => !current)}
+            onFeed={() => openView('feed')}
+            onPet={petCompanion}
+            onEvolve={() => openView('evolve')}
+            onPlay={() => openView('play')}
+            onProfile={() => openView('profile')}
+            onSkins={() => openView('skins')}
+          />
+        ) : null}
+
+        {view === 'feed' ? (
+          <FeedView
+            companionName={companionName}
+            selectedFoodId={selectedFoodId}
+            feedMessage={feedMessage}
+            inventory={foodInventory}
+            inventoryLoading={foodInventoryLoading}
+            isFeeding={isFeeding}
+            foodPanel={foodPanel}
+            coinBalance={coinBalance}
+            shop={foodShop}
+            shopLoading={shopLoading}
+            buyingFoodId={buyingFoodId}
+            onBack={returnHome}
+            onPanelChange={(nextPanel) => {
+              setFoodPanel(nextPanel);
+              setFeedMessage(null);
+              setSelectedFoodId(null);
+            }}
+            onSelectFood={(foodId) => {
+              const quantity =
+                foodInventory[foodId] ?? 0;
+
+              if (quantity <= 0) {
+                const food =
+                  FOOD_PREVIEWS.find(
+                    (item) =>
+                      item.id === foodId,
+                  );
+
+                setFeedMessage(
+                  `${food?.name ?? 'This food'} is locked. Earn it from missions or buy it in the Shop.`,
+                );
+                return;
+              }
+
+              setSelectedFoodId(foodId);
+              setFeedMessage(null);
+            }}
+            onFeed={() =>
+              void feedSelectedFood()
+            }
+            onBuy={(foodId) =>
+              void purchaseFood(foodId)
+            }
+          />
+        ) : null}
+
+        {view === 'evolve' ? (
+          <EvolveView
+            companionName={companionName}
+            element={companionDefinition?.element ?? null}
+            rarity={companionDefinition?.rarity ?? null}
+            bondPercent={bondPercent}
+            onBack={returnHome}
+          />
+        ) : null}
+
+        {view === 'play' ? (
+          <PlayView
+            companionName={companionName}
+            onBack={returnHome}
+          />
+        ) : null}
+
+        {view === 'profile' ? (
+          <ProfileView
+            companionName={companionName}
+            element={companionDefinition?.element ?? null}
+            rarity={companionDefinition?.rarity ?? null}
+            description={companionDefinition?.description ?? null}
+            playerLevel={playerLevel.level}
+            totalXp={playerLevel.totalXp}
+            bondPercent={bondPercent}
+            bondTier={companion?.bondTier ?? 1}
+            energyPercent={energyPercent}
+            todayDistanceKm={todayDistanceKm}
+            todaySteps={todaySteps}
+            onBack={returnHome}
+          />
+        ) : null}
+
+        {view === 'skins' ? (
+          <SkinsView
+            companionName={companionName}
+            onBack={returnHome}
+          />
+        ) : null}
+
+        {message ? (
+          <View style={styles.syncMessage}>
+            <Ionicons
+              name="information-circle-outline"
+              size={17}
+              color="#FFC96B"
+            />
+            <Text
+              selectable
+              style={styles.syncMessageText}
+            >
+              {message}
+            </Text>
+          </View>
+        ) : null}
+      </ScrollView>
+
+      <View
+        style={[
+          styles.bottomNavigation,
+          {
+            bottom: safeArea.bottom + 10,
+          },
+        ]}
+      >
+        <MissionBottomTabBar activeTab="companion" />
+      </View>
+    </LinearGradient>
+  );
+}
+
+function HomeView({
+  companionName,
+  companionDefinition,
+  isLoading,
+  hasCompanion,
+  bondPercent,
+  bondTier,
+  energyPercent,
+  hungerPercent,
+  happinessPercent,
+  healthPercent,
+  careStreak,
+  totalXp,
+  playerLevel,
+  todayDistanceKm,
+  todaySteps,
+  menuOpen,
+  petScale,
+  petMessage,
+  onToggleMenu,
+  onFeed,
+  onPet,
+  onEvolve,
+  onPlay,
+  onProfile,
+  onSkins,
+}: {
+  companionName: string;
+  companionDefinition:
+    | ReturnType<typeof getCompanionById>
+    | undefined;
+  isLoading: boolean;
+  hasCompanion: boolean;
+  bondPercent: number;
+  bondTier: number;
+  energyPercent: number;
+
+  // Tamagotchi-style care stats.
+  hungerPercent: number;
+  happinessPercent: number;
+  healthPercent: number;
+  careStreak: number;
+
+  totalXp: number;
+  playerLevel: number;
+  todayDistanceKm: number;
+  todaySteps: number;
+  menuOpen: boolean;
+  petScale: Animated.Value;
+  petMessage: string | null;
+  onToggleMenu: () => void;
+  onFeed: () => void;
+  onPet: () => void;
+  onEvolve: () => void;
+  onPlay: () => void;
+  onProfile: () => void;
+  onSkins: () => void;
+}) {
+  const displayName =
+    isLoading && !hasCompanion
+      ? 'Loading…'
+      : hasCompanion
+        ? companionName
+        : 'YOUR COMPANION';
+
+  const companionDescription = hasCompanion
+    ? `Level ${playerLevel} • ${companionDefinition?.rarity ?? 'Companion'} ${capitalize(
+        companionDefinition?.element,
+      )}`
+    : 'Hatch your first egg to begin';
+
+  return (
+    <>
+      {/* ======================================
+          COMPANION IDENTITY
+      ====================================== */}
+      <View style={homeStyles.identityRow}>
+        <View style={homeStyles.identityCard}>
+          <View style={homeStyles.identityCopy}>
+            <Text
+              selectable
+              style={homeStyles.identityName}
+            >
+              {displayName}
+            </Text>
+
+            <Text
+              selectable
+              style={homeStyles.identitySubtitle}
+            >
+              {companionDescription}
+            </Text>
+          </View>
+
+          <View style={homeStyles.bondBlock}>
+            <View style={homeStyles.bondLine}>
+              <Ionicons
+                name="heart"
+                size={27}
+                color="#FF3FA4"
+              />
+
+              <Text style={homeStyles.bondPercent}>
+                {hasCompanion ? `${bondPercent}%` : '--'}
+              </Text>
+            </View>
+
+            <View style={homeStyles.bondTierBadge}>
+              <Text style={homeStyles.bondTierText}>
+                {hasCompanion
+                  ? `Bond Tier ${bondTier}`
+                  : 'Not Linked'}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open companion menu"
+          onPress={onToggleMenu}
+          style={({ pressed }) => [
+            homeStyles.menuButton,
+            pressed
+              ? homeStyles.pressed
+              : undefined,
+          ]}
+        >
+          <Ionicons
+            name={menuOpen ? 'close' : 'menu'}
+            size={31}
+            color="#FFFFFF"
+          />
+        </Pressable>
+      </View>
+
+      {/* ======================================
+          MENU
+      ====================================== */}
+      {menuOpen ? (
+        <View style={homeStyles.dropdownMenu}>
+          <Pressable
+            onPress={onProfile}
+            style={({ pressed }) => [
+              homeStyles.dropdownRow,
+              pressed
+                ? homeStyles.pressed
+                : undefined,
+            ]}
+          >
+            <Ionicons
+              name="person-circle-outline"
+              size={22}
+              color="#58E9FF"
+            />
+
+            <Text style={homeStyles.dropdownText}>
+              Companion Profile
+            </Text>
+
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color="#776B83"
+            />
+          </Pressable>
+
+          <View style={homeStyles.dropdownDivider} />
+
+          <Pressable
+            onPress={onSkins}
+            style={({ pressed }) => [
+              homeStyles.dropdownRow,
+              pressed
+                ? homeStyles.pressed
+                : undefined,
+            ]}
+          >
+            <Ionicons
+              name="color-palette-outline"
+              size={22}
+              color="#FF56DF"
+            />
+
+            <Text style={homeStyles.dropdownText}>
+              Skins
+            </Text>
+
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color="#776B83"
+            />
+          </Pressable>
+        </View>
+      ) : null}
+
+      {/* ======================================
+          SPEECH BUBBLE
+      ====================================== */}
+      <View style={homeStyles.speechBubble}>
+        <Ionicons
+          name="sparkles"
+          size={20}
+          color="#E35BFF"
+        />
+
+        <Text style={homeStyles.speechText}>
+          {hasCompanion
+            ? 'Ready when you are. Let’s explore together.'
+            : 'Hatch an egg and your companion will meet you here.'}
+        </Text>
+      </View>
+
+      {/* ======================================
+          HERO
+      ====================================== */}
+      <View style={homeStyles.heroLayout}>
+        <View style={homeStyles.orbColumn}>
+          <LinearGradient
+            colors={[
+              '#D22CFF',
+              '#713EFF',
+              '#16D9FF',
+              '#D92CFF',
+            ]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={homeStyles.orbBorder}
+          >
+            <View style={homeStyles.orbMiddle}>
+              <Animated.View
+                style={[
+                  homeStyles.orbInner,
+                  {
+                    transform: [
+                      {
+                        scale: petScale,
+                      },
+                    ],
+                  },
+                ]}
+              >
+                {hasCompanion ? (
+                  <Image
+                    source={companionImage}
+                    resizeMode="contain"
+                    style={homeStyles.companionImage}
+                  />
+                ) : (
+                  <View style={homeStyles.emptyCompanion}>
+                    <Ionicons
+                      name="egg-outline"
+                      size={106}
+                      color="#B889CB"
+                    />
+
+                    <Text style={homeStyles.emptyTitle}>
+                      NO COMPANION YET
+                    </Text>
+
+                    <Text style={homeStyles.emptySubtitle}>
+                      Hatch an egg to awaken one
+                    </Text>
+                  </View>
+                )}
+              </Animated.View>
+            </View>
+          </LinearGradient>
+
+          {petMessage ? (
+            <View style={homeStyles.petMessage}>
+              <Text style={homeStyles.petMessageText}>
+                {petMessage}
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={homeStyles.statusRow}>
+            <View style={homeStyles.statusPill}>
+              <Ionicons
+                name="heart"
+                size={14}
+                color="#FF4AD8"
+              />
+
+              <Text style={homeStyles.statusValue}>
+                {hasCompanion ? `${bondPercent}%` : '--'}
+              </Text>
+
+              <Text style={homeStyles.statusLabel}>
+                Bond
+              </Text>
+            </View>
+
+            <View style={homeStyles.statusPill}>
+              <Ionicons
+                name="flash"
+                size={14}
+                color="#46E6FF"
+              />
+
+              <Text style={homeStyles.statusValue}>
+                {hasCompanion ? `${energyPercent}%` : '--'}
+              </Text>
+
+              <Text style={homeStyles.statusLabel}>
+                Energy
+              </Text>
+            </View>
+
+            <View style={homeStyles.statusPill}>
+              <Ionicons
+                name="restaurant"
+                size={14}
+                color="#FFB84D"
+              />
+
+              <Text style={homeStyles.statusValue}>
+                {hasCompanion ? `${hungerPercent}%` : '--'}
+              </Text>
+
+              <Text style={homeStyles.statusLabel}>
+                Hunger
+              </Text>
+            </View>
+
+            <View style={homeStyles.statusPill}>
+              <Ionicons
+                name="happy"
+                size={14}
+                color="#FFD84D"
+              />
+
+              <Text style={homeStyles.statusValue}>
+                {hasCompanion ? `${happinessPercent}%` : '--'}
+              </Text>
+
+              <Text style={homeStyles.statusLabel}>
+                Happy
+              </Text>
+            </View>
+
+            <View style={homeStyles.statusPill}>
+              <Ionicons
+                name="medkit"
+                size={14}
+                color="#62FF9D"
+              />
+
+              <Text style={homeStyles.statusValue}>
+                {hasCompanion ? `${healthPercent}%` : '--'}
+              </Text>
+
+              <Text style={homeStyles.statusLabel}>
+                Health
+              </Text>
+            </View>
+
+            <View style={homeStyles.statusPill}>
+              <Ionicons
+                name="flame"
+                size={14}
+                color="#FF784D"
+              />
+
+              <Text style={homeStyles.statusValue}>
+                {hasCompanion ? `${careStreak}` : '--'}
+              </Text>
+
+              <Text style={homeStyles.statusLabel}>
+                Streak
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ======================================
+            RIGHT SIDE INFO
+        ====================================== */}
+        <View style={homeStyles.sideColumn}>
+          <View style={homeStyles.infoCard}>
+            <Text style={homeStyles.infoEyebrow}>
+              XP & LEVEL
+            </Text>
+
+            <Text style={homeStyles.infoMain}>
+              Level {playerLevel}
+            </Text>
+
+            <Text style={homeStyles.infoSub}>
+              {totalXp.toLocaleString()} lifetime XP
+            </Text>
+
+            <View style={homeStyles.progressTrack}>
+              <LinearGradient
+                colors={[
+                  '#922BFF',
+                  '#DE38FF',
+                ]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[
+                  homeStyles.progressFill,
+                  {
+                    width: `${Math.min(
+                      100,
+                      Math.max(
+                        8,
+                        (playerLevel % 10) * 10,
+                      ),
+                    )}%`,
+                  },
+                ]}
+              />
+            </View>
+          </View>
+
+          <View style={homeStyles.infoCard}>
+            <Text style={homeStyles.infoEyebrow}>
+              EVOLUTION
+            </Text>
+
+            <Text style={homeStyles.infoMain}>
+              {hasCompanion
+                ? companionDefinition?.rarity ?? 'Current Form'
+                : 'Locked'}
+            </Text>
+
+            <Text style={homeStyles.evolutionPercent}>
+              --%
+            </Text>
+
+            <Text style={homeStyles.infoSub}>
+              {hasCompanion
+                ? 'Evolution progress not configured yet'
+                : 'Hatch a companion to unlock'}
+            </Text>
+
+            <View style={homeStyles.progressTrack}>
+              <View
+                style={[
+                  homeStyles.progressFill,
+                  {
+                    width: '0%',
+                    backgroundColor: '#B72DFF',
+                  },
+                ]}
+              />
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* ======================================
+          TODAY'S PROGRESS
+      ====================================== */}
+      <View style={homeStyles.todayCard}>
+        <View style={homeStyles.todayIcon}>
+          <Ionicons
+            name="footsteps"
+            size={36}
+            color="#C650FF"
+          />
+        </View>
+
+        <View style={homeStyles.todayCopy}>
+          <Text style={homeStyles.todayEyebrow}>
+            TODAY&apos;S PROGRESS
+          </Text>
+
+          <Text style={homeStyles.todayDistance}>
+            {todayDistanceKm.toFixed(2)} km
+          </Text>
+
+          <Text style={homeStyles.todayMessage}>
+            Walk together to earn XP!
+          </Text>
+        </View>
+
+        <View style={homeStyles.stepsBlock}>
+          <Text style={homeStyles.stepsValue}>
+            {todaySteps.toLocaleString()}
+          </Text>
+
+          <Text style={homeStyles.stepsLabel}>
+            steps
+          </Text>
+        </View>
+
+        <View style={homeStyles.todayArrow}>
+          <Ionicons
+            name="chevron-forward"
+            size={22}
+            color="#FFFFFF"
+          />
+        </View>
+      </View>
+
+      {/* ======================================
+          ACTIONS
+      ====================================== */}
+      <View style={homeStyles.actionPanel}>
+        <HomeActionButton
+          icon="restaurant-outline"
+          label="Feed"
+          accent="#FF3ED1"
+          onPress={onFeed}
+        />
+
+        <HomeActionButton
+          icon="hand-left-outline"
+          label="Pet"
+          accent="#E85BFF"
+          onPress={onPet}
+        />
+
+        <HomeActionButton
+          icon="sparkles-outline"
+          label="Evolve"
+          accent="#2DBAFF"
+          onPress={onEvolve}
+        />
+
+        <HomeActionButton
+          icon="game-controller-outline"
+          label="Play"
+          accent="#FFB323"
+          onPress={onPlay}
+        />
+      </View>
+    </>
+  );
+}
+
+function HomeActionButton({
+  icon,
+  label,
+  accent,
+  onPress,
+}: {
+  icon:
+    | 'restaurant-outline'
+    | 'hand-left-outline'
+    | 'sparkles-outline'
+    | 'game-controller-outline';
+  label: string;
+  accent: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => [
+        homeStyles.actionButton,
+        {
+          borderColor: accent,
+        },
+        pressed
+          ? homeStyles.pressed
+          : undefined,
+      ]}
+    >
+      <Ionicons
+        name={icon}
+        size={39}
+        color={accent}
+      />
+
+      <Text style={homeStyles.actionLabel}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function FeedView({
+  companionName,
+  selectedFoodId,
+  feedMessage,
+  inventory,
+  inventoryLoading,
+  isFeeding,
+  foodPanel,
+  coinBalance,
+  shop,
+  shopLoading,
+  buyingFoodId,
+  onBack,
+  onPanelChange,
+  onSelectFood,
+  onFeed,
+  onBuy,
+}: {
+  companionName: string;
+  selectedFoodId: string | null;
+  feedMessage: string | null;
+  inventory: FoodInventoryMap;
+  inventoryLoading: boolean;
+  isFeeding: boolean;
+  foodPanel: FoodPanel;
+  coinBalance: number;
+  shop: FoodShopMap;
+  shopLoading: boolean;
+  buyingFoodId: string | null;
+  onBack: () => void;
+  onPanelChange: (
+    panel: FoodPanel,
+  ) => void;
+  onSelectFood: (
+    foodId: string,
+  ) => void;
+  onFeed: () => void;
+  onBuy: (
+    foodId: string,
+  ) => void;
+}) {
+  const selectedFood =
+    FOOD_PREVIEWS.find(
+      (food) =>
+        food.id === selectedFoodId,
+    );
+
+  const selectedQuantity =
+    selectedFoodId
+      ? inventory[selectedFoodId] ?? 0
+      : 0;
+
+  const totalFood =
+    Object.values(inventory).reduce(
+      (sum, quantity) =>
+        sum + quantity,
+      0,
+    );
+
+  return (
+    <>
+      <SubHeader
+        title={`Feed ${companionName}`}
+        onBack={onBack}
+      />
+
+      <View style={styles.subHero}>
+        <View style={styles.smallOrb}>
+          <Image
+            source={companionImage}
+            resizeMode="contain"
+            style={styles.subHeroImage}
+          />
+        </View>
+
+        <Text style={styles.subHeroTitle}>
+          Companion Food
+        </Text>
+
+        <Text style={styles.subHeroText}>
+          Earn food while exploring or
+          purchase supplies with Explorer Coins.
+        </Text>
+      </View>
+
+      <Pressable
+        onPress={() =>
+          expoRouter.push('/explorer-coin-shop')
+        }
+        style={({ pressed }) => [
+          styles.coinWalletCard,
+          pressed
+            ? styles.coinWalletCardPressed
+            : undefined,
+        ]}
+      >
+        <View style={styles.coinWalletIcon}>
+          <Image
+            source={explorerCoinImage}
+            resizeMode="contain"
+            style={styles.coinWalletImage}
+          />
+        </View>
+
+        <View style={styles.coinWalletCopy}>
+          <Text style={styles.coinWalletLabel}>
+            EXPLORER COINS
+          </Text>
+
+          <Text style={styles.coinWalletBalance}>
+            {coinBalance.toLocaleString()}
+          </Text>
+
+          <Text style={styles.coinWalletShopHint}>
+            Tap to get more coins
+          </Text>
+        </View>
+
+        <Ionicons
+          name="chevron-forward"
+          size={20}
+          color="#FFD76A"
+        />
+      </Pressable>
+
+      <View style={styles.foodTabs}>
+        <Pressable
+          onPress={() =>
+            onPanelChange('inventory')
+          }
+          style={[
+            styles.foodTabButton,
+            foodPanel === 'inventory'
+              ? styles.foodTabButtonActive
+              : undefined,
+          ]}
+        >
+          <Ionicons
+            name="restaurant-outline"
+            size={16}
+            color={
+              foodPanel === 'inventory'
+                ? '#05000B'
+                : '#A99BB5'
+            }
+          />
+
+          <Text
+            style={[
+              styles.foodTabText,
+              foodPanel === 'inventory'
+                ? styles.foodTabTextActive
+                : undefined,
+            ]}
+          >
+            INVENTORY
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() =>
+            onPanelChange('shop')
+          }
+          style={[
+            styles.foodTabButton,
+            foodPanel === 'shop'
+              ? styles.foodTabButtonActive
+              : undefined,
+          ]}
+        >
+          <Ionicons
+            name="bag-handle-outline"
+            size={16}
+            color={
+              foodPanel === 'shop'
+                ? '#05000B'
+                : '#A99BB5'
+            }
+          />
+
+          <Text
+            style={[
+              styles.foodTabText,
+              foodPanel === 'shop'
+                ? styles.foodTabTextActive
+                : undefined,
+            ]}
+          >
+            SHOP
+          </Text>
+        </Pressable>
+      </View>
+
+      {foodPanel === 'inventory' ? (
+        <>
+          <View style={styles.noticeCard}>
+            <Ionicons
+              name="information-circle-outline"
+              size={19}
+              color="#62E7FF"
+            />
+
+            <Text style={styles.noticeText}>
+              Feed owned food to improve Hunger,
+              Happiness, Health, Bond, Growth HP, and
+              earn capped Explorer Score.
+            </Text>
+          </View>
+
+          <View style={styles.foodSectionHeader}>
+            <Text style={styles.sectionTitle}>
+              FOOD COLLECTION
+            </Text>
+
+            <Text style={styles.foodCountText}>
+              {inventoryLoading
+                ? 'SYNCING...'
+                : `${totalFood} ITEMS`}
+            </Text>
+          </View>
+
+          <View style={styles.foodGrid}>
+            {FOOD_PREVIEWS.map(
+              (food) => {
+                const quantity =
+                  inventory[food.id] ?? 0;
+
+                const locked =
+                  quantity <= 0;
+
+                const selected =
+                  selectedFoodId ===
+                  food.id;
+
+                return (
+                  <Pressable
+                    key={food.id}
+                    onPress={() =>
+                      onSelectFood(food.id)
+                    }
+                    style={[
+                      styles.foodCard,
+                      selected
+                        ? styles.foodCardSelected
+                        : undefined,
+                      locked
+                        ? styles.foodCardLocked
+                        : undefined,
+                    ]}
+                  >
+                    <View
+                      style={
+                        styles.foodQuantityBadge
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.foodQuantityText
+                        }
+                      >
+                        x{quantity}
+                      </Text>
+                    </View>
+
+                    <View
+                      style={
+                        styles.foodImageWrap
+                      }
+                    >
+                      <Image
+                        source={food.source}
+                        resizeMode="contain"
+                        style={[
+                          styles.foodImage,
+                          locked
+                            ? styles.foodImageLocked
+                            : undefined,
+                        ]}
+                      />
+                    </View>
+
+                    <Text
+                      numberOfLines={1}
+                      style={styles.foodName}
+                    >
+                      {food.name}
+                    </Text>
+
+                    <Text
+                      style={
+                        styles.foodCategory
+                      }
+                    >
+                      {food.category}
+                    </Text>
+
+                    <FoodRarity
+                      rarity={food.rarity}
+                    />
+
+                    <View
+                      style={
+                        styles.foodRewardRow
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.foodHpText
+                        }
+                      >
+                        +{food.hp} HP
+                      </Text>
+
+                      <Text
+                        style={
+                          styles.foodXpText
+                        }
+                      >
+                        Up to +20 Score
+                      </Text>
+                    </View>
+
+                    {locked ? (
+                      <View
+                        style={
+                          styles.lockedBadge
+                        }
+                      >
+                        <Ionicons
+                          name="lock-closed"
+                          size={10}
+                          color="#A99BB5"
+                        />
+
+                        <Text
+                          style={
+                            styles.lockedBadgeText
+                          }
+                        >
+                          LOCKED
+                        </Text>
+                      </View>
+                    ) : selected ? (
+                      <View
+                        style={
+                          styles.selectedBadge
+                        }
+                      >
+                        <Ionicons
+                          name="checkmark"
+                          size={12}
+                          color="#05000B"
+                        />
+
+                        <Text
+                          style={
+                            styles.selectedBadgeText
+                          }
+                        >
+                          SELECTED
+                        </Text>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                );
+              },
+            )}
+          </View>
+
+          {selectedFood ? (
+            <View
+              style={
+                styles.selectedFoodSummary
+              }
+            >
+              <Image
+                source={selectedFood.source}
+                resizeMode="contain"
+                style={
+                  styles.selectedFoodImage
+                }
+              />
+
+              <View
+                style={
+                  styles.selectedFoodCopy
+                }
+              >
+                <Text
+                  style={
+                    styles.selectedFoodName
+                  }
+                >
+                  {selectedFood.name}
+                </Text>
+
+                <Text
+                  style={
+                    styles.selectedFoodDetail
+                  }
+                >
+                  +{selectedFood.hp} Growth HP
+                  {' • '}
+                  Up to +20 Explorer Score
+                </Text>
+
+                <Text
+                  style={
+                    styles.selectedFoodQuantity
+                  }
+                >
+                  x{selectedQuantity} available
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          <Pressable
+            disabled={
+              !selectedFoodId ||
+              selectedQuantity <= 0 ||
+              isFeeding
+            }
+            onPress={onFeed}
+            style={[
+              styles.primaryButton,
+              (
+                !selectedFoodId ||
+                selectedQuantity <= 0 ||
+                isFeeding
+              )
+                ? styles.feedDisabled
+                : undefined,
+            ]}
+          >
+            <Ionicons
+              name="restaurant"
+              size={18}
+              color="#FFFFFF"
+            />
+
+            <Text
+              style={
+                styles.primaryButtonText
+              }
+            >
+              {isFeeding
+                ? 'FEEDING...'
+                : 'FEED'}
+            </Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <View style={styles.noticeCard}>
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={19}
+              color="#62E7FF"
+            />
+
+            <Text style={styles.noticeText}>
+              Prices are controlled by the
+              Mission Trails server. Mythic food
+              stays exclusive to missions and events.
+            </Text>
+          </View>
+
+          <View style={styles.foodSectionHeader}>
+            <Text style={styles.sectionTitle}>
+              FOOD SHOP
+            </Text>
+
+            <Text style={styles.foodCountText}>
+              {shopLoading
+                ? 'LOADING...'
+                : 'BUY WITH COINS'}
+            </Text>
+          </View>
+
+          <View style={styles.foodGrid}>
+            {FOOD_PREVIEWS.map(
+              (food) => {
+                const shopItem =
+                  shop[food.id];
+
+                const price =
+                  shopItem?.shop_price ??
+                  null;
+
+                const purchasable =
+                  Boolean(
+                    shopItem?.purchasable &&
+                    price !== null,
+                  );
+
+                const owned =
+                  inventory[food.id] ?? 0;
+
+                const buying =
+                  buyingFoodId ===
+                  food.id;
+
+                const canAfford =
+                  price !== null &&
+                  coinBalance >= price;
+
+                return (
+                  <View
+                    key={food.id}
+                    style={[
+                      styles.foodCard,
+                      styles.shopFoodCard,
+                      !purchasable
+                        ? styles.shopExclusiveCard
+                        : undefined,
+                    ]}
+                  >
+                    <View
+                      style={
+                        styles.foodQuantityBadge
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.foodQuantityText
+                        }
+                      >
+                        x{owned}
+                      </Text>
+                    </View>
+
+                    <View
+                      style={
+                        styles.foodImageWrap
+                      }
+                    >
+                      <Image
+                        source={food.source}
+                        resizeMode="contain"
+                        style={
+                          styles.foodImage
+                        }
+                      />
+                    </View>
+
+                    <Text
+                      numberOfLines={1}
+                      style={styles.foodName}
+                    >
+                      {food.name}
+                    </Text>
+
+                    <Text
+                      style={
+                        styles.foodCategory
+                      }
+                    >
+                      {food.category}
+                    </Text>
+
+                    <FoodRarity
+                      rarity={food.rarity}
+                    />
+
+                    <View
+                      style={
+                        styles.foodRewardRow
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.foodHpText
+                        }
+                      >
+                        +{food.hp} HP
+                      </Text>
+
+                      <Text
+                        style={
+                          styles.foodXpText
+                        }
+                      >
+                        Up to +20 Score
+                      </Text>
+                    </View>
+
+                    {purchasable &&
+                    price !== null ? (
+                      <>
+                        <View
+                          style={
+                            styles.shopPriceRow
+                          }
+                        >
+                          <Image
+                            source={explorerCoinImage}
+                            resizeMode="contain"
+                            style={styles.shopPriceCoin}
+                          />
+
+                          <Text
+                            style={
+                              styles.shopPrice
+                            }
+                          >
+                            {price.toLocaleString()}
+                          </Text>
+                        </View>
+
+                        <Pressable
+                          disabled={
+                            buying ||
+                            !canAfford
+                          }
+                          onPress={() =>
+                            onBuy(food.id)
+                          }
+                          style={[
+                            styles.shopBuyButton,
+                            (
+                              buying ||
+                              !canAfford
+                            )
+                              ? styles.shopBuyButtonDisabled
+                              : undefined,
+                          ]}
+                        >
+                          <Text
+                            style={
+                              styles.shopBuyText
+                            }
+                          >
+                            {buying
+                              ? 'BUYING...'
+                              : canAfford
+                                ? 'BUY'
+                                : 'NEED COINS'}
+                          </Text>
+                        </Pressable>
+                      </>
+                    ) : (
+                      <View
+                        style={
+                          styles.exclusiveBadge
+                        }
+                      >
+                        <Ionicons
+                          name="diamond-outline"
+                          size={11}
+                          color="#FFD76A"
+                        />
+
+                        <Text
+                          style={
+                            styles.exclusiveText
+                          }
+                        >
+                          MISSION / EVENT
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              },
+            )}
+          </View>
+        </>
+      )}
+
+      {feedMessage ? (
+        <Text style={styles.helperMessage}>
+          {feedMessage}
+        </Text>
+      ) : null}
+    </>
+  );
+}
+
+
+function FoodRarity({
+  rarity,
+}: {
+  rarity:
+    | 'common'
+    | 'uncommon'
+    | 'rare'
+    | 'mythic';
+}) {
+  return (
+    <Text
+      style={[
+        styles.foodRarity,
+        rarity === 'mythic'
+          ? styles.foodRarityMythic
+          : rarity === 'rare'
+            ? styles.foodRarityRare
+            : rarity === 'uncommon'
+              ? styles.foodRarityUncommon
+              : undefined,
+      ]}
+    >
+      {rarity.toUpperCase()}
+    </Text>
+  );
+}
+
+
+function EvolveView({
+  companionName,
+  element,
+  rarity,
+  bondPercent,
+  onBack,
+}: {
+  companionName: string;
+  element: string | null;
+  rarity: string | null;
+  bondPercent: number;
+  onBack: () => void;
+}) {
+  return (
+    <>
+      <SubHeader
+        title={`Evolve ${companionName}`}
+        onBack={onBack}
+      />
+
+      <View style={styles.evolutionStage}>
+        <Text style={styles.evolutionLabel}>
+          CURRENT FORM
+        </Text>
+
+        <View style={styles.evolutionOrb}>
+          <Image
+            source={companionImage}
+            resizeMode="contain"
+            style={styles.evolutionImage}
+          />
+        </View>
+
+        <Text style={styles.evolutionName}>
+          {companionName}
+        </Text>
+
+        <Text style={styles.evolutionMeta}>
+          {rarity ?? 'Unknown rarity'}
+          {' • '}
+          {capitalize(element)}
+        </Text>
+
+        <View style={styles.evolutionConnector}>
+          <View style={styles.connectorDot} />
+          <View style={styles.connectorLine} />
+          <Ionicons
+            name="chevron-down"
+            size={24}
+            color="#C65CFF"
+          />
+        </View>
+
+        <Text style={styles.evolutionLabel}>
+          NEXT FORM
+        </Text>
+
+        <View style={styles.lockedEvolutionOrb}>
+          <Ionicons
+            name="lock-closed"
+            size={34}
+            color="#8E779C"
+          />
+        </View>
+
+        <Text style={styles.lockedEvolutionText}>
+          Evolution path not configured
+        </Text>
+      </View>
+
+      <View style={styles.progressCard}>
+        <View style={styles.progressHeader}>
+          <Text style={styles.progressTitle}>
+            Current Bond
+          </Text>
+          <Text style={styles.progressValue}>
+            {bondPercent}%
+          </Text>
+        </View>
+
+        <Meter
+          value={bondPercent}
+          color="#C65CFF"
+        />
+
+        <Text style={styles.progressDescription}>
+          Bond is real companion progress. We will create
+          separate evolution requirements instead of pretending
+          Bond automatically equals evolution progress.
+        </Text>
+      </View>
+
+      <Pressable
+        onPress={() =>
+          Alert.alert(
+            'Evolution System',
+            'The evolution UI is ready. Next we can define each companion evolution tree and unlock requirements.',
+          )
+        }
+        style={styles.primaryButton}
+      >
+        <Ionicons
+          name="sparkles"
+          size={18}
+          color="#FFFFFF"
+        />
+        <Text style={styles.primaryButtonText}>
+          VIEW EVOLUTION SYSTEM
+        </Text>
+      </Pressable>
+    </>
+  );
+}
+
+function PlayView({
+  companionName,
+  onBack,
+}: {
+  companionName: string;
+  onBack: () => void;
+}) {
+  const router = useRouter();
+
+  console.log(
+    'PLAY_GAMES RUNTIME:',
+    PLAY_GAMES.map((game) => ({
+      id: game.id,
+      title: game.title,
+      route: game.route,
+    })),
+  );
+
+  return (
+    <>
+      <SubHeader
+        title="Play Together"
+        onBack={onBack}
+      />
+
+      <View style={styles.subHero}>
+        <View style={styles.smallOrb}>
+          <Image
+            source={companionImage}
+            resizeMode="contain"
+            style={styles.subHeroImage}
+          />
+        </View>
+
+        <Text style={styles.subHeroTitle}>
+          Play with {companionName}
+        </Text>
+
+        <Text style={styles.subHeroText}>
+          Play with your companion and earn rewards.
+        </Text>
+      </View>
+
+      <View style={styles.gameGrid}>
+        {PLAY_GAMES.map((game) => (
+          <Pressable
+            key={game.id}
+            onPress={() =>
+              router.push(game.route)
+            }
+            style={styles.gameCard}
+          >
+            <View style={styles.gameIcon}>
+              <Ionicons
+                name={game.icon}
+                size={31}
+                color="#FFFFFF"
+              />
+            </View>
+
+            <Text style={styles.gameTitle}>
+              {game.title}
+            </Text>
+
+            <Text style={styles.gameSubtitle}>
+              {game.subtitle}
+            </Text>
+
+            <View style={styles.gamePlayBadge}>
+              <Ionicons
+                name="play"
+                size={11}
+                color="#05000B"
+              />
+              <Text style={styles.gamePlayText}>
+                PLAY
+              </Text>
+            </View>
+          </Pressable>
+        ))}
+      </View>
+    </>
+  );
+}
+
+function ProfileView({
+  companionName,
+  element,
+  rarity,
+  description,
+  playerLevel,
+  totalXp,
+  bondPercent,
+  bondTier,
+  energyPercent,
+  todayDistanceKm,
+  todaySteps,
+  onBack,
+}: {
+  companionName: string;
+  element: string | null;
+  rarity: string | null;
+  description: string | null;
+  playerLevel: number;
+  totalXp: number;
+  bondPercent: number;
+  bondTier: number;
+  energyPercent: number;
+  todayDistanceKm: number;
+  todaySteps: number;
+  onBack: () => void;
+}) {
+  return (
+    <>
+      <SubHeader
+        title="Companion Profile"
+        onBack={onBack}
+      />
+
+      <View style={styles.profileHero}>
+        <View style={styles.profileOrb}>
+          <Image
+            source={companionImage}
+            resizeMode="contain"
+            style={styles.profileImage}
+          />
+        </View>
+
+        <Text style={styles.profileName}>
+          {companionName}
+        </Text>
+
+        <Text style={styles.profileMeta}>
+          {rarity ?? 'Companion'}
+          {' • '}
+          {capitalize(element)}
+        </Text>
+
+        {description ? (
+          <Text style={styles.profileDescription}>
+            {description}
+          </Text>
+        ) : null}
+      </View>
+
+      <View style={styles.profileStats}>
+        <ProfileStat
+          icon="star-outline"
+          label="Explorer Level"
+          value={String(playerLevel)}
+          color="#F5CA61"
+        />
+
+        <ProfileStat
+          icon="diamond-outline"
+          label="Lifetime XP"
+          value={totalXp.toLocaleString()}
+          color="#C869FF"
+        />
+
+        <ProfileStat
+          icon="heart"
+          label="Bond"
+          value={`${bondPercent}%`}
+          color="#FF52CF"
+        />
+
+        <ProfileStat
+          icon="ribbon-outline"
+          label="Bond Tier"
+          value={String(bondTier)}
+          color="#B66BFF"
+        />
+
+        <ProfileStat
+          icon="flash"
+          label="Energy"
+          value={`${energyPercent}%`}
+          color="#53E8FF"
+        />
+
+        <ProfileStat
+          icon="walk-outline"
+          label="Today"
+          value={`${todayDistanceKm.toFixed(2)} km`}
+          color="#72F2C3"
+        />
+
+        <ProfileStat
+          icon="footsteps"
+          label="Steps Today"
+          value={todaySteps.toLocaleString()}
+          color="#FF9A58"
+        />
+      </View>
+    </>
+  );
+}
+
+function SkinsView({
+  companionName,
+  onBack,
+}: {
+  companionName: string;
+  onBack: () => void;
+}) {
+  return (
+    <>
+      <SubHeader
+        title="Companion Skins"
+        onBack={onBack}
+      />
+
+      <Text style={styles.sectionDescription}>
+        You currently only have one Companion visual asset, so
+        Mission Trails will use that as the Default skin until
+        you add real skin artwork.
+      </Text>
+
+      <View style={styles.skinGrid}>
+        <View style={[styles.skinCard, styles.skinCardActive]}>
+          <View style={styles.skinImageWrap}>
+            <Image
+              source={companionImage}
+              resizeMode="contain"
+              style={styles.skinImage}
+            />
+          </View>
+
+          <Text style={styles.skinName}>
+            Default
+          </Text>
+
+          <Text
+            numberOfLines={1}
+            style={styles.skinCompanionName}
+          >
+            {companionName}
+          </Text>
+
+          <View style={styles.equippedBadge}>
+            <Ionicons
+              name="checkmark"
+              size={12}
+              color="#05000B"
+            />
+            <Text style={styles.equippedText}>
+              EQUIPPED
+            </Text>
+          </View>
+        </View>
+
+        {['Skin Slot 2', 'Skin Slot 3', 'Skin Slot 4', 'Skin Slot 5', 'Skin Slot 6'].map(
+          (skin) => (
+            <View
+              key={skin}
+              style={styles.skinCard}
+            >
+              <View style={styles.lockedSkinIcon}>
+                <Ionicons
+                  name="lock-closed"
+                  size={25}
+                  color="#776D7D"
+                />
+              </View>
+
+              <Text style={styles.skinName}>
+                {skin}
+              </Text>
+
+              <Text style={styles.skinLockedText}>
+                No artwork yet
+              </Text>
+            </View>
+          ),
+        )}
+      </View>
+    </>
+  );
+}
+
+function SubHeader({
+  title,
+  onBack,
+}: {
+  title: string;
+  onBack: () => void;
+}) {
+  return (
+    <View style={styles.subHeader}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Back to Companion home"
+        onPress={onBack}
+        style={styles.backButton}
+      >
+        <Ionicons
+          name="chevron-back"
+          size={23}
+          color="#FFFFFF"
+        />
+      </Pressable>
+
+      <Text
+        numberOfLines={1}
+        style={styles.subHeaderTitle}
+      >
+        {title}
+      </Text>
+
+      <View style={styles.headerSpacer} />
+    </View>
+  );
+}
+
+function ActionButton({
+  icon,
+  label,
+  accent,
+  onPress,
+}: {
+  icon: IoniconName;
+  label: string;
+  accent: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={styles.actionButton}
+    >
+      <View
+        style={[
+          styles.actionIcon,
+          {
+            borderColor: accent,
+            shadowColor: accent,
+          },
+        ]}
+      >
+        <Ionicons
+          name={icon}
+          size={27}
+          color={accent}
+        />
+      </View>
+
+      <Text style={styles.actionLabel}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function ProfileStat({
+  icon,
+  label,
+  value,
+  color,
+}: {
+  icon: IoniconName;
+  label: string;
+  value: string;
+  color: string;
+}) {
+  return (
+    <View style={styles.profileStat}>
+      <Ionicons
+        name={icon}
+        size={21}
+        color={color}
+      />
+
+      <View style={styles.profileStatCopy}>
+        <Text style={styles.profileStatLabel}>
+          {label}
+        </Text>
+
+        <Text style={styles.profileStatValue}>
+          {value}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function Meter({
+  value,
+  color,
+}: {
+  value: number;
+  color: string;
+}) {
+  const safeValue =
+    Math.min(100, Math.max(0, value));
+
+  return (
+    <View
+      accessibilityRole="progressbar"
+      accessibilityValue={{
+        min: 0,
+        max: 100,
+        now: safeValue,
+      }}
+      style={styles.meterTrack}
+    >
+      <View
+        style={[
+          styles.meterFill,
+          {
+            width: `${safeValue}%`,
+            backgroundColor: color,
+          },
+        ]}
+      />
+    </View>
+  );
+}
+
+function capitalize(
+  value: string | null | undefined,
+) {
+  if (!value) return 'Unknown';
+
+  return (
+    value.charAt(0).toUpperCase() +
+    value.slice(1)
+  );
+}
+
+
+// =========================================================
+// COMPANION HOME
+// These styles belong only to the main Companion Home.
+// Feed, Evolve, Play, Profile, and Skins keep their
+// existing styles and behavior.
+// =========================================================
+const homeStyles = StyleSheet.create({
+  identityRow: {
+    width: '100%',
+    position: 'relative',
+  },
+
+  identityCard: {
+    width: '100%',
+    minHeight: 118,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#493552',
+    backgroundColor: 'rgba(8, 5, 17, 0.96)',
+    paddingLeft: 18,
+    paddingRight: 78,
+    paddingVertical: 16,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    gap: 10,
+  },
+
+  identityCopy: {
+    width: '100%',
+    paddingRight: 0,
+  },
+
+  identityName: {
+    color: '#FFFFFF',
+    fontSize: 23,
+    lineHeight: 28,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+  },
+
+  identitySubtitle: {
+    color: '#00E5FF',
+    fontSize: 13,
+    marginTop: 7,
+  },
+
+  bondBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+
+  bondLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  bondPercent: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '700',
+  },
+
+  bondTierBadge: {
+    borderWidth: 1,
+    borderColor: '#733488',
+    backgroundColor: 'rgba(82, 19, 105, 0.34)',
+    borderRadius: 99,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+
+  bondTierText: {
+    color: '#E3B9EF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
+  menuButton: {
+    position: 'absolute',
+    top: 15,
+    right: 14,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: '#D53FFF',
+    backgroundColor: 'rgba(17, 5, 27, 0.98)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+
+  dropdownMenu: {
+    alignSelf: 'flex-end',
+    width: 260,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: '#5B286B',
+    backgroundColor: '#0C0512',
+    overflow: 'hidden',
+    marginTop: -8,
+  },
+
+  dropdownRow: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 11,
+  },
+
+  dropdownText: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  dropdownDivider: {
+    height: 1,
+    backgroundColor: '#24152C',
+  },
+
+  speechBubble: {
+    alignSelf: 'center',
+    width: '92%',
+    maxWidth: 360,
+    minHeight: 64,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#D44AFF',
+    backgroundColor: 'rgba(36, 5, 53, 0.95)',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  speechText: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 15,
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+
+  heroLayout: {
+    width: '100%',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 18,
+  },
+
+  orbColumn: {
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+  },
+
+  orbBorder: {
+    width: '82%',
+    maxWidth: 310,
+    aspectRatio: 1,
+    borderRadius: 999,
+    padding: 3,
+    alignSelf: 'center',
+  },
+
+  orbMiddle: {
+    flex: 1,
+    borderRadius: 999,
+    backgroundColor: '#05020B',
+    padding: 9,
+  },
+
+  orbInner: {
+    flex: 1,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(45, 218, 255, 0.62)',
+    backgroundColor: 'rgba(6, 2, 12, 0.98)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  companionImage: {
+    width: '72%',
+    height: '72%',
+  },
+
+  emptyCompanion: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 11,
+  },
+
+  emptyTitle: {
+    color: '#E4D7E9',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+
+  emptySubtitle: {
+    color: '#817488',
+    fontSize: 12,
+  },
+
+  petMessage: {
+    marginTop: 12,
+    borderRadius: 99,
+    borderWidth: 1,
+    borderColor: '#804194',
+    backgroundColor: 'rgba(74, 20, 91, 0.62)',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+  },
+
+  petMessageText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  statusRow: {
+    width: '100%',
+    maxWidth: 350,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 14,
+  },
+
+  statusPill: {
+    flexBasis: '30%',
+    flexGrow: 1,
+    maxWidth: 112,
+    minWidth: 100,
+    minHeight: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#5C2B67',
+    backgroundColor: 'rgba(15, 6, 20, 0.94)',
+    paddingHorizontal: 7,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+
+  statusValue: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+
+  statusLabel: {
+    color: '#A89AAC',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+
+  sideColumn: {
+    width: '92%',
+    maxWidth: 360,
+    gap: 12,
+  },
+
+  infoCard: {
+    minHeight: 118,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: '#35273E',
+    backgroundColor: 'rgba(9, 6, 18, 0.97)',
+    padding: 19,
+  },
+
+  infoEyebrow: {
+    color: '#00E5FF',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+
+  infoMain: {
+    color: '#FFFFFF',
+    fontSize: 21,
+    fontWeight: '600',
+    marginTop: 13,
+  },
+
+  infoSub: {
+    color: '#B1A5B7',
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 8,
+  },
+
+  evolutionPercent: {
+    color: '#FF34AD',
+    fontSize: 31,
+    fontWeight: '900',
+    marginTop: 9,
+  },
+
+  progressTrack: {
+    height: 8,
+    borderRadius: 99,
+    borderWidth: 1,
+    borderColor: '#30203B',
+    backgroundColor: '#120C18',
+    overflow: 'hidden',
+    marginTop: 16,
+  },
+
+  progressFill: {
+    height: '100%',
+    borderRadius: 99,
+  },
+
+  todayCard: {
+    width: '92%',
+    minWidth: 0,
+    maxWidth: 360,
+    alignSelf: 'center',
+    minHeight: 96,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#35283D',
+    backgroundColor: 'rgba(9, 6, 18, 0.97)',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+  },
+
+  todayIcon: {
+    width: 55,
+    alignItems: 'center',
+  },
+
+  todayCopy: {
+    flex: 1,
+  },
+
+  todayEyebrow: {
+    color: '#00E5FF',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+
+  todayDistance: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '900',
+    marginTop: 3,
+  },
+
+  todayMessage: {
+    color: '#9E92A4',
+    fontSize: 11,
+    marginTop: 3,
+  },
+
+  stepsBlock: {
+    alignItems: 'center',
+    minWidth: 55,
+  },
+
+  stepsValue: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+
+  stepsLabel: {
+    color: '#61ECFF',
+    fontSize: 9,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+
+  todayArrow: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#685674',
+    backgroundColor: '#181021',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  actionPanel: {
+    width: '100%',
+    marginBottom: 115,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 14,
+    borderRadius: 23,
+    borderWidth: 1,
+    borderColor: '#17101F',
+    backgroundColor: 'rgba(8, 5, 14, 0.97)',
+    padding: 16,
+  },
+
+  actionButton: {
+    flexGrow: 1,
+    flexBasis: '21%',
+    minWidth: 130,
+    minHeight: 118,
+    borderRadius: 18,
+    borderWidth: 1,
+    backgroundColor: 'rgba(17, 7, 27, 0.96)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+  },
+
+  actionLabel: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  pressed: {
+    opacity: 0.72,
+    transform: [
+      {
+        scale: 0.98,
+      },
+    ],
+  },
+});
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: '#030007',
+  },
+
+  backgroundGlowOne: {
+    position: 'absolute',
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: 'rgba(127, 25, 213, 0.13)',
+    top: 80,
+    left: -130,
+  },
+
+  backgroundGlowTwo: {
+    position: 'absolute',
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: 'rgba(0, 217, 255, 0.08)',
+    top: 330,
+    right: -150,
+  },
+
+  content: {
+    paddingHorizontal: 15,
+    gap: 14,
+  },
+
+  bottomNavigation: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    zIndex: 40,
+  },
+
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  headerCopy: {
+    flex: 1,
+  },
+
+  eyebrow: {
+    color: '#FF56DE',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+  },
+
+  heroName: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '900',
+    marginTop: 3,
+  },
+
+  heroSubtitle: {
+    color: '#AFA3BB',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+
+  menuButton: {
+    width: 43,
+    height: 43,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#6B257D',
+    backgroundColor: 'rgba(17, 4, 27, 0.94)',
+  },
+
+  dropdownMenu: {
+    borderWidth: 1,
+    borderColor: '#67287C',
+    backgroundColor: 'rgba(12, 3, 22, 0.98)',
+    borderRadius: 17,
+    overflow: 'hidden',
+  },
+
+  dropdownRow: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    gap: 11,
+  },
+
+  dropdownText: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  dropdownDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#31203A',
+    marginHorizontal: 14,
+  },
+
+  speechBubble: {
+    alignSelf: 'center',
+    maxWidth: 290,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#67267D',
+    backgroundColor: 'rgba(24, 5, 36, 0.9)',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+
+  speechText: {
+    flexShrink: 1,
+    color: '#E7DDEA',
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: '700',
+  },
+
+  companionStage: {
+    alignItems: 'center',
+    paddingTop: 5,
+    paddingBottom: 2,
+  },
+
+  orbOuter: {
+    width: 235,
+    height: 235,
+    borderRadius: 118,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(200, 74, 255, 0.22)',
+    backgroundColor: 'rgba(103, 26, 151, 0.07)',
+  },
+
+  orbMiddle: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(81, 223, 255, 0.38)',
+    backgroundColor: 'rgba(12, 8, 34, 0.65)',
+    shadowColor: '#9D3CFF',
+    shadowOpacity: 0.65,
+    shadowRadius: 28,
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+  },
+
+  orbInner: {
+    width: 164,
+    height: 164,
+    borderRadius: 82,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#BE4CFF',
+    backgroundColor: 'rgba(28, 4, 47, 0.94)',
+    shadowColor: '#49E9FF',
+    shadowOpacity: 0.65,
+    shadowRadius: 20,
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+  },
+
+  companionHeroImage: {
+    width: 128,
+    height: 128,
+  },
+
+  petMessage: {
+    marginTop: -12,
+    borderWidth: 1,
+    borderColor: '#FF4ED8',
+    backgroundColor: '#200928',
+    borderRadius: 99,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+
+  petMessageText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+
+  statusPills: {
+    marginTop: 17,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 7,
+  },
+
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#462151',
+    backgroundColor: 'rgba(16, 5, 25, 0.92)',
+    borderRadius: 99,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    gap: 5,
+  },
+
+  statusPillValue: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+
+  statusPillLabel: {
+    color: '#817689',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+
+  twoColumnGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+
+  infoCard: {
+    flex: 1,
+    minHeight: 126,
+    borderWidth: 1,
+    borderColor: '#40204D',
+    backgroundColor: 'rgba(11, 4, 20, 0.92)',
+    borderRadius: 18,
+    padding: 13,
+  },
+
+  infoCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+
+  infoEyebrow: {
+    color: '#B8ACBF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+
+  infoMain: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+    marginTop: 13,
+  },
+
+  infoSub: {
+    color: '#8F8497',
+    fontSize: 9,
+    lineHeight: 13,
+    marginTop: 3,
+    minHeight: 25,
+  },
+
+  thinTrack: {
+    marginTop: 9,
+    height: 5,
+    borderRadius: 99,
+    overflow: 'hidden',
+    backgroundColor: '#27172E',
+  },
+
+  thinFill: {
+    height: '100%',
+    borderRadius: 99,
+  },
+
+  todayCard: {
+    minHeight: 108,
+    borderWidth: 1,
+    borderColor: '#542670',
+    borderRadius: 19,
+    padding: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+
+  todayEyebrow: {
+    color: '#EEBDFF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+  },
+
+  todayDistance: {
+    color: '#FFFFFF',
+    fontSize: 26,
+    fontWeight: '900',
+    marginTop: 3,
+  },
+
+  todayMessage: {
+    color: '#B6A9C0',
+    fontSize: 9,
+    marginTop: 3,
+    maxWidth: 205,
+  },
+
+  todaySteps: {
+    marginLeft: 'auto',
+    alignItems: 'center',
+    minWidth: 74,
+  },
+
+  todayStepsValue: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
+    marginTop: 3,
+  },
+
+  todayStepsLabel: {
+    color: '#7DADBA',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+
+  actionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+
+  actionButton: {
+    width: '48.5%',
+    minHeight: 94,
+    borderWidth: 1,
+    borderColor: '#43204D',
+    backgroundColor: 'rgba(11, 4, 19, 0.93)',
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+
+  actionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#110719',
+    shadowOpacity: 0.45,
+    shadowRadius: 11,
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+  },
+
+  actionLabel: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+
+  syncMessage: {
+    flexDirection: 'row',
+    gap: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#5E4728',
+    backgroundColor: 'rgba(45, 30, 9, 0.75)',
+    padding: 12,
+  },
+
+  syncMessageText: {
+    flex: 1,
+    color: '#F0DBB4',
+    fontSize: 10,
+    lineHeight: 15,
+  },
+
+  subHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 45,
+  },
+
+  backButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#51215F',
+    backgroundColor: '#100519',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  subHeaderTitle: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 19,
+    fontWeight: '900',
+    textAlign: 'center',
+    paddingHorizontal: 8,
+  },
+
+  headerSpacer: {
+    width: 42,
+  },
+
+  subHero: {
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#4C205B',
+    backgroundColor: 'rgba(12, 3, 22, 0.88)',
+    borderRadius: 22,
+    padding: 20,
+  },
+
+  smallOrb: {
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#A847D3',
+    backgroundColor: '#160622',
+    shadowColor: '#7735FF',
+    shadowOpacity: 0.5,
+    shadowRadius: 17,
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+  },
+
+  subHeroImage: {
+    width: 96,
+    height: 96,
+  },
+
+  subHeroTitle: {
+    color: '#FFFFFF',
+    fontSize: 19,
+    fontWeight: '900',
+    marginTop: 13,
+  },
+
+  subHeroText: {
+    color: '#9F94A7',
+    fontSize: 10,
+    lineHeight: 15,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+
+  noticeCard: {
+    flexDirection: 'row',
+    gap: 9,
+    borderWidth: 1,
+    borderColor: '#235065',
+    backgroundColor: 'rgba(3, 31, 44, 0.72)',
+    borderRadius: 15,
+    padding: 12,
+  },
+
+  noticeText: {
+    flex: 1,
+    color: '#C4E8EF',
+    fontSize: 10,
+    lineHeight: 15,
+  },
+
+  sectionTitle: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+    marginTop: 4,
+  },
+
+  sectionDescription: {
+    color: '#ACA0B3',
+    fontSize: 11,
+    lineHeight: 17,
+  },
+
+  coinWalletCard: {
+    minHeight: 74,
+    borderWidth: 1,
+    borderColor: '#8A6424',
+    backgroundColor: 'rgba(39, 27, 5, 0.74)',
+    borderRadius: 18,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  coinWalletCardPressed: {
+    opacity: 0.78,
+    transform: [
+      {
+        scale: 0.99,
+      },
+    ],
+  },
+
+  coinWalletShopHint: {
+    color: '#A98CB8',
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+
+  coinWalletIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,215,106,0.38)',
+    backgroundColor: 'rgba(255,215,106,0.09)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  coinWalletImage: {
+    width: 28,
+    height: 28,
+  },
+
+  shopPriceCoin: {
+    width: 14,
+    height: 14,
+  },
+
+  coinWalletCopy: {
+    flex: 1,
+    gap: 2,
+  },
+
+  coinWalletLabel: {
+    color: '#CDBA83',
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+
+  coinWalletBalance: {
+    color: '#FFD76A',
+    fontSize: 23,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+
+  foodTabs: {
+    minHeight: 48,
+    padding: 4,
+    borderRadius: 16,
+    flexDirection: 'row',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: '#40204C',
+    backgroundColor: 'rgba(7,2,13,0.9)',
+  },
+
+  foodTabButton: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+
+  foodTabButtonActive: {
+    backgroundColor: '#5BE9FF',
+  },
+
+  foodTabText: {
+    color: '#A99BB5',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+
+  foodTabTextActive: {
+    color: '#05000B',
+  },
+
+  shopFoodCard: {
+    minHeight: 224,
+  },
+
+  shopExclusiveCard: {
+    borderColor: '#685326',
+    backgroundColor: 'rgba(29,21,5,0.54)',
+  },
+
+  shopPriceRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+
+  shopPrice: {
+    color: '#FFD76A',
+    fontSize: 12,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+
+  shopBuyButton: {
+    width: '100%',
+    minHeight: 34,
+    marginTop: 8,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: '#FFD76A',
+    backgroundColor: 'rgba(132,89,0,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+
+  shopBuyButtonDisabled: {
+    opacity: 0.42,
+  },
+
+  shopBuyText: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+
+  exclusiveBadge: {
+    width: '100%',
+    minHeight: 34,
+    marginTop: 8,
+    paddingHorizontal: 5,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: '#8A6424',
+    backgroundColor: 'rgba(70,48,5,0.44)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+
+  exclusiveText: {
+    color: '#FFD76A',
+    fontSize: 7,
+    fontWeight: '900',
+    letterSpacing: 0.35,
+  },
+
+  foodGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+
+  foodCard: {
+    width: '48.5%',
+    minHeight: 172,
+    borderWidth: 1,
+    borderColor: '#452050',
+    backgroundColor: 'rgba(11, 4, 20, 0.9)',
+    borderRadius: 18,
+    padding: 11,
+    alignItems: 'center',
+  },
+
+  foodCardSelected: {
+    borderColor: '#5BE9FF',
+    backgroundColor: 'rgba(12, 43, 52, 0.85)',
+  },
+
+  foodCardLocked: {
+    opacity: 0.58,
+    borderColor: '#302036',
+  },
+
+  foodImageLocked: {
+    opacity: 0.48,
+  },
+
+  foodSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+
+  foodCountText: {
+    color: '#62E7FF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+
+  foodQuantityBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 3,
+    minWidth: 31,
+    minHeight: 22,
+    paddingHorizontal: 7,
+    borderRadius: 99,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#55345F',
+    backgroundColor: 'rgba(5,0,11,0.92)',
+  },
+
+  foodQuantityText: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    fontWeight: '900',
+  },
+
+  foodRarity: {
+    color: '#B7AABF',
+    fontSize: 7,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+    marginTop: 4,
+  },
+
+  foodRarityUncommon: {
+    color: '#62E7FF',
+  },
+
+  foodRarityRare: {
+    color: '#C75DFF',
+  },
+
+  foodRarityMythic: {
+    color: '#FFD76A',
+  },
+
+  foodRewardRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  foodHpText: {
+    color: '#72F59A',
+    fontSize: 8,
+    fontWeight: '900',
+  },
+
+  foodXpText: {
+    color: '#FFD76A',
+    fontSize: 8,
+    fontWeight: '900',
+  },
+
+  lockedBadge: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 99,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#4B3A51',
+    backgroundColor: 'rgba(20,12,24,0.9)',
+  },
+
+  lockedBadgeText: {
+    color: '#A99BB5',
+    fontSize: 7,
+    fontWeight: '900',
+  },
+
+  selectedFoodSummary: {
+    minHeight: 92,
+    borderWidth: 1,
+    borderColor: '#5BE9FF',
+    backgroundColor: 'rgba(8,32,40,0.72)',
+    borderRadius: 18,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  selectedFoodImage: {
+    width: 68,
+    height: 68,
+  },
+
+  selectedFoodCopy: {
+    flex: 1,
+    gap: 4,
+  },
+
+  selectedFoodName: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  selectedFoodDetail: {
+    color: '#CDEFF5',
+    fontSize: 9,
+    lineHeight: 14,
+  },
+
+  selectedFoodQuantity: {
+    color: '#62E7FF',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+
+  feedDisabled: {
+    opacity: 0.42,
+  },
+
+  foodImageWrap: {
+    height: 91,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  foodImage: {
+    width: 84,
+    height: 84,
+  },
+
+  foodName: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+
+  foodCategory: {
+    color: '#93879B',
+    fontSize: 8,
+    marginTop: 2,
+  },
+
+  selectedBadge: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#5BE9FF',
+    borderRadius: 99,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+  },
+
+  selectedBadgeText: {
+    color: '#05000B',
+    fontSize: 7,
+    fontWeight: '900',
+  },
+
+  primaryButton: {
+    minHeight: 52,
+    borderRadius: 17,
+    backgroundColor: '#7B24D6',
+    borderWidth: 1,
+    borderColor: '#C75DFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+
+  helperMessage: {
+    color: '#BEB1C5',
+    fontSize: 10,
+    lineHeight: 15,
+    textAlign: 'center',
+  },
+
+  evolutionStage: {
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#4A1F59',
+    backgroundColor: 'rgba(11, 3, 20, 0.9)',
+    borderRadius: 22,
+    padding: 20,
+  },
+
+  evolutionLabel: {
+    color: '#8E8198',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+
+  evolutionOrb: {
+    width: 135,
+    height: 135,
+    borderRadius: 68,
+    marginTop: 12,
+    borderWidth: 2,
+    borderColor: '#B34FE9',
+    backgroundColor: '#160622',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  evolutionImage: {
+    width: 100,
+    height: 100,
+  },
+
+  evolutionName: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '900',
+    marginTop: 10,
+  },
+
+  evolutionMeta: {
+    color: '#B58FC9',
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+
+  evolutionConnector: {
+    height: 70,
+    alignItems: 'center',
+    marginVertical: 5,
+  },
+
+  connectorDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#C65CFF',
+    marginTop: 8,
+  },
+
+  connectorLine: {
+    width: 1,
+    flex: 1,
+    backgroundColor: '#603274',
+  },
+
+  lockedEvolutionOrb: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    marginTop: 11,
+    borderWidth: 1,
+    borderColor: '#3B2B42',
+    borderStyle: 'dashed',
+    backgroundColor: '#0E0911',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  lockedEvolutionText: {
+    color: '#817587',
+    fontSize: 10,
+    marginTop: 10,
+  },
+
+  progressCard: {
+    borderWidth: 1,
+    borderColor: '#4A245A',
+    backgroundColor: 'rgba(13, 4, 23, 0.9)',
+    borderRadius: 18,
+    padding: 15,
+  },
+
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+
+  progressTitle: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+
+  progressValue: {
+    color: '#D871FF',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+
+  progressDescription: {
+    color: '#93869B',
+    fontSize: 9,
+    lineHeight: 14,
+    marginTop: 10,
+  },
+
+  meterTrack: {
+    height: 8,
+    backgroundColor: '#281631',
+    borderRadius: 99,
+    overflow: 'hidden',
+    marginTop: 10,
+  },
+
+  meterFill: {
+    height: '100%',
+    borderRadius: 99,
+  },
+
+  gameGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+
+  gameCard: {
+    width: '100%',
+    minHeight: 210,
+    borderWidth: 1,
+    borderColor: '#4B2357',
+    backgroundColor: 'rgba(12, 4, 21, 0.92)',
+    borderRadius: 19,
+    padding: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  gameIcon: {
+    width: 82,
+    height: 82,
+    borderRadius: 25,
+    backgroundColor: '#4B1476',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#C74DFF',
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+  },
+
+  gameTitle: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+    marginTop: 11,
+  },
+
+  gameSubtitle: {
+    color: '#887E8F',
+    fontSize: 8,
+    marginTop: 2,
+  },
+
+  gamePlayBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#61E9FF',
+    borderRadius: 99,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 9,
+  },
+
+  gamePlayText: {
+    color: '#05000B',
+    fontSize: 7,
+    fontWeight: '900',
+  },
+
+  profileHero: {
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#51215F',
+    backgroundColor: 'rgba(12, 3, 22, 0.9)',
+    borderRadius: 22,
+    padding: 20,
+  },
+
+  profileOrb: {
+    width: 145,
+    height: 145,
+    borderRadius: 73,
+    borderWidth: 2,
+    borderColor: '#9F43D0',
+    backgroundColor: '#14051F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  profileImage: {
+    width: 110,
+    height: 110,
+  },
+
+  profileName: {
+    color: '#FFFFFF',
+    fontSize: 23,
+    fontWeight: '900',
+    marginTop: 12,
+  },
+
+  profileMeta: {
+    color: '#60E6FF',
+    fontSize: 10,
+    fontWeight: '800',
+    marginTop: 3,
+  },
+
+  profileDescription: {
+    color: '#A79CAC',
+    fontSize: 10,
+    lineHeight: 15,
+    textAlign: 'center',
+    marginTop: 11,
+  },
+
+  profileStats: {
+    gap: 8,
+  },
+
+  profileStat: {
+    minHeight: 59,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#3D1C47',
+    backgroundColor: 'rgba(10, 4, 18, 0.9)',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+  },
+
+  profileStatCopy: {
+    flex: 1,
+  },
+
+  profileStatLabel: {
+    color: '#8C818F',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+
+  profileStatValue: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+
+  skinGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+
+  skinCard: {
+    width: '48.5%',
+    minHeight: 170,
+    borderWidth: 1,
+    borderColor: '#3C263F',
+    backgroundColor: 'rgba(10, 6, 14, 0.9)',
+    borderRadius: 18,
+    padding: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  skinCardActive: {
+    borderColor: '#5BE9FF',
+    backgroundColor: 'rgba(8, 30, 39, 0.88)',
+  },
+
+  skinImageWrap: {
+    width: 94,
+    height: 94,
+    borderRadius: 47,
+    backgroundColor: '#160622',
+    borderWidth: 1,
+    borderColor: '#A144C9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  skinImage: {
+    width: 73,
+    height: 73,
+  },
+
+  skinName: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '900',
+    marginTop: 8,
+  },
+
+  skinCompanionName: {
+    color: '#93879A',
+    fontSize: 8,
+    marginTop: 2,
+  },
+
+  equippedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#5BE9FF',
+    borderRadius: 99,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    marginTop: 7,
+  },
+
+  equippedText: {
+    color: '#05000B',
+    fontSize: 7,
+    fontWeight: '900',
+  },
+
+  lockedSkinIcon: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 1,
+    borderColor: '#332936',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  skinLockedText: {
+    color: '#665D69',
+    fontSize: 8,
+    marginTop: 3,
+  },
+});

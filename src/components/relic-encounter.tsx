@@ -69,40 +69,47 @@ export function RelicEncounter({
   useEffect(() => {
     // Reset AR hunt state whenever the encounter
     // closes or Mission Trails loads a different relic.
-    setArSurfaceFound(false);
-    setRelicTouched(false);
+    const resetTimer = setTimeout(() => {
+      setArSurfaceFound(false);
+      setRelicTouched(false);
+      lockProgress.set(0);
+    }, 0);
 
-    lockProgress.value = 0;
+    return () => clearTimeout(resetTimer);
   }, [
     visible,
     relic?.id,
     lockProgress,
   ]);
 
-  const targetingLabelStyle = useAnimatedStyle(() => ({
-    opacity: 1 - lockProgress.value,
-    transform: [
-      {
-        translateY:
-          lockProgress.value * -4,
-      },
-    ],
-  }));
+  const targetingLabelStyle = useAnimatedStyle(() => {
+    const progress = lockProgress.get();
 
-  const lockedLabelStyle = useAnimatedStyle(() => ({
-    opacity: lockProgress.value,
-    transform: [
-      {
-        translateY:
-          (1 - lockProgress.value) * 5,
-      },
-      {
-        scale:
-          0.96 +
-          lockProgress.value * 0.04,
-      },
-    ],
-  }));
+    return {
+      opacity: 1 - progress,
+      transform: [
+        {
+          translateY: progress * -4,
+        },
+      ],
+    };
+  });
+
+  const lockedLabelStyle = useAnimatedStyle(() => {
+    const progress = lockProgress.get();
+
+    return {
+      opacity: progress,
+      transform: [
+        {
+          translateY: (1 - progress) * 5,
+        },
+        {
+          scale: 0.96 + progress * 0.04,
+        },
+      ],
+    };
+  });
 
   if (!relic) {
     return null;
@@ -124,9 +131,11 @@ export function RelicEncounter({
   function handlePlaneFound() {
     setArSurfaceFound(true);
 
-    lockProgress.value = withTiming(1, {
-      duration: reduceMotion ? 0 : 350,
-    });
+    lockProgress.set(
+      withTiming(1, {
+        duration: reduceMotion ? 0 : 350,
+      }),
+    );
   }
 
   // Purpose:

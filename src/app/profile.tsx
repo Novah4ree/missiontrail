@@ -350,6 +350,7 @@ export default function ProfileScreen() {
   // SAME live activity source used by Home / Today's Exploring.
   const todayMiles = dailyActivity.todayDistanceMiles;
   const todaySteps = dailyActivity.todaySteps;
+  const refreshDailyActivity = dailyActivity.refreshActivity;
 
   // These stay server/mission based.
   const tripsToday = progress?.verifiedSessionCount ?? 0;
@@ -394,12 +395,12 @@ export default function ProfileScreen() {
         void Promise.all([
           loadRealProfile(),
           refreshProgress(),
-          dailyActivity.refreshActivity(),
+          refreshDailyActivity(),
         ]);
 
         return undefined;
       },
-      [],
+      [refreshDailyActivity, refreshProgress],
     ),
   );
 
@@ -1518,32 +1519,6 @@ function ProgressMetric({
             },
           ]}
         />
-      </View>
-    </View>
-  );
-}
-
-// Purpose: Renders the account row interface.
-function AccountRow({
-  icon,
-  label,
-  value,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.accountRow}>
-      <View style={styles.accountIcon}>
-        <Ionicons name={icon} size={18} color={COLORS.cyan} />
-      </View>
-
-      <View style={styles.accountCopy}>
-        <Text style={styles.accountLabel}>{label}</Text>
-        <Text style={styles.accountValue} numberOfLines={2}>
-          {value}
-        </Text>
       </View>
     </View>
   );

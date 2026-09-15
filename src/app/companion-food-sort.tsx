@@ -632,11 +632,14 @@ export default function CompanionFoodSortScreen() {
   // throughout the current round.
   const activeFoodArt =
     useMemo(
-      () =>
-        getFoodSortArtSet(
+      () => {
+        void foodArtRound;
+
+        return getFoodSortArtSet(
           levelConfig.level,
           levelConfig.rareFoodRequired,
-        ),
+        );
+      },
       [
         levelConfig.level,
         levelConfig.rareFoodRequired,
@@ -859,32 +862,26 @@ export default function CompanionFoodSortScreen() {
   // Purpose:
   // Moves the touched food visually before
   // the actual board swap is committed.
-  const dragOffset =
-    useRef(
+  const [dragOffset] = useState(
+    () =>
       new Animated.ValueXY({
         x: 0,
         y: 0,
       }),
-    ).current;
+  );
 
 
   // Purpose:
   // Creates a visible blast over the board
   // for bombs, Mythics, and power combos.
-  const blastScale =
-    useRef(
-      new Animated.Value(
-        0.4,
-      ),
-    ).current;
+  const [blastScale] = useState(
+    () => new Animated.Value(0.4),
+  );
 
 
-  const blastOpacity =
-    useRef(
-      new Animated.Value(
-        0,
-      ),
-    ).current;
+  const [blastOpacity] = useState(
+    () => new Animated.Value(0),
+  );
 
 
   const [
@@ -923,28 +920,24 @@ export default function CompanionFoodSortScreen() {
     useState(false);
 
 
-  const matchPopScale =
-    useRef(
-      new Animated.Value(1),
-    ).current;
+  const [matchPopScale] = useState(
+    () => new Animated.Value(1),
+  );
 
 
-  const matchPopOpacity =
-    useRef(
-      new Animated.Value(1),
-    ).current;
+  const [matchPopOpacity] = useState(
+    () => new Animated.Value(1),
+  );
 
 
-  const foodDropY =
-    useRef(
-      new Animated.Value(0),
-    ).current;
+  const [foodDropY] = useState(
+    () => new Animated.Value(0),
+  );
 
 
-  const foodDropOpacity =
-    useRef(
-      new Animated.Value(1),
-    ).current;
+  const [foodDropOpacity] = useState(
+    () => new Animated.Value(1),
+  );
 
 
   // Purpose: Makes the 6x6 board use almost
@@ -988,10 +981,9 @@ export default function CompanionFoodSortScreen() {
   // Temporary animation proof.
   // If this pulses on the iPhone, Animated is working
   // and the phone has loaded this exact source code.
-  const animationProofScale =
-    useRef(
-      new Animated.Value(0.75),
-    ).current;
+  const [animationProofScale] = useState(
+    () => new Animated.Value(0.75),
+  );
 
 
   useEffect(() => {
@@ -1681,9 +1673,15 @@ export default function CompanionFoodSortScreen() {
     isMountedRef.current =
       true;
 
-    void startServerRun();
+    const startRunTimer = setTimeout(() => {
+      if (isMountedRef.current) {
+        void startServerRun();
+      }
+    }, 0);
 
     return () => {
+      clearTimeout(startRunTimer);
+
       isMountedRef.current =
         false;
 

@@ -32,7 +32,7 @@ export const COMPANION_EGGS: CompanionEgg[] = [
       'A translucent egg filled with shifting currents of mysterious energy.',
     hatchDistanceMiles: 1.5,
     glowColor: '#45DFFF',
-    image: require('../../assets/eggs/water-egg.png'),
+    image: require('../../assets/eggs/common/water/wateregg.png'),
     hatchPool: [
       'bubble-slime',
       'aqua-pup',
@@ -51,7 +51,7 @@ export const COMPANION_EGGS: CompanionEgg[] = [
       'A scorching stone egg with fiery energy burning beneath its shell.',
     hatchDistanceMiles: 1.5,
     glowColor: '#FF8A00',
-    image: require('../../assets/eggs/fire-egg.png'),
+    image: require('../../assets/eggs/rare/fire/fireegg.png'),
     hatchPool: [
       'ember-pup',
       'magma-beetle',

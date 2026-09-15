@@ -491,7 +491,7 @@ export default function OnboardingUserInfo() {
 
 
       <Text style={styles.subtitle}>
-        Let's build your profile.
+        {"Let's build your profile."}
       </Text>
 
 

@@ -1,6 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
-import React, { useEffect, useRef, useState } from 'react';
+import {
+  ExpoSpeechRecognitionModule,
+  useSpeechRecognitionEvent,
+} from 'expo-speech-recognition';
+import React, { useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -11,27 +15,12 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  View
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { supabase } from '../../lib/supabase';
 
-let Voice: any = null;
-if (Platform.OS !== 'web') {
-  try {
-    // This succeeds only in a native build that includes the Voice module.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    Voice = require('@react-native-voice/voice').default;
-  } catch {
-    // Keep the rest of the app usable when it is opened in Expo Go.
-  }
-}
-
-// OpenAI Configuration
-const CHAT_API_URL = "https://api.openai.com/v1/chat/completions";
-
-const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-
-// Purpose: Renders the mission trail bot interface.
+// Purpose: Renders the Mission Trail bot interface.
 export default function MissionTrailBot({
   visible,
   onClose,
@@ -43,8 +32,8 @@ export default function MissionTrailBot({
     {
       id: '1',
       sender: 'bot',
-      text: "Hey! I'm your Mission Trail concierge. How can I help you get active today?"
-    }
+      text: "Hey! I'm your Mission Trail concierge. How can I help you get active today?",
+    },
   ]);
 
   const [inputText, setInputText] = useState('');
@@ -55,154 +44,449 @@ export default function MissionTrailBot({
   const isListeningRef = useRef(false);
   const isSpeakingRef = useRef(false);
 
-  useEffect(() => {
-    return () => {
-      if (Voice) {
-        void Voice.destroy().finally(() => Voice.removeAllListeners());
-      }
-    };
-  }, []);
+  useSpeechRecognitionEvent('start', () => {
+    isListeningRef.current = true;
+  });
 
-  // Purpose: Starts listening.
-  const startListening = () => {
+  useSpeechRecognitionEvent('end', () => {
+    isListeningRef.current = false;
+  });
+
+  useSpeechRecognitionEvent('result', (event) => {
+    const transcript = event.results?.[0]?.transcript?.trim();
+
+    if (!transcript || isSpeakingRef.current) {
+      return;
+    }
+
+    isListeningRef.current = false;
+    void handleSendMessage(transcript);
+  });
+
+  useSpeechRecognitionEvent('error', (event) => {
+    isListeningRef.current = false;
+
+    console.warn(
+      'Speech recognition error:',
+      event.error,
+      event.message,
+    );
+
+    // Permission problems require user action, so do not keep retrying.
+    if (
+      event.error === 'not-allowed' ||
+      event.error === 'service-not-allowed'
+    ) {
+      isVoiceModeRef.current = false;
+      setIsVoiceMode(false);
+      return;
+    }
+
+    // For temporary issues such as no speech, allow voice mode to listen again.
+    if (isVoiceModeRef.current && !isSpeakingRef.current) {
+      setTimeout(() => {
+        if (isVoiceModeRef.current && !isSpeakingRef.current) {
+          void startListening();
+        }
+      }, 750);
+    }
+  });
+
+  // Purpose: Starts listening for a voice command.
+  async function startListening() {
+    if (
+      isListeningRef.current ||
+      isSpeakingRef.current ||
+      !isVoiceModeRef.current
+    ) {
+      return;
+    }
+
     if (Platform.OS === 'web') {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const SpeechRecognition =
+        (window as any).SpeechRecognition ||
+        (window as any).webkitSpeechRecognition;
+
+      if (!SpeechRecognition) {
+        Alert.alert(
+          'Voice unavailable',
+          'Speech recognition is not supported by this browser.',
+        );
+
+        isVoiceModeRef.current = false;
+        setIsVoiceMode(false);
+        return;
+      }
+
       if (!recognitionRef.current) {
         recognitionRef.current = new SpeechRecognition();
         recognitionRef.current.lang = 'en-US';
+        recognitionRef.current.interimResults = false;
+        recognitionRef.current.continuous = false;
+
         recognitionRef.current.onresult = (event: any) => {
-          if (isSpeakingRef.current) return;
-          handleSendMessage(event.results[0][0].transcript);
+          isListeningRef.current = false;
+
+          const transcript =
+            event.results?.[0]?.[0]?.transcript?.trim();
+
+          if (
+            transcript &&
+            !isSpeakingRef.current &&
+            isVoiceModeRef.current
+          ) {
+            void handleSendMessage(transcript);
+          }
         };
+
+        recognitionRef.current.onerror = (event: any) => {
+          isListeningRef.current = false;
+
+          console.warn(
+            'Browser speech recognition error:',
+            event?.error ?? event,
+          );
+        };
+
         recognitionRef.current.onend = () => {
           isListeningRef.current = false;
-          if (isVoiceModeRef.current && !isSpeakingRef.current) setTimeout(() => startListening(), 750);
         };
       }
-      if (!isListeningRef.current) { isListeningRef.current = true; recognitionRef.current.start(); }
-    } else if (Voice) {
-      Voice.onSpeechResults = (event: { value?: string[] }) => {
-        const transcript = event.value?.[0];
+
+      try {
+        isListeningRef.current = true;
+        recognitionRef.current.start();
+      } catch (error) {
         isListeningRef.current = false;
-        if (transcript && !isSpeakingRef.current) {
-          void handleSendMessage(transcript);
-        }
-      };
-      Voice.onSpeechError = (event: { error?: { message?: string } }) => {
-        isListeningRef.current = false;
-        console.warn('Speech recognition error:', event.error?.message ?? event.error);
-      };
+        console.warn(
+          'Unable to start browser speech recognition:',
+          error,
+        );
+      }
+
+      return;
+    }
+
+    try {
+      const permission =
+        await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert(
+          'Microphone permission required',
+          'Mission Trails needs microphone and speech recognition permission to use voice commands.',
+        );
+
+        isVoiceModeRef.current = false;
+        setIsVoiceMode(false);
+        return;
+      }
+
       isListeningRef.current = true;
-      void Voice.start('en-US').catch((error: unknown) => {
-        isListeningRef.current = false;
-        console.warn('Unable to start speech recognition:', error);
+
+      ExpoSpeechRecognitionModule.start({
+        lang: 'en-US',
+        interimResults: false,
+        continuous: false,
+        maxAlternatives: 1,
       });
-    } else {
-      Alert.alert(
-        'Voice build required',
-        'Voice recognition is unavailable in Expo Go. Open MissionTrail in a development build instead.',
+    } catch (error) {
+      isListeningRef.current = false;
+
+      console.warn(
+        'Unable to start speech recognition:',
+        error,
       );
+
+      Alert.alert(
+        'Voice unavailable',
+        'Mission Trails could not start speech recognition.',
+      );
+
       isVoiceModeRef.current = false;
       setIsVoiceMode(false);
     }
-  };
+  }
 
   // Purpose: Stops listening.
-  const stopListening = () => {
+  function stopListening() {
+    const wasListening = isListeningRef.current;
     isListeningRef.current = false;
-    if (Platform.OS === 'web') recognitionRef.current?.stop();
-    else if (Voice) void Voice.stop();
-  };
 
-  // Purpose: Implements the toggle voice mode operation.
-  const toggleVoiceMode = () => {
-    const newState = !isVoiceMode;
-    isVoiceModeRef.current = newState;
-    setIsVoiceMode(newState);
-    if (newState) startListening(); else stopListening();
-  };
-
-  // Purpose: Handles send message.
-  async function handleSendMessage(text: string) {
-    if (!text.trim()) return;
-    setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'user', text }]);
-    setInputText('');
+    if (!wasListening) {
+      return;
+    }
 
     try {
-      if (!OPENAI_API_KEY) {
-        throw new Error('EXPO_PUBLIC_OPENAI_API_KEY is not configured');
+      if (Platform.OS === 'web') {
+        recognitionRef.current?.stop();
+      } else {
+        ExpoSpeechRecognitionModule.stop();
       }
+    } catch (error) {
+      console.warn(
+        'Unable to stop speech recognition:',
+        error,
+      );
+    }
+  }
 
+  // Purpose: Restarts voice recognition after the bot finishes talking.
+  function restartListeningAfterSpeech() {
+    isSpeakingRef.current = false;
+
+    if (!isVoiceModeRef.current) {
+      return;
+    }
+
+    setTimeout(() => {
+      if (
+        isVoiceModeRef.current &&
+        !isSpeakingRef.current &&
+        !isListeningRef.current
+      ) {
+        void startListening();
+      }
+    }, 750);
+  }
+
+  // Purpose: Toggles voice mode.
+  function toggleVoiceMode() {
+    const newState = !isVoiceMode;
+
+    isVoiceModeRef.current = newState;
+    setIsVoiceMode(newState);
+
+    if (newState) {
+      void startListening();
+    } else {
       stopListening();
-      isSpeakingRef.current = true;
-
-const response = await fetch(CHAT_API_URL, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${OPENAI_API_KEY}`,
-  },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content: "You are a Mission Trail concierge. Keep answers short, friendly, and focused on missions. End every response with an action-oriented question.",
-            },
-            { role: "user", content: text },
-          ],
-        }),
-      });
-
-      // Parse JSON once
-      const data = await response.json();
-
-      // Check for errors after parsing
-      if (!response.ok) {
-        throw new Error(data.error?.message || "Failed to connect to OpenAI");
-      }
-
-      const botReply = data.choices?.[0]?.message?.content;
-      if (!botReply) {
-        throw new Error("No response received from AI");
-      }
-
-      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), sender: "bot", text: botReply }]);
-      Speech.speak(botReply);
-      isSpeakingRef.current = false;
-      if (isVoiceModeRef.current) setTimeout(() => startListening(), 750);
-
-    } catch (err) {
-      console.error("MissionTrailBot Error:", err);
-      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), sender: "bot", text: "Sorry, I'm having trouble connecting to the service." }]);
+      Speech.stop();
       isSpeakingRef.current = false;
     }
   }
 
+  // Purpose: Handles sending a user message.
+  async function handleSendMessage(text: string) {
+    const cleanText = text.trim();
+
+    if (!cleanText) {
+      return;
+    }
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        sender: 'user',
+        text: cleanText,
+      },
+    ]);
+
+    setInputText('');
+    stopListening();
+
+    try {
+      isSpeakingRef.current = true;
+
+      const {
+        data,
+        error,
+      } = await supabase.functions.invoke(
+        'mission-ai',
+        {
+          body: {
+            message: cleanText,
+          },
+        },
+      );
+
+      if (error) {
+        throw new Error(
+          error.message ||
+            'Failed to connect to Mission AI',
+        );
+      }
+
+      const botReply =
+        typeof data?.text === 'string'
+          ? data.text.trim()
+          : '';
+
+      if (!botReply) {
+        throw new Error(
+          'No response received from AI',
+        );
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          sender: 'bot',
+          text: botReply,
+        },
+      ]);
+
+      Speech.speak(botReply, {
+        language: 'en-US',
+        onDone: restartListeningAfterSpeech,
+        onStopped: restartListeningAfterSpeech,
+        onError: () => {
+          restartListeningAfterSpeech();
+        },
+      });
+    } catch (error) {
+      console.error(
+        'MissionTrailBot Error:',
+        error,
+      );
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          sender: 'bot',
+          text: "Sorry, I'm having trouble connecting to the service.",
+        },
+      ]);
+
+      isSpeakingRef.current = false;
+
+      if (isVoiceModeRef.current) {
+        setTimeout(() => {
+          void startListening();
+        }, 750);
+      }
+    }
+  }
+
+  function handleClose() {
+    isVoiceModeRef.current = false;
+    setIsVoiceMode(false);
+
+    stopListening();
+    Speech.stop();
+
+    isSpeakingRef.current = false;
+
+    onClose();
+  }
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={handleClose}
+    >
       <SafeAreaView style={styles.modalRoot}>
-        <KeyboardAvoidingView style={styles.keyboardContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <Pressable style={styles.backdrop} onPress={onClose} />
+        <KeyboardAvoidingView
+          style={styles.keyboardContainer}
+          behavior={
+            Platform.OS === 'ios'
+              ? 'padding'
+              : 'height'
+          }
+        >
+          <Pressable
+            style={styles.backdrop}
+            onPress={handleClose}
+          />
+
           <View style={styles.chatCard}>
             <View style={styles.header}>
-              <Text style={styles.headerTitle}>Mission Trail Concierge</Text>
-              <Pressable onPress={toggleVoiceMode} style={[styles.headerButton, { backgroundColor: isVoiceMode ? '#FF2D75' : '#1e0d3e' }]}>
-                <Ionicons name={isVoiceMode ? "mic" : "mic-outline"} size={20} color="#FFF" />
+              <Text style={styles.headerTitle}>
+                Mission Trail Concierge
+              </Text>
+
+              <Pressable
+                onPress={toggleVoiceMode}
+                style={[
+                  styles.headerButton,
+                  {
+                    backgroundColor: isVoiceMode
+                      ? '#FF2D75'
+                      : '#1e0d3e',
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={
+                    isVoiceMode
+                      ? 'mic'
+                      : 'mic-outline'
+                  }
+                  size={20}
+                  color="#FFF"
+                />
               </Pressable>
-              <Pressable onPress={onClose} style={styles.headerButton}><Ionicons name="close" size={20} color="#FFF" /></Pressable>
+
+              <Pressable
+                onPress={handleClose}
+                style={styles.headerButton}
+              >
+                <Ionicons
+                  name="close"
+                  size={20}
+                  color="#FFF"
+                />
+              </Pressable>
             </View>
-            <FlatList data={messages} keyExtractor={(item) => item.id} renderItem={({ item }) => (
-                <View style={[styles.messageRow, item.sender === 'user' ? styles.userMessageRow : styles.botMessageRow]}>
-                   <View style={[styles.messageBubble, item.sender === 'user' ? styles.userMessageBubble : styles.botMessageBubble]}>
-                     <Text style={styles.messageText}>{item.text}</Text>
-                   </View>
+
+            <FlatList
+              data={messages}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <View
+                  style={[
+                    styles.messageRow,
+                    item.sender === 'user'
+                      ? styles.userMessageRow
+                      : styles.botMessageRow,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.messageBubble,
+                      item.sender === 'user'
+                        ? styles.userMessageBubble
+                        : styles.botMessageBubble,
+                    ]}
+                  >
+                    <Text style={styles.messageText}>
+                      {item.text}
+                    </Text>
+                  </View>
                 </View>
-            )} />
+              )}
+            />
+
             <View style={styles.inputSection}>
               <View style={styles.inputContainer}>
-                <TextInput value={inputText} onChangeText={setInputText} placeholder="Type mission..." placeholderTextColor="#7D82A8" style={styles.textInput} />
-                <Pressable onPress={() => handleSendMessage(inputText)} style={styles.sendButton}><Ionicons name="send" size={18} color="#FFFFFF" /></Pressable>
+                <TextInput
+                  value={inputText}
+                  onChangeText={setInputText}
+                  placeholder="Type mission..."
+                  placeholderTextColor="#7D82A8"
+                  style={styles.textInput}
+                  onSubmitEditing={() => {
+                    void handleSendMessage(inputText);
+                  }}
+                />
+
+                <Pressable
+                  onPress={() => {
+                    void handleSendMessage(inputText);
+                  }}
+                  style={styles.sendButton}
+                >
+                  <Ionicons
+                    name="send"
+                    size={18}
+                    color="#FFFFFF"
+                  />
+                </Pressable>
               </View>
             </View>
           </View>
@@ -213,8 +497,16 @@ const response = await fetch(CHAT_API_URL, {
 }
 
 const styles = StyleSheet.create({
-  modalRoot: { flex: 1 },
-  keyboardContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  modalRoot: {
+    flex: 1,
+  },
+
+  keyboardContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
   backdrop: {
     position: 'absolute',
     top: 0,
@@ -223,19 +515,102 @@ const styles = StyleSheet.create({
     left: 0,
     backgroundColor: 'rgba(0, 0, 12, 0.76)',
   },
-  chatCard: { width: '92%', maxWidth: 540, height: '74%', borderRadius: 22, backgroundColor: '#07051c', overflow: 'hidden' },
-  header: { minHeight: 72, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, borderBottomWidth: 1, borderColor: '#333' },
-  headerTitle: { flex: 1, color: '#FFFFFF', fontSize: 17, fontWeight: '900' },
-  headerButton: { width: 37, height: 37, borderRadius: 19, alignItems: 'center', justifyContent: 'center', marginLeft: 10 },
-  messageRow: { width: '100%', marginBottom: 13, flexDirection: 'row', paddingHorizontal: 14 },
-  botMessageRow: { justifyContent: 'flex-start' },
-  userMessageRow: { justifyContent: 'flex-end' },
-  messageBubble: { maxWidth: '78%', paddingHorizontal: 13, paddingVertical: 10, borderRadius: 17 },
-  botMessageBubble: { backgroundColor: '#1c1041' },
-  userMessageBubble: { backgroundColor: '#0f699b' },
-  messageText: { fontSize: 14.5, color: '#FFF' },
-  inputSection: { padding: 12, borderTopWidth: 1, borderTopColor: '#333' },
-  inputContainer: { flexDirection: 'row', alignItems: 'center', padding: 6, borderRadius: 18, backgroundColor: '#04071b' },
-  textInput: { flex: 1, color: '#FFF', padding: 8 },
-  sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#8B2BE2' }
+
+  chatCard: {
+    width: '92%',
+    maxWidth: 540,
+    height: '74%',
+    borderRadius: 22,
+    backgroundColor: '#07051c',
+    overflow: 'hidden',
+  },
+
+  header: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderColor: '#333',
+  },
+
+  headerTitle: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '900',
+  },
+
+  headerButton: {
+    width: 37,
+    height: 37,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+  },
+
+  messageRow: {
+    width: '100%',
+    marginBottom: 13,
+    flexDirection: 'row',
+    paddingHorizontal: 14,
+  },
+
+  botMessageRow: {
+    justifyContent: 'flex-start',
+  },
+
+  userMessageRow: {
+    justifyContent: 'flex-end',
+  },
+
+  messageBubble: {
+    maxWidth: '78%',
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    borderRadius: 17,
+  },
+
+  botMessageBubble: {
+    backgroundColor: '#1c1041',
+  },
+
+  userMessageBubble: {
+    backgroundColor: '#0f699b',
+  },
+
+  messageText: {
+    fontSize: 14.5,
+    color: '#FFF',
+  },
+
+  inputSection: {
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+  },
+
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 6,
+    borderRadius: 18,
+    backgroundColor: '#04071b',
+  },
+
+  textInput: {
+    flex: 1,
+    color: '#FFF',
+    padding: 8,
+  },
+
+  sendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#8B2BE2',
+  },
 });

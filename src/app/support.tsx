@@ -17,7 +17,7 @@ import { supabase } from "../../lib/supabase";
 
 type Category = "account" | "privacy" | "purchase" | "unsafe_location" | "technical" | "other";
 
-const CATEGORIES: Array<{ value: Category; label: string }> = [
+const CATEGORIES: { value: Category; label: string }[] = [
   { value: "account", label: "Account" },
   { value: "privacy", label: "Privacy" },
   { value: "purchase", label: "Purchase" },

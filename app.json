@@ -71,13 +71,6 @@
           "locationWhenInUsePermission": "Mission Trails uses your location while the app is in use for nearby trails, discovery proximity, and verified GPS trail tracking."
         }
       ],
-      [
-        "@react-native-voice/voice",
-        {
-          "microphonePermission": "Allow MissionTrail to use the microphone for voice commands.",
-          "speechRecognitionPermission": "Allow MissionTrail to convert your voice commands to text."
-        }
-      ],
       "expo-audio",
       "expo-asset",
       [
@@ -102,7 +95,14 @@
       ],
       "expo-apple-authentication",
       "expo-image",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow Mission Trails to use the microphone for voice commands.",
+          "speechRecognitionPermission": "Allow Mission Trails to convert your voice commands to text."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

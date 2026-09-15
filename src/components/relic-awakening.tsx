@@ -65,6 +65,31 @@ const RELIC_SOUND_SOURCES = {
   ),
 } as const;
 
+type RelicSoundPlayer = {
+  volume: number;
+  seekTo: (seconds: number) => Promise<void>;
+  play: () => void;
+};
+
+// expo-audio intentionally exposes volume as a mutable player property.
+// Keep that native-player mutation outside the React component so the
+// React Compiler does not treat it as component state mutation.
+function playRelicSound(player: RelicSoundPlayer) {
+  player.volume = 0.82;
+
+  void player
+    .seekTo(0)
+    .then(() => {
+      player.play();
+    })
+    .catch((error) => {
+      console.warn(
+        '[Relic Audio] Could not play:',
+        error,
+      );
+    });
+}
+
 const RARITY_ANIMATION: Record<
   RelicRarity,
   RarityAnimationConfig
@@ -268,21 +293,11 @@ export function RelicAwakening({
     }
 
 
-    relicSoundPlayer.volume = 0.82;
+    playRelicSound(relicSoundPlayer);
 
-    void relicSoundPlayer
-      .seekTo(0)
-      .then(() => {
-        relicSoundPlayer.play();
-      })
-      .catch((error) => {
-        console.warn(
-          '[Relic Audio] Could not play:',
-          error
-        );
-      });
-
-    setActionsReady(false);
+    const resetActionsTimer = setTimeout(() => {
+      setActionsReady(false);
+    }, 0);
 
     intro.value = 0;
     spin.value = 0;
@@ -298,9 +313,14 @@ export function RelicAwakening({
       details.value = 1;
       ring.value = 1;
 
-      setActionsReady(true);
+      const readyTimer = setTimeout(() => {
+        setActionsReady(true);
+      }, 0);
 
-      return;
+      return () => {
+        clearTimeout(resetActionsTimer);
+        clearTimeout(readyTimer);
+      };
     }
 
     // ============================
@@ -455,6 +475,7 @@ export function RelicAwakening({
     );
 
     return () => {
+      clearTimeout(resetActionsTimer);
       clearTimeout(timer);
 
       cancelAnimation(intro);
@@ -661,7 +682,7 @@ export function RelicAwakening({
     // Make the relic shoot upward and shrink,
     // giving the feeling that it is being
     // transferred into the player's Vault.
-    transfer.value =
+    transfer.set(
       withTiming(
         1,
         {
@@ -671,7 +692,8 @@ export function RelicAwakening({
               Easing.cubic
             ),
         }
-      );
+      ),
+    );
 
     setTimeout(() => {
       onClose();

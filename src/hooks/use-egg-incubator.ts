@@ -34,6 +34,12 @@ export function useEggIncubator(
   const [error, setError] =
     useState<string | null>(null);
 
+  const activeEggId =
+    state?.active?.eggId ?? null;
+
+  const hasIncubatorState =
+    state !== null;
+
   // Purpose: Implements the refresh operation.
   const refresh =
     useCallback(async () => {
@@ -55,7 +61,11 @@ export function useEggIncubator(
     }, []);
 
   useEffect(() => {
-    void refresh();
+    const refreshTimer = setTimeout(() => {
+      void refresh();
+    }, 0);
+
+    return () => clearTimeout(refreshTimer);
   }, [refresh]);
 
   /**
@@ -64,9 +74,12 @@ export function useEggIncubator(
    * sync ONLY the new distance.
    */
   useEffect(() => {
-    if (!state) {
+    if (!hasIncubatorState) {
       return;
     }
+
+    // Changing eggs must trigger a fresh progress sync.
+    void activeEggId;
 
     let cancelled = false;
 
@@ -98,8 +111,9 @@ export function useEggIncubator(
       cancelled = true;
     };
   }, [
+    activeEggId,
+    hasIncubatorState,
     todayDistanceMiles,
-    state?.active?.eggId,
   ]);
 
   // Purpose: Starts egg.

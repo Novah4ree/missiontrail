@@ -34,7 +34,13 @@ export function CreateMeetupModal({ visible, trail, onClose, onCreate }: {
   const [maxGroupSize, setMaxGroupSize] = useState('10');
 
   // Keeps the public meeting-point field matched to the currently selected trail.
-  useEffect(() => { setMeetingPoint(trail.startLocation); }, [trail.startLocation]);
+  useEffect(() => {
+    const meetingPointTimer = setTimeout(() => {
+      setMeetingPoint(trail.startLocation);
+    }, 0);
+
+    return () => clearTimeout(meetingPointTimer);
+  }, [trail.startLocation]);
 
   const canSubmit = Boolean(title.trim() && date.trim() && startTime.trim() && meetingPoint.trim() && Number(maxGroupSize) >= 2);
 
