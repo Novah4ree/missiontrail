@@ -87,6 +87,8 @@ export type ProgressionSummary = {
   currentMission: ProgressionCurrentMission | null;
 };
 
+export type CompanionLifeStage = 'baby' | 'teen' | 'adult';
+
 export type VerifiedDailyProgress = {
   totalXp: number;
   dailyStreak: number;
@@ -102,8 +104,17 @@ export type VerifiedDailyProgress = {
     bondPercent: number;
     energy: number;
     maximumEnergy: number;
+
+    // Companion-only progression. This is separate from the player's XP.
     growthHp?: number;
+    companionXp?: number;
+    growthPoints?: number;
     companionLevel?: number;
+    lifeStage?: CompanionLifeStage;
+    growthIntoLevel?: number;
+    growthRequired?: number;
+
+    // Backward-compatible names used by existing Companion UI code.
     hpIntoLevel?: number;
     hpRequired?: number;
 
