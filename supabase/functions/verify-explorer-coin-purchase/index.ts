@@ -114,14 +114,36 @@ function decodeAppleJwsPayload(
 // Apple error 4040010 = TransactionIdNotFoundError.
 // ---------------------------------------------------------
 
-function isTransactionNotFound(
+function shouldTryAppleSandbox(
   error: unknown,
 ): boolean {
   if (!(error instanceof APIException)) {
     return false;
   }
 
-  return Number(error.apiError) === 4040010;
+  const apiError =
+    error.apiError == null
+      ? null
+      : Number(error.apiError);
+
+  const httpStatus =
+    Number(error.httpStatusCode);
+
+  // Apple normally returns 4040010 when a transaction
+  // does not exist in Production.
+  //
+  // TestFlight/Sandbox transactions may also return
+  // HTTP 401/404 when queried against Production.
+  //
+  // Trying Sandbox here is safe because Apple still
+  // has to return and verify the real transaction
+  // before Mission Trails grants Explorer Coins.
+
+  return (
+    apiError === 4040010 ||
+    httpStatus === 401 ||
+    httpStatus === 404
+  );
 }
 
 
@@ -163,9 +185,24 @@ async function getAppleTransaction(
       environment: "production",
     };
   } catch (error) {
-    if (!isTransactionNotFound(error)) {
+    if (!shouldTryAppleSandbox(error)) {
       throw error;
     }
+
+    console.warn(
+      "Apple Production lookup failed. Trying Sandbox/TestFlight.",
+      {
+        httpStatus:
+          error instanceof APIException
+            ? error.httpStatusCode
+            : null,
+
+        apiError:
+          error instanceof APIException
+            ? error.apiError
+            : null,
+      },
+    );
   }
 
 
@@ -691,10 +728,20 @@ Deno.serve(async (req) => {
     );
 
 
+    const detail =
+      error instanceof APIException
+        ? `HTTP_${error.httpStatusCode}_APPLE_${error.apiError ?? "NONE"}`
+        : (
+            error instanceof Error
+              ? error.message
+              : "UNKNOWN_ERROR"
+          );
+
     return jsonResponse(
       {
         verified: false,
         code: "APPLE_VERIFICATION_FAILED",
+        detail,
       },
       400,
     );

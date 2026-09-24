@@ -25,7 +25,6 @@ import {
 import {
   useCallback,
   useEffect,
-  useMemo,
   useState,
 } from 'react';
 
@@ -33,19 +32,63 @@ import { supabase } from '../../lib/supabase';
 
 
 // =========================================================
-// EXPLORER COIN PRODUCT
+// EXPLORER COIN PACKS
 // =========================================================
 //
-// Purpose:
-// Keeps Apple's permanent product ID in one clear place.
+// Apple supplies the real localized purchase price.
 //
-// IMPORTANT:
-// The server still decides that this product gives
-// exactly 500 Explorer Coins.
+// Mission Trails' secure server decides how many Explorer
+// Coins each verified Apple product awards.
 // =========================================================
 
-const EXPLORER_COINS_500 =
-  'com.missiontrails.explorercoins.500';
+const COIN_PACKS = [
+  {
+    productId:
+      'com.missiontrails.explorercoins.500',
+    coins: 500,
+    name: 'Starter Pack',
+    bonus: null,
+  },
+  {
+    productId:
+      'com.missiontrails.explorercoins.1100',
+    coins: 1100,
+    name: 'Explorer Pack',
+    bonus: '+100 BONUS COINS',
+  },
+  {
+    productId:
+      'com.missiontrails.explorercoins.2400',
+    coins: 2400,
+    name: 'Adventurer Pack',
+    bonus: '+400 BONUS COINS',
+  },
+  {
+    productId:
+      'com.missiontrails.explorercoins.6500',
+    coins: 6500,
+    name: 'Trail Master Pack',
+    bonus: '+1,500 BONUS COINS',
+  },
+  {
+    productId:
+      'com.missiontrails.explorercoins.14000',
+    coins: 14000,
+    name: 'Legendary Pack',
+    bonus: '+4,000 BONUS COINS',
+  },
+] as const;
+
+const APPLE_PRODUCT_IDS =
+  COIN_PACKS.map(
+    (pack) => pack.productId
+  );
+
+const VALID_PRODUCT_IDS =
+  new Set<string>(
+    APPLE_PRODUCT_IDS
+  );
+
 
 const explorerCoinImage =
   require(
@@ -61,10 +104,83 @@ type VerifyPurchaseResponse = {
   verified?: boolean;
   granted?: boolean;
   code?: string;
+  detail?: string;
   coinsGranted?: number;
   balance?: number;
   productId?: string;
 };
+
+
+// =========================================================
+// EDGE FUNCTION ERROR READER
+// =========================================================
+
+async function readPurchaseFunctionError(
+  error: unknown
+): Promise<string> {
+
+  const candidate =
+    error as {
+      message?: string;
+
+      context?: {
+        json?: () => Promise<unknown>;
+      };
+    };
+
+
+  try {
+    if (
+      candidate.context &&
+      typeof candidate.context.json === 'function'
+    ) {
+      const raw =
+        await candidate.context.json();
+
+      if (
+        raw &&
+        typeof raw === 'object'
+      ) {
+        const body =
+          raw as Record<string, unknown>;
+
+        const code =
+          typeof body.code === 'string'
+            ? body.code
+            : null;
+
+        const detail =
+          typeof body.detail === 'string'
+            ? body.detail
+            : null;
+
+        if (code && detail) {
+          return `${code}:${detail}`;
+        }
+
+        if (code) {
+          return code;
+        }
+      }
+    }
+  } catch (parseError) {
+    console.warn(
+      '[Explorer Coins] Could not read server error:',
+      parseError
+    );
+  }
+
+
+  if (
+    typeof candidate.message === 'string' &&
+    candidate.message.trim()
+  ) {
+    return candidate.message;
+  }
+
+
+  return 'UNKNOWN_PURCHASE_ERROR';
+}
 
 
 // =========================================================
@@ -80,6 +196,11 @@ export default function ExplorerCoinShopScreen() {
 
   const [purchaseProcessing, setPurchaseProcessing] =
     useState(false);
+
+  const [
+    processingProductId,
+    setProcessingProductId,
+  ] = useState<string | null>(null);
 
   const [storeMessage, setStoreMessage] =
     useState<string | null>(null);
@@ -138,27 +259,53 @@ export default function ExplorerCoinShopScreen() {
   const handlePurchaseSuccess =
     useCallback(
       async (purchase: Purchase) => {
+        const productId =
+          String(
+            purchase.productId ?? ''
+          );
+
         if (
-          purchase.productId !==
-          EXPLORER_COINS_500
+          !VALID_PRODUCT_IDS.has(productId)
         ) {
           console.warn(
             'Ignoring unexpected IAP product:',
-            purchase.productId
+            productId
           );
 
           return;
         }
 
+        const pack =
+          COIN_PACKS.find(
+            (item) =>
+              item.productId ===
+              productId
+          );
+
         try {
           setPurchaseProcessing(true);
+          setProcessingProductId(productId);
+
           setStoreMessage(
             'Verifying purchase with Apple...'
           );
 
-          // Purchase.id is the store transaction identifier.
+          // Prefer Apple's StoreKit transaction ID.
+          // purchase.id remains as a compatibility fallback
+          // for expo-iap versions that expose it there.
+
+          const purchaseWithTransaction =
+            purchase as Purchase & {
+              transactionId?:
+                string | null;
+            };
+
           const transactionId =
-            String(purchase.id ?? '').trim();
+            String(
+              purchaseWithTransaction.transactionId ??
+              purchase.id ??
+              ''
+            ).trim();
 
           if (!transactionId) {
             throw new Error(
@@ -185,7 +332,19 @@ export default function ExplorerCoinShopScreen() {
 
 
           if (error) {
-            throw error;
+            const diagnosticCode =
+              await readPurchaseFunctionError(
+                error
+              );
+
+            console.error(
+              '[Explorer Coins] Verification server error:',
+              diagnosticCode
+            );
+
+            throw new Error(
+              diagnosticCode
+            );
           }
 
 
@@ -227,11 +386,35 @@ export default function ExplorerCoinShopScreen() {
           // Finish the consumable transaction.
           // -----------------------------------------------
 
+          // Supabase has successfully verified the purchase
+          // and credited the wallet at this point.
+
+          const verifiedBalance =
+            Number(result.balance);
+
+          if (
+            Number.isFinite(
+              verifiedBalance
+            )
+          ) {
+            setCoinBalance(
+              verifiedBalance
+            );
+          }
+
+
+          // IMPORTANT:
+          // Only finish Apple's transaction AFTER
+          // Mission Trails successfully grants the coins.
+
           await finishTransaction({
             purchase,
             isConsumable: true,
           });
 
+
+          // Reload the secure wallet to make absolutely
+          // sure the screen and database match.
 
           await loadWallet();
 
@@ -242,7 +425,7 @@ export default function ExplorerCoinShopScreen() {
             Alert.alert(
               'Explorer Coins Added 🪙',
               `${Number(
-                result.coinsGranted ?? 500
+                result.coinsGranted ?? pack?.coins ?? 0
               ).toLocaleString()} Explorer Coins were added to your account.`
             );
           }
@@ -257,12 +440,23 @@ export default function ExplorerCoinShopScreen() {
           // IMPORTANT:
           // We intentionally do NOT finish the Apple
           // transaction when verification fails.
+          const diagnosticCode =
+            error instanceof Error
+              ? error.message
+              : 'UNKNOWN_PURCHASE_ERROR';
+
+          console.error(
+            '[Explorer Coins] Purchase failed:',
+            diagnosticCode
+          );
+
           Alert.alert(
-            'Purchase Verification',
-            'Your purchase could not be verified yet. No Explorer Coins were lost. Please try again.'
+            'Purchase Still Processing',
+            'Apple received your purchase, but Mission Trails has not finished adding the Explorer Coins yet. Close and reopen the Coin Shop to retry the transaction.'
           );
         } finally {
           setPurchaseProcessing(false);
+          setProcessingProductId(null);
         }
       },
       [loadWallet]
@@ -281,6 +475,7 @@ export default function ExplorerCoinShopScreen() {
         message?: string;
       }) => {
         setPurchaseProcessing(false);
+        setProcessingProductId(null);
         setStoreMessage(null);
 
         if (
@@ -334,17 +529,6 @@ export default function ExplorerCoinShopScreen() {
   // etc.
   // -------------------------------------------------------
 
-  const appleProduct = useMemo(
-    () =>
-      products.find(
-        (product) =>
-          product.id ===
-          EXPLORER_COINS_500
-      ),
-    [products]
-  );
-
-
   // -------------------------------------------------------
   // Purpose:
   // Loads the wallet when the shop opens.
@@ -361,7 +545,7 @@ export default function ExplorerCoinShopScreen() {
 
   // -------------------------------------------------------
   // Purpose:
-  // Loads Apple's 500 Coin product after StoreKit connects.
+  // Loads all Explorer Coin products after StoreKit connects.
   // -------------------------------------------------------
 
   useEffect(() => {
@@ -374,7 +558,7 @@ export default function ExplorerCoinShopScreen() {
 
     void fetchProducts({
       skus: [
-        EXPLORER_COINS_500,
+        ...APPLE_PRODUCT_IDS,
       ],
       type: 'in-app',
     }).catch((error) => {
@@ -402,125 +586,122 @@ export default function ExplorerCoinShopScreen() {
   // allowing our server to confirm who bought the coins.
   // -------------------------------------------------------
 
-  const buy500Coins =
-    useCallback(async () => {
-      if (Platform.OS !== 'ios') {
-        Alert.alert(
-          'Coming Soon',
-          'Google Play Explorer Coin purchases will be connected separately.'
-        );
-
-        return;
-      }
-
-
-      if (!connected) {
-        Alert.alert(
-          'App Store Connecting',
-          'The App Store is still connecting. Try again in a moment.'
-        );
-
-        return;
-      }
-
-
-      if (!appleProduct) {
-        Alert.alert(
-          'Product Loading',
-          'The Explorer Coin package is still loading from Apple.'
-        );
-
-        return;
-      }
-
-
-      try {
-        setPurchaseProcessing(true);
-        setStoreMessage(
-          'Opening Apple purchase...'
-        );
-
-
-        // -----------------------------------------------
-        // Get the currently signed-in Mission Trails user.
-        // -----------------------------------------------
-
-        const {
-          data,
-          error,
-        } = await supabase.auth.getUser();
-
-
-        if (
-          error ||
-          !data.user
-        ) {
-          throw new Error(
-            'You must be signed in to purchase Explorer Coins.'
+  const buyCoins =
+    useCallback(
+      async (productId: string) => {
+        if (Platform.OS !== 'ios') {
+          Alert.alert(
+            'Coming Soon',
+            'Google Play Explorer Coin purchases will be connected separately.'
           );
+
+          return;
         }
 
 
-        // -----------------------------------------------
-        // Start Apple's native purchase flow.
-        //
-        // Supabase user IDs are UUIDs, which makes them
-        // valid Apple appAccountToken values.
-        // -----------------------------------------------
+        if (!connected) {
+          Alert.alert(
+            'App Store Connecting',
+            'The App Store is still connecting. Try again in a moment.'
+          );
 
-        await requestPurchase({
-          request: {
-            apple: {
-              sku:
-                EXPLORER_COINS_500,
+          return;
+        }
 
-              quantity: 1,
 
-              appAccountToken:
-                data.user.id,
+        if (
+          !VALID_PRODUCT_IDS.has(productId)
+        ) {
+          Alert.alert(
+            'Unavailable Product',
+            'Mission Trails does not recognize this Explorer Coin pack.'
+          );
+
+          return;
+        }
+
+
+        const appleProduct =
+          products.find(
+            (product) =>
+              product.id === productId
+          );
+
+
+        if (!appleProduct) {
+          Alert.alert(
+            'Product Loading',
+            'This Explorer Coin pack is still loading from Apple.'
+          );
+
+          return;
+        }
+
+
+        try {
+          setPurchaseProcessing(true);
+          setProcessingProductId(productId);
+
+          setStoreMessage(
+            'Opening Apple purchase...'
+          );
+
+
+          const {
+            data,
+            error,
+          } = await supabase.auth.getUser();
+
+
+          if (
+            error ||
+            !data.user
+          ) {
+            throw new Error(
+              'You must be signed in to purchase Explorer Coins.'
+            );
+          }
+
+
+          await requestPurchase({
+            request: {
+              apple: {
+                sku: productId,
+
+                quantity: 1,
+
+                appAccountToken:
+                  data.user.id,
+              },
             },
-          },
 
-          type: 'in-app',
-        });
+            type: 'in-app',
+          });
 
-      } catch (error) {
-        setPurchaseProcessing(false);
-        setStoreMessage(null);
+        } catch (error) {
+          setPurchaseProcessing(false);
+          setProcessingProductId(null);
+          setStoreMessage(null);
 
-        console.error(
-          'Could not start Explorer Coin purchase:',
-          error
-        );
+          console.error(
+            'Could not start Explorer Coin purchase:',
+            error
+          );
 
-        Alert.alert(
-          'Unable to Purchase',
-          error instanceof Error
-            ? error.message
-            : 'The purchase could not be started.'
-        );
-      }
-    }, [
-      appleProduct,
-      connected,
-      requestPurchase,
-    ]);
-
-
-  const priceText =
-    appleProduct?.displayPrice ??
-    (
-      connected
-        ? 'Loading price...'
-        : 'Connecting...'
+          Alert.alert(
+            'Unable to Purchase',
+            error instanceof Error
+              ? error.message
+              : 'The purchase could not be started.'
+          );
+        }
+      },
+      [
+        connected,
+        products,
+        requestPurchase,
+      ]
     );
-
-
-  const buyDisabled =
-    purchaseProcessing ||
-    Platform.OS !== 'ios' ||
-    !connected ||
-    !appleProduct;
 
 
   return (
@@ -584,85 +765,134 @@ export default function ExplorerCoinShopScreen() {
         </Text>
 
 
-        <View style={styles.productCard}>
-          <View style={styles.glowCircle}>
-            <Image
-              source={explorerCoinImage}
-              resizeMode="contain"
-              style={styles.productCoin}
-            />
-          </View>
+        {COIN_PACKS.map((pack) => {
+          const appleProduct =
+            products.find(
+              (product) =>
+                product.id ===
+                pack.productId
+            );
 
-          <Text style={styles.coinAmount}>
-            500
-          </Text>
+          const priceText =
+            appleProduct?.displayPrice ??
+            (
+              connected
+                ? 'Loading price...'
+                : 'Connecting...'
+            );
 
-          <Text style={styles.coinName}>
-            EXPLORER COINS
-          </Text>
+          const isProcessing =
+            processingProductId ===
+            pack.productId;
 
-          <Text style={styles.productDescription}>
-            Use Explorer Coins for companion food
-            and other eligible Mission Trails items.
-          </Text>
+          const buyDisabled =
+            purchaseProcessing ||
+            Platform.OS !== 'ios' ||
+            !connected ||
+            !appleProduct;
 
-          <Text style={styles.price}>
-            {priceText}
-          </Text>
-
-
-          <Pressable
-            disabled={buyDisabled}
-            onPress={buy500Coins}
-            style={[
-              styles.buyButton,
-              buyDisabled &&
-                styles.buyButtonDisabled,
-            ]}
-          >
-            {purchaseProcessing ? (
-              <ActivityIndicator
-                color="#09000D"
-              />
-            ) : (
-              <>
-                <Ionicons
-                  name="logo-apple"
-                  size={19}
-                  color="#09000D"
-                />
-
-                <Text style={styles.buyButtonText}>
-                  BUY 500 COINS
-                </Text>
-              </>
-            )}
-          </Pressable>
-
-
-          {storeMessage ? (
-            <Text style={styles.storeMessage}>
-              {storeMessage}
-            </Text>
-          ) : null}
-
-
-          <View style={styles.storeStatus}>
+          return (
             <View
+              key={pack.productId}
               style={[
-                styles.statusDot,
-                connected
-                  ? styles.statusDotConnected
-                  : undefined,
+                styles.productCard,
+                {
+                  marginBottom: 14,
+                },
               ]}
-            />
+            >
+              <View style={styles.glowCircle}>
+                <Image
+                  source={explorerCoinImage}
+                  resizeMode="contain"
+                  style={styles.productCoin}
+                />
+              </View>
 
-            <Text style={styles.statusText}>
-              {connected
-                ? 'App Store connected'
-                : 'Connecting to App Store'}
-            </Text>
-          </View>
+              <Text style={styles.coinAmount}>
+                {pack.coins.toLocaleString()}
+              </Text>
+
+              <Text style={styles.coinName}>
+                {pack.name.toUpperCase()}
+              </Text>
+
+              <Text
+                style={
+                  styles.productDescription
+                }
+              >
+                {pack.bonus
+                  ? `${pack.bonus}\nUse Explorer Coins for companion food and other eligible Mission Trails items.`
+                  : 'Use Explorer Coins for companion food and other eligible Mission Trails items.'}
+              </Text>
+
+              <Text style={styles.price}>
+                {priceText}
+              </Text>
+
+              <Pressable
+                disabled={buyDisabled}
+                onPress={() => {
+                  void buyCoins(
+                    pack.productId
+                  );
+                }}
+                style={[
+                  styles.buyButton,
+                  buyDisabled &&
+                    styles.buyButtonDisabled,
+                ]}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator
+                    color="#09000D"
+                  />
+                ) : (
+                  <>
+                    <Ionicons
+                      name="logo-apple"
+                      size={19}
+                      color="#09000D"
+                    />
+
+                    <Text
+                      style={
+                        styles.buyButtonText
+                      }
+                    >
+                      BUY {pack.coins.toLocaleString()}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          );
+        })}
+
+
+        {storeMessage ? (
+          <Text style={styles.storeMessage}>
+            {storeMessage}
+          </Text>
+        ) : null}
+
+
+        <View style={styles.storeStatus}>
+          <View
+            style={[
+              styles.statusDot,
+              connected
+                ? styles.statusDotConnected
+                : undefined,
+            ]}
+          />
+
+          <Text style={styles.statusText}>
+            {connected
+              ? 'App Store connected'
+              : 'Connecting to App Store'}
+          </Text>
         </View>
 
 

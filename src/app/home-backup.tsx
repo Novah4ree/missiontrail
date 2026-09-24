@@ -62,6 +62,7 @@ import { getDevelopmentMeetupsToday } from "@/services/development-meetup-data";
 import { loadActiveTrailActivity } from "@/services/trail-activity-service";
 import { queueGpsLocation } from "@/services/verified-distance";
 import type { Meetup } from "@/types/meetups";
+import type { MysteryZone } from "@/types/relic-proximity";
 import type { ActiveTrailActivity } from "@/types/trails";
 import {
   calculateDistanceMeters,
@@ -665,6 +666,40 @@ export default function HomeScreen() {
     secureRelicField.zones.find(
       (zone) => zone.assignmentId === secureRelicField.selectedAssignmentId,
     ) ?? null;
+
+  // Purpose:
+  // Guides the relic compass toward the exact relic bearing
+  // when Supabase has revealed it. Until then, guide toward
+  // the currently selected Hidden Relic Area.
+  const mysteryZoneBearing =
+    playerCoordinate &&
+    selectedMysteryZone
+      ? getBearingDegrees(
+          playerCoordinate,
+          {
+            latitude:
+              selectedMysteryZone.latitude,
+
+            longitude:
+              selectedMysteryZone.longitude,
+          },
+        )
+      : null;
+
+
+  const compassBearing =
+    ENABLE_RELIC_TEST_MODE
+      ? relicBearing
+      : secureRelicField
+            .selectedSignal
+            ?.encounterType ===
+          "ambient"
+        ? null
+        : (
+            secureRelicField
+              .bearingDegrees ??
+            mysteryZoneBearing
+          );
 
   useEffect(() => {
     if (secureRelicField.targetMode !== "manual" || !selectedMysteryZone) {

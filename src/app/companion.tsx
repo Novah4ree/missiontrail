@@ -358,12 +358,15 @@ const PLAY_GAMES: {
   title: string;
   subtitle: string;
   icon: IoniconName;
-  route: './companion-food-sort' | './companion-matching-cards';
+  route:
+    | './companion-food-sort'
+    | './companion-matching-cards'
+    | './companion-relicdoku';
 }[] = [
   {
     id: 'food-sort',
     title: 'Companion Food Sort',
-    subtitle: 'Swipe • Match • Explode • Climb Levels',
+    subtitle: 'Swipe • Match 3 • Collect • Climb Levels',
     icon: 'nutrition-outline',
     route: './companion-food-sort',
   },
@@ -373,6 +376,13 @@ const PLAY_GAMES: {
     subtitle: 'Flip • Remember • Match • Climb Levels',
     icon: 'grid-outline',
     route: './companion-matching-cards',
+  },
+  {
+    id: 'relicdoku',
+    title: 'Relicdoku',
+    subtitle: 'Solve • Relics • Logic • Earn Rewards',
+    icon: 'apps-outline',
+    route: './companion-relicdoku',
   },
 ];
 

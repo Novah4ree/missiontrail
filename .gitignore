@@ -46,3 +46,9 @@ example
 
 # iOS build files - keep outside GitHub
 *.ipa
+
+# Python virtual environments
+.venv/
+venv/
+__pycache__/
+*.pyc

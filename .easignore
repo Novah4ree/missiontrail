@@ -1,0 +1,75 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+supabase/.env.local
+supabase/.temp/
+
+# typescript
+*.tsbuildinfo
+
+example
+
+# generated native folders
+/ios
+/android
+
+# iOS build files - keep outside GitHub
+*.ipa
+
+# Python virtual environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Do not upload local dependencies/caches
+node_modules/
+.expo/
+.git/
+
+# Do not upload local iOS generated dependencies
+ios/Pods/
+ios/build/
+ios/build 2/
+
+# Backups and junk
+backups/
+.DS_Store
+*.log
+
+# Ignore loose backup copies
+**/*.before-*.tsx
+**/*.before-*.ts
+**/*.before-*.bak
+**/*.bak

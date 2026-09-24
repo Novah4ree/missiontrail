@@ -1,17 +1,23 @@
 // ============================================================
-// MISSION TRAILS - COMPANION FOOD SORT GAME ENGINE
-// ============================================================
-// Purpose:
-// Controls Food Sort board generation, swapping, matches,
-// special food, falling food, cascades, and game score.
+// MISSION TRAILS - SIMPLE COMPANION FOOD MATCH-3
+//
+// SIMPLE RULES:
+// - Swap neighboring foods.
+// - Match 3 or more identical foods.
+// - Matching foods disappear.
+// - Foods fall down.
+// - New foods enter from the top.
+// - Cascades are allowed.
+// - NO bombs.
+// - NO explosions.
+// - NO row/column blasters.
+// - NO Mythic powers.
 // ============================================================
 
 export const FOOD_SORT_ROWS = 6;
 export const FOOD_SORT_COLUMNS = 6;
-
 export const FOOD_SORT_BOARD_SIZE =
   FOOD_SORT_ROWS * FOOD_SORT_COLUMNS;
-
 
 export const FOOD_SORT_FOOD_IDS = [
   'treat',
@@ -21,11 +27,11 @@ export const FOOD_SORT_FOOD_IDS = [
   'meal',
 ] as const;
 
-
 export type FoodSortFoodId =
   typeof FOOD_SORT_FOOD_IDS[number];
 
-
+// Kept for compatibility with the existing UI.
+// The simple game engine NEVER creates anything except "none".
 export type FoodSortSpecial =
   | 'none'
   | 'row'
@@ -33,69 +39,43 @@ export type FoodSortSpecial =
   | 'bomb'
   | 'mythic';
 
-
 export type FoodSortTile = {
   id: string;
-
-  foodId:
-    FoodSortFoodId;
-
-  special:
-    FoodSortSpecial;
+  foodId: FoodSortFoodId;
+  special: FoodSortSpecial;
 };
 
-
 export type FoodSortCollected =
-  Record<
-    FoodSortFoodId,
-    number
-  >;
-
+  Record<FoodSortFoodId, number>;
 
 export type FoodSortSpawnWeights =
-  Partial<
-    Record<FoodSortFoodId, number>
-  >;
-
+  Partial<Record<FoodSortFoodId, number>>;
 
 type MatchDirection =
   | 'horizontal'
   | 'vertical';
 
-
 type MatchGroup = {
   indices: number[];
-
-  direction:
-    MatchDirection;
+  direction: MatchDirection;
 };
 
-
 export type FoodSortResolution = {
-  board:
-    FoodSortTile[];
-
-  collected:
-    FoodSortCollected;
-
+  board: FoodSortTile[];
+  collected: FoodSortCollected;
   score: number;
-
   cascades: number;
 
+  // Existing screen expects these values.
+  // Simple mode always leaves them at zero.
   specialsCreated: number;
-
   bombsCreated: number;
-
   mythicsCreated: number;
-
   powerActivations: number;
 };
 
-
 let nextTileNumber = 1;
 
-
-// Purpose: Creates an empty food counter.
 export function createEmptyCollected():
   FoodSortCollected {
   return {
@@ -107,19 +87,48 @@ export function createEmptyCollected():
   };
 }
 
+function getAvailableFoods(
+  requested:
+    readonly FoodSortFoodId[],
+): FoodSortFoodId[] {
+  const available =
+    Array.from(
+      new Set(requested),
+    );
 
-// Purpose: Picks one random food.
+  for (
+    const foodId
+    of FOOD_SORT_FOOD_IDS
+  ) {
+    if (
+      available.length >= 3
+    ) {
+      break;
+    }
+
+    if (
+      !available.includes(foodId)
+    ) {
+      available.push(foodId);
+    }
+  }
+
+  return available;
+}
+
 function randomFoodId(
-  availableFoodIds:
+  requested:
     readonly FoodSortFoodId[] =
       FOOD_SORT_FOOD_IDS,
 
   spawnWeights:
     FoodSortSpawnWeights = {},
-):
-  FoodSortFoodId {
+): FoodSortFoodId {
+  const available =
+    getAvailableFoods(requested);
+
   const totalWeight =
-    availableFoodIds.reduce(
+    available.reduce(
       (total, foodId) =>
         total +
         Math.max(
@@ -133,62 +142,60 @@ function randomFoodId(
     Math.random() *
     totalWeight;
 
-  for (const foodId of availableFoodIds) {
-    roll -= Math.max(
-      0.01,
-      spawnWeights[foodId] ?? 1,
-    );
+  for (
+    const foodId
+    of available
+  ) {
+    roll -=
+      Math.max(
+        0.01,
+        spawnWeights[foodId] ?? 1,
+      );
 
     if (roll <= 0) {
       return foodId;
     }
   }
 
-  return availableFoodIds[
-    availableFoodIds.length - 1
-  ];
+  return (
+    available[
+      available.length - 1
+    ]
+  );
 }
 
-
-// Purpose: Creates one unique board tile.
 function createTile(
-  foodId:
-    FoodSortFoodId | undefined =
-      undefined,
+  foodId?:
+    FoodSortFoodId,
 
-  special:
-    FoodSortSpecial =
-      'none',
-
-  availableFoodIds:
+  requested:
     readonly FoodSortFoodId[] =
       FOOD_SORT_FOOD_IDS,
 
   spawnWeights:
     FoodSortSpawnWeights = {},
 ): FoodSortTile {
-  const tile = {
-    id:
-      `food-sort-${nextTileNumber}`,
+  const tile:
+    FoodSortTile = {
+      id:
+        `food-sort-${nextTileNumber}`,
+      foodId:
+        foodId ??
+        randomFoodId(
+          requested,
+          spawnWeights,
+        ),
 
-    foodId:
-      foodId ??
-      randomFoodId(
-        availableFoodIds,
-        spawnWeights,
-      ),
-
-    special,
-  };
+      // IMPORTANT:
+      // Simple game. Never make powers.
+      special: 'none',
+    };
 
   nextTileNumber += 1;
 
   return tile;
 }
 
-
-// Purpose: Creates a 6x6 board without
-// starting three-in-a-row matches.
 export function createFoodSortBoard(
   requestedFoodIds:
     readonly FoodSortFoodId[] =
@@ -196,47 +203,18 @@ export function createFoodSortBoard(
 
   spawnWeights:
     FoodSortSpawnWeights = {},
-):
-  FoodSortTile[] {
-  const availableFoodIds =
-    Array.from(
-      new Set(
-        requestedFoodIds,
-      ),
+): FoodSortTile[] {
+  const available =
+    getAvailableFoods(
+      requestedFoodIds,
     );
-
-  // Match-3 needs at least three distinct foods. Level configs
-  // always provide three or more; this fallback keeps the engine
-  // safe for any future caller.
-  for (
-    const foodId
-    of FOOD_SORT_FOOD_IDS
-  ) {
-    if (
-      availableFoodIds.length >= 3
-    ) {
-      break;
-    }
-
-    if (
-      !availableFoodIds.includes(
-        foodId,
-      )
-    ) {
-      availableFoodIds.push(
-        foodId,
-      );
-    }
-  }
 
   const board:
     FoodSortTile[] = [];
 
-
   for (
     let index = 0;
-    index <
-      FOOD_SORT_BOARD_SIZE;
+    index < FOOD_SORT_BOARD_SIZE;
     index += 1
   ) {
     const row =
@@ -249,93 +227,85 @@ export function createFoodSortBoard(
       index %
       FOOD_SORT_COLUMNS;
 
+    const blocked =
+      new Set<FoodSortFoodId>();
 
-    const blockedFoods =
-      new Set<
-        FoodSortFoodId
-      >();
-
-
-    // Avoid starting horizontal matches.
+    // Prevent automatic horizontal
+    // matches when the board starts.
     if (column >= 2) {
-      const first =
+      const one =
         board[index - 1];
 
-      const second =
+      const two =
         board[index - 2];
 
       if (
-        first &&
-        second &&
-        first.foodId ===
-          second.foodId
+        one &&
+        two &&
+        one.foodId ===
+          two.foodId
       ) {
-        blockedFoods.add(
-          first.foodId,
+        blocked.add(
+          one.foodId,
         );
       }
     }
 
-
-    // Avoid starting vertical matches.
+    // Prevent automatic vertical
+    // matches when the board starts.
     if (row >= 2) {
-      const first =
+      const one =
         board[
           index -
           FOOD_SORT_COLUMNS
         ];
 
-      const second =
+      const two =
         board[
           index -
           FOOD_SORT_COLUMNS * 2
         ];
 
       if (
-        first &&
-        second &&
-        first.foodId ===
-          second.foodId
+        one &&
+        two &&
+        one.foodId ===
+          two.foodId
       ) {
-        blockedFoods.add(
-          first.foodId,
+        blocked.add(
+          one.foodId,
         );
       }
     }
 
-
-    const availableFoods =
-      availableFoodIds.filter(
-        (foodId) =>
-          !blockedFoods.has(
-            foodId,
-          ),
+    const choices =
+      available.filter(
+        foodId =>
+          !blocked.has(foodId),
       );
-
 
     const foodId =
       randomFoodId(
-        availableFoods,
+        choices,
         spawnWeights,
       );
 
-
     board.push(
-      createTile(foodId),
+      createTile(
+        foodId,
+        available,
+        spawnWeights,
+      ),
     );
   }
-
 
   return board;
 }
 
-
-// Purpose: Checks whether two tiles are
-// directly beside each other.
 export function areFoodSortTilesAdjacent(
   firstIndex: number,
   secondIndex: number,
-) {
+): boolean {
   const firstRow =
     Math.floor(
       firstIndex /
@@ -356,7 +326,6 @@ export function areFoodSortTilesAdjacent(
     secondIndex %
     FOOD_SORT_COLUMNS;
 
-
   return (
     Math.abs(
       firstRow -
@@ -370,8 +339,6 @@ export function areFoodSortTilesAdjacent(
   );
 }
 
-
-// Purpose: Swaps two board tiles.
 export function swapFoodSortTiles(
   board:
     FoodSortTile[],
@@ -381,28 +348,22 @@ export function swapFoodSortTiles(
 
   secondIndex:
     number,
-) {
-  const nextBoard =
+): FoodSortTile[] {
+  const next =
     [...board];
 
-  const firstTile =
-    nextBoard[firstIndex];
+  const temporary =
+    next[firstIndex];
 
-  nextBoard[firstIndex] =
-    nextBoard[
-      secondIndex
-    ];
+  next[firstIndex] =
+    next[secondIndex];
 
-  nextBoard[secondIndex] =
-    firstTile;
+  next[secondIndex] =
+    temporary;
 
-
-  return nextBoard;
+  return next;
 }
 
-
-// Purpose: Finds individual horizontal and
-// vertical groups of 3 or more matching foods.
 function findMatchGroups(
   board:
     FoodSortTile[],
@@ -410,18 +371,13 @@ function findMatchGroups(
   const groups:
     MatchGroup[] = [];
 
-
-  // -----------------------------
-  // Horizontal
-  // -----------------------------
+  // HORIZONTAL MATCHES
   for (
     let row = 0;
-    row <
-      FOOD_SORT_ROWS;
+    row < FOOD_SORT_ROWS;
     row += 1
   ) {
     let start = 0;
-
 
     while (
       start <
@@ -433,12 +389,12 @@ function findMatchGroups(
         start;
 
       const foodId =
-        board[startIndex]
-          .foodId;
+        board[
+          startIndex
+        ].foodId;
 
       let end =
         start + 1;
-
 
       while (
         end <
@@ -451,7 +407,6 @@ function findMatchGroups(
       ) {
         end += 1;
       }
-
 
       if (
         end - start >= 3
@@ -472,24 +427,18 @@ function findMatchGroups(
           );
         }
 
-
         groups.push({
           indices,
-
           direction:
             'horizontal',
         });
       }
 
-
       start = end;
     }
   }
 
-
-  // -----------------------------
-  // Vertical
-  // -----------------------------
+  // VERTICAL MATCHES
   for (
     let column = 0;
     column <
@@ -497,7 +446,6 @@ function findMatchGroups(
     column += 1
   ) {
     let start = 0;
-
 
     while (
       start <
@@ -509,12 +457,12 @@ function findMatchGroups(
         column;
 
       const foodId =
-        board[startIndex]
-          .foodId;
+        board[
+          startIndex
+        ].foodId;
 
       let end =
         start + 1;
-
 
       while (
         end <
@@ -527,7 +475,6 @@ function findMatchGroups(
       ) {
         end += 1;
       }
-
 
       if (
         end - start >= 3
@@ -548,40 +495,30 @@ function findMatchGroups(
           );
         }
 
-
         groups.push({
           indices,
-
           direction:
             'vertical',
         });
       }
 
-
       start = end;
     }
   }
 
-
   return groups;
 }
 
-
-// Purpose: Returns every tile included
-// in a regular match.
 export function findFoodSortMatches(
   board:
     FoodSortTile[],
-) {
+): Set<number> {
   const matched =
     new Set<number>();
 
-
   for (
     const group
-    of findMatchGroups(
-      board,
-    )
+    of findMatchGroups(board)
   ) {
     for (
       const index
@@ -591,306 +528,35 @@ export function findFoodSortMatches(
     }
   }
 
-
   return matched;
 }
 
-
-// Purpose: Finds a safe tile inside a match
-// where a new special food can appear.
-function chooseSpecialIndex(
-  board:
-    FoodSortTile[],
-
-  indices:
-    number[],
-) {
-  const middle =
-    Math.floor(
-      indices.length / 2,
-    );
-
-
-  const preferred =
-    indices[middle];
-
-
-  if (
-    board[preferred]
-      .special === 'none'
-  ) {
-    return preferred;
-  }
-
-
-  return (
-    indices.find(
-      (index) =>
-        board[index]
-          .special ===
-        'none',
-    ) ??
-    null
-  );
-}
-
-
-// Purpose: Expands a matched clear when an
-// existing Power Snack or Mythic Treat activates.
-function expandSpecialEffects(
-  board:
-    FoodSortTile[],
-
-  initialClear:
-    Set<number>,
-) {
-  const clear =
-    new Set(
-      initialClear,
-    );
-
-  const processed =
-    new Set<number>();
-
-  const queue =
-    [...clear];
-
-
-  let activations = 0;
-
-
-  while (
-    queue.length > 0
-  ) {
-    const index =
-      queue.shift();
-
-    if (
-      index === undefined ||
-      processed.has(index)
-    ) {
-      continue;
-    }
-
-
-    processed.add(index);
-
-
-    const tile =
-      board[index];
-
-
-    if (
-      !tile ||
-      tile.special ===
-        'none'
-    ) {
-      continue;
-    }
-
-
-    activations += 1;
-
-
-    const affected:
-      number[] = [];
-
-
-    // -----------------------------
-    // ROW POWER SNACK
-    // -----------------------------
-    if (
-      tile.special ===
-      'row'
-    ) {
-      const row =
-        Math.floor(
-          index /
-          FOOD_SORT_COLUMNS,
-        );
-
-
-      for (
-        let column = 0;
-        column <
-          FOOD_SORT_COLUMNS;
-        column += 1
-      ) {
-        affected.push(
-          row *
-            FOOD_SORT_COLUMNS +
-          column,
-        );
-      }
-    }
-
-
-    // -----------------------------
-    // COLUMN POWER SNACK
-    // -----------------------------
-    if (
-      tile.special ===
-      'column'
-    ) {
-      const column =
-        index %
-        FOOD_SORT_COLUMNS;
-
-
-      for (
-        let row = 0;
-        row <
-          FOOD_SORT_ROWS;
-        row += 1
-      ) {
-        affected.push(
-          row *
-            FOOD_SORT_COLUMNS +
-          column,
-        );
-      }
-    }
-
-
-    // -----------------------------
-    // NOVA BOMB
-    //
-    // Clears a 3x3 area centered
-    // around the bomb.
-    // -----------------------------
-    if (
-      tile.special ===
-      'bomb'
-    ) {
-      const centerRow =
-        Math.floor(
-          index /
-          FOOD_SORT_COLUMNS,
-        );
-
-      const centerColumn =
-        index %
-        FOOD_SORT_COLUMNS;
-
-
-      for (
-        let rowOffset = -1;
-        rowOffset <= 1;
-        rowOffset += 1
-      ) {
-        for (
-          let columnOffset = -1;
-          columnOffset <= 1;
-          columnOffset += 1
-        ) {
-          const row =
-            centerRow +
-            rowOffset;
-
-          const column =
-            centerColumn +
-            columnOffset;
-
-
-          if (
-            row < 0 ||
-            row >= FOOD_SORT_ROWS ||
-            column < 0 ||
-            column >= FOOD_SORT_COLUMNS
-          ) {
-            continue;
-          }
-
-
-          affected.push(
-            row *
-              FOOD_SORT_COLUMNS +
-            column,
-          );
-        }
-      }
-    }
-
-
-    // -----------------------------
-    // MYTHIC TREAT
-    //
-    // Clears every food matching
-    // this Mythic Treat's food type.
-    // -----------------------------
-    if (
-      tile.special ===
-      'mythic'
-    ) {
-      for (
-        let boardIndex = 0;
-        boardIndex <
-          board.length;
-        boardIndex += 1
-      ) {
-        if (
-          board[
-            boardIndex
-          ].foodId ===
-          tile.foodId
-        ) {
-          affected.push(
-            boardIndex,
-          );
-        }
-      }
-    }
-
-
-    // Add newly affected tiles.
-    for (
-      const affectedIndex
-      of affected
-    ) {
-      if (
-        !clear.has(
-          affectedIndex,
-        )
-      ) {
-        clear.add(
-          affectedIndex,
-        );
-
-        queue.push(
-          affectedIndex,
-        );
-      }
-    }
-  }
-
-
-  return {
-    clear,
-    activations,
-  };
-}
-
-
-// Purpose: Makes remaining foods fall down
-// and fills new foods at the top.
 function collapseFoodSortBoard(
   board:
-    (FoodSortTile |
-      null)[],
+    Array<
+      FoodSortTile |
+      null
+    >,
 
-  availableFoodIds:
+  requestedFoodIds:
     readonly FoodSortFoodId[],
 
   spawnWeights:
     FoodSortSpawnWeights,
 ): FoodSortTile[] {
-  const nextBoard:
-    (FoodSortTile |
-      null)[] =
-    new Array(
-      FOOD_SORT_BOARD_SIZE,
-    ).fill(null);
+  const available =
+    getAvailableFoods(
+      requestedFoodIds,
+    );
 
+  const next:
+    Array<
+      FoodSortTile |
+      null
+    > =
+      new Array(
+        FOOD_SORT_BOARD_SIZE,
+      ).fill(null);
 
   for (
     let column = 0;
@@ -901,370 +567,159 @@ function collapseFoodSortBoard(
     let writeRow =
       FOOD_SORT_ROWS - 1;
 
-
+    // Existing food falls down.
     for (
       let row =
         FOOD_SORT_ROWS - 1;
       row >= 0;
       row -= 1
     ) {
-      const tile =
-        board[
-          row *
-            FOOD_SORT_COLUMNS +
-          column
-        ];
+      const index =
+        row *
+          FOOD_SORT_COLUMNS +
+        column;
 
+      const tile =
+        board[index];
 
       if (!tile) {
         continue;
       }
 
-
-      nextBoard[
+      next[
         writeRow *
           FOOD_SORT_COLUMNS +
         column
-      ] = tile;
+      ] = {
+        ...tile,
 
+        // Removes any old special
+        // piece left from an older
+        // saved board.
+        special: 'none',
+      };
 
       writeRow -= 1;
     }
 
-
+    // New normal foods drop
+    // into empty spaces.
     while (
       writeRow >= 0
     ) {
-      nextBoard[
+      next[
         writeRow *
           FOOD_SORT_COLUMNS +
         column
       ] =
         createTile(
           undefined,
-          'none',
-          availableFoodIds,
+          available,
           spawnWeights,
         );
-
 
       writeRow -= 1;
     }
   }
 
-
   return (
-    nextBoard as
+    next as
       FoodSortTile[]
   );
 }
 
-
-// Purpose: Resolves matches, Power Snacks,
-// Mythic Treats, falling foods, and cascades.
 export function resolveFoodSortBoard(
   startingBoard:
     FoodSortTile[],
 
-  availableFoodIds:
+  requestedFoodIds:
     readonly FoodSortFoodId[] =
       FOOD_SORT_FOOD_IDS,
 
   spawnWeights:
     FoodSortSpawnWeights = {},
 ): FoodSortResolution {
-  let board =
-    [...startingBoard];
-
+  let board: FoodSortTile[] =
+    startingBoard.map(
+      (tile): FoodSortTile => ({
+        ...tile,
+        special: 'none',
+      }),
+    );
 
   const collected =
     createEmptyCollected();
 
-
   let score = 0;
-
   let cascades = 0;
 
-  let specialsCreated = 0;
-
-  let bombsCreated = 0;
-
-  let mythicsCreated = 0;
-
-  let powerActivations = 0;
-
-
-  // Safety limit prevents an accidental
-  // endless cascade.
+  // Regular Candy-Crush-style
+  // falling/cascade behavior.
+  // No explosion expansion.
   while (
     cascades < 20
   ) {
-    const groups =
-      findMatchGroups(
+    const matched =
+      findFoodSortMatches(
         board,
       );
 
-
     if (
-      groups.length === 0
+      matched.size === 0
     ) {
       break;
     }
 
-
     cascades += 1;
 
-
-    const matched =
-      new Set<number>();
-
-
-    for (
-      const group
-      of groups
-    ) {
-      for (
-        const index
-        of group.indices
-      ) {
-        matched.add(index);
-      }
-    }
-
-
-    // --------------------------------------
-    // Decide which new specials are created.
-    // --------------------------------------
-    const specialsToCreate =
-      new Map<
-        number,
-        FoodSortSpecial
-      >();
-
-
-    for (
-      const group
-      of groups
-    ) {
-      if (
-        group.indices.length <
-        4
-      ) {
-        continue;
-      }
-
-
-      const specialIndex =
-        chooseSpecialIndex(
-          board,
-          group.indices,
-        );
-
-
-      if (
-        specialIndex ===
-        null
-      ) {
-        continue;
-      }
-
-
-      // 6+ MATCH
-      //
-      // Creates the strongest special:
-      // Mythic Burst.
-      if (
-        group.indices.length >=
-        6
-      ) {
-        specialsToCreate.set(
-          specialIndex,
-          'mythic',
-        );
-
-        continue;
-      }
-
-
-      // 5 MATCH
-      //
-      // Creates a Nova Bomb.
-      if (
-        group.indices.length ===
-        5
-      ) {
-        specialsToCreate.set(
-          specialIndex,
-          'bomb',
-        );
-
-        continue;
-      }
-
-
-      // 4 MATCH
-      //
-      // Horizontal match -> row blaster.
-      // Vertical match -> column blaster.
-      specialsToCreate.set(
-        specialIndex,
-
-        group.direction ===
-          'horizontal'
-          ? 'row'
-          : 'column',
-      );
-    }
-
-
-    // Existing special foods inside this match
-    // can cause larger chain-reaction clears.
-    const expanded =
-      expandSpecialEffects(
-        board,
-        matched,
-      );
-
-
-    powerActivations +=
-      expanded.activations;
-
-
-    const clearSet =
-      expanded.clear;
-
-
-    // A newly created special stays alive
-    // instead of being removed immediately.
-    for (
-      const index
-      of specialsToCreate.keys()
-    ) {
-      clearSet.delete(index);
-    }
-
-
     const boardWithHoles:
-      (FoodSortTile |
-        null)[] = [...board];
+      Array<
+        FoodSortTile |
+        null
+      > =
+        [...board];
 
-
-    // --------------------------------------
-    // Clear matched / exploded food.
-    // --------------------------------------
+    // ONLY remove the food that
+    // actually belongs to a match.
     for (
       const index
-      of clearSet
+      of matched
     ) {
       const tile =
         board[index];
 
-
       collected[
         tile.foodId
       ] += 1;
-
 
       boardWithHoles[
         index
       ] = null;
     }
 
-
-    // --------------------------------------
-    // Create specials.
-    // --------------------------------------
-    for (
-      const [
-        index,
-        special,
-      ]
-      of specialsToCreate
-    ) {
-      const oldTile =
-        board[index];
-
-
-      boardWithHoles[
-        index
-      ] =
-        createTile(
-          oldTile.foodId,
-          special,
-        );
-
-
-      specialsCreated +=
-        1;
-
-
-      if (
-        special ===
-        'bomb'
-      ) {
-        bombsCreated +=
-          1;
-      }
-
-
-      if (
-        special ===
-        'mythic'
-      ) {
-        mythicsCreated +=
-          1;
-      }
-    }
-
-
-    // --------------------------------------
-    // GAME SCORE
-    // --------------------------------------
     score +=
-      clearSet.size *
+      matched.size *
       10 *
       cascades;
-
-
-    // Bonus for making specials.
-    for (
-      const special
-      of specialsToCreate.values()
-    ) {
-      score +=
-        special ===
-        'mythic'
-          ? 250
-          : special ===
-              'bomb'
-            ? 150
-            : 75;
-    }
-
-
-    // Bonus for activating existing powers.
-    score +=
-      expanded.activations *
-      100;
-
 
     board =
       collapseFoodSortBoard(
         boardWithHoles,
-        availableFoodIds,
+        requestedFoodIds,
         spawnWeights,
       );
   }
-
 
   return {
     board,
     collected,
     score,
     cascades,
-    specialsCreated,
-    bombsCreated,
-    mythicsCreated,
-    powerActivations,
+
+    // Explosion system deleted.
+    specialsCreated: 0,
+    bombsCreated: 0,
+    mythicsCreated: 0,
+    powerActivations: 0,
   };
 }

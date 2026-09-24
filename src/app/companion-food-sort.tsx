@@ -1043,6 +1043,12 @@ export default function CompanionFoodSortScreen() {
 
     setIsStartingRun(true);
     setRunId(null);
+
+    // Purpose:
+    // Never let animation state leak into a fresh run.
+    setIsBoardAnimating(false);
+    setPoppingIndexes([]);
+    setDroppingFoods(false);
     setRewardMessage(null);
     setFailureReason(null);
 
@@ -1737,7 +1743,8 @@ export default function CompanionFoodSortScreen() {
       roundEndedRef.current ||
       !runId ||
       isStartingRun ||
-      isClaimingReward
+      isClaimingReward ||
+      isBoardAnimating
     ) {
       return;
     }
@@ -1817,48 +1824,28 @@ export default function CompanionFoodSortScreen() {
       );
 
 
-    // Invalid swaps bounce back.
-    // They do NOT use one of the player's moves.
+    // Invalid swaps simply bounce back.
+    //
+    // Purpose:
+    // Candy Crush-style rules do not restart or
+    // fail the level because the player tried a
+    // swap that did not create a match.
     if (
       firstMatch.size === 0
     ) {
-      const nextMistakes =
-        mistakesRef.current + 1;
-
-      mistakesRef.current =
-        nextMistakes;
-
       comboStreakRef.current =
         0;
 
-      setComboStreak(0);
-
-      setSelectedIndex(null);
-
-      setMistakes(
-        nextMistakes,
+      setComboStreak(
+        0,
       );
 
-      if (
-        nextMistakes >=
-        levelConfig.allowedMistakes + 1
-      ) {
-        roundEndedRef.current =
-          true;
-
-        setFailureReason(
-          'mistakes',
-        );
-
-        setGameStatus('lost');
-        setMessage(
-          'Mistake limit reached. Try the level again!',
-        );
-        return;
-      }
+      setSelectedIndex(
+        null,
+      );
 
       setMessage(
-        `That swap does not make a match. ${levelConfig.allowedMistakes - nextMistakes} mistake${levelConfig.allowedMistakes - nextMistakes === 1 ? '' : 's'} left.`,
+        'No match there. Try another food.',
       );
 
       return;
@@ -1952,11 +1939,12 @@ export default function CompanionFoodSortScreen() {
 
 
     // Purpose:
-    // Animate the player's match before showing
-    // the completely resolved board.
-    animateMatchedFoods(
-      swappedBoard,
-      firstMatch,
+    // Keep gameplay stable while the visual cascade
+    // animation is being rebuilt.
+    //
+    // Only matched/refilled foods change. The level
+    // itself is NOT restarted.
+    setBoard(
       result.board,
     );
 
@@ -2637,7 +2625,7 @@ export default function CompanionFoodSortScreen() {
 
 
   function playFoodSortFx(
-    result: {
+    _result: {
       bombsCreated: number;
       mythicsCreated: number;
       specialsCreated: number;
@@ -2645,108 +2633,14 @@ export default function CompanionFoodSortScreen() {
       cascades: number;
     },
   ) {
-    let symbol =
-      '✨';
+    // SIMPLE MATCH-3 MODE:
+    // No bomb, explosion, Mythic,
+    // lightning, or blast animation.
+    blastOpacity.setValue(0);
 
-    let scaleTarget =
-      1.25;
-
-
-    if (
-      result.mythicsCreated >
-      0
-    ) {
-      symbol =
-        '✦';
-
-      scaleTarget =
-        2.15;
-
-      void Haptics.notificationAsync(
-        Haptics.NotificationFeedbackType.Success,
-      );
-
-    } else if (
-      result.bombsCreated >
-        0 ||
-      result.powerActivations >
-        0
-    ) {
-      symbol =
-        '💥';
-
-      scaleTarget =
-        1.9;
-
-      void Haptics.impactAsync(
-        Haptics.ImpactFeedbackStyle.Heavy,
-      );
-
-    } else if (
-      result.specialsCreated >
-        0 ||
-      result.cascades >
-        1
-    ) {
-      symbol =
-        '⚡';
-
-      scaleTarget =
-        1.55;
-
-      void Haptics.impactAsync(
-        Haptics.ImpactFeedbackStyle.Medium,
-      );
-
-    } else {
-      void Haptics.impactAsync(
-        Haptics.ImpactFeedbackStyle.Light,
-      );
-    }
-
-
-    setBlastSymbol(
-      symbol,
+    void Haptics.impactAsync(
+      Haptics.ImpactFeedbackStyle.Light,
     );
-
-
-    blastScale.setValue(
-      0.35,
-    );
-
-    blastOpacity.setValue(
-      0.95,
-    );
-
-
-    Animated.parallel([
-      Animated.spring(
-        blastScale,
-        {
-          toValue:
-            scaleTarget,
-
-          damping: 11,
-
-          stiffness: 220,
-
-          useNativeDriver:
-            true,
-        },
-      ),
-
-      Animated.timing(
-        blastOpacity,
-        {
-          toValue: 0,
-
-          duration: 420,
-
-          useNativeDriver:
-            true,
-        },
-      ),
-    ]).start();
   }
 
 
