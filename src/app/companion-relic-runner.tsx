@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
   stats: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 22, marginTop: 12 },
   stat: { color: GOLD, fontWeight: '800', fontSize: 13 },
   power: { textAlign: 'center', color: '#A4C5F7', marginVertical: 8, fontWeight: '700' },
-  overlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  overlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   modal: { backgroundColor: '#090D23F2', borderColor: CYAN, borderWidth: 2, borderRadius: 22, padding: 22, width: '83%', alignItems: 'center' },
   modalTitle: { color: '#FFF', fontSize: 22, fontWeight: '900', textAlign: 'center' },
   description: { color: '#C1C8E3', textAlign: 'center', marginVertical: 16, lineHeight: 22 },
