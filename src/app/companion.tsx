@@ -361,7 +361,7 @@ const PLAY_GAMES: {
   route:
     | './companion-food-sort'
     | './companion-matching-cards'
-    | './companion-relicdoku';
+    | './companion-relicdoku' | './companion-relic-runner';
 }[] = [
   {
     id: 'food-sort',
@@ -383,6 +383,13 @@ const PLAY_GAMES: {
     subtitle: 'Solve • Relics • Logic • Earn Rewards',
     icon: 'apps-outline',
     route: './companion-relicdoku',
+  },
+  {
+    id: 'relic-runner',
+    title: 'Relic Runner',
+    subtitle: 'Swipe • Jump • Slide • Collect',
+    icon: 'flash-outline',
+    route: './companion-relic-runner',
   },
 ];
 
