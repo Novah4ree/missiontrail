@@ -3,6 +3,11 @@ export type RunnerAction = 'run' | 'jump' | 'slide';
 export type RunnerStatus = 'ready' | 'playing' | 'paused' | 'over';
 export type RunnerItemKind = 'crate' | 'barrier' | 'gap' | 'shard' | 'shield' | 'magnet';
 
+// The renderer and simulation use the same point at the runner's feet.
+export const RUNNER_PLAYER_DEPTH = 0.94;
+export const RUNNER_JUMP_SECONDS = 0.82;
+export const RUNNER_SLIDE_SECONDS = 0.72;
+
 export type RunnerItem = {
   id: number;
   lane: RunnerLane;
@@ -24,6 +29,7 @@ export type RunnerState = {
   nextId: number;
   waves: number;
   items: RunnerItem[];
+  crashKind: 'crate' | 'barrier' | 'gap' | null;
 };
 
 export const runnerScore = (state: Pick<RunnerState, 'distance' | 'shards'>): number =>
@@ -36,13 +42,14 @@ export const createRunner = (bestScore = 0): RunnerState => ({
   actionTime: 0,
   distance: 0,
   shards: 0,
-  bestScore,
+  bestScore: Number.isFinite(bestScore) ? Math.max(0, Math.floor(bestScore)) : 0,
   shieldTime: 0,
   magnetTime: 0,
   spawnTime: 0.5,
   nextId: 1,
   waves: 0,
   items: [],
+  crashKind: null,
 });
 
 export const startRunner = (bestScore = 0): RunnerState => ({
@@ -58,7 +65,9 @@ export function moveRunner(state: RunnerState, direction: -1 | 1): RunnerState {
 
 export function actRunner(state: RunnerState, action: 'jump' | 'slide'): RunnerState {
   if (state.status !== 'playing') return state;
-  return { ...state, action, actionTime: action === 'jump' ? 0.82 : 0.72 };
+  // Holding a button or repeating a swipe must not keep a jump alive forever.
+  if (state.action === action && state.actionTime > 0) return state;
+  return { ...state, action, actionTime: action === 'jump' ? RUNNER_JUMP_SECONDS : RUNNER_SLIDE_SECONDS };
 }
 
 export function pauseRunner(state: RunnerState): RunnerState {
@@ -105,58 +114,78 @@ export function tickRunner(
   seconds: number,
   random: () => number = Math.random,
 ): RunnerState {
-  if (state.status !== 'playing') return state;
+  if (state.status !== 'playing' || !Number.isFinite(seconds)) return state;
   const dt = Math.max(0, Math.min(0.1, seconds));
   if (dt === 0) return state;
 
-  const distance = state.distance + dt * (9 + Math.min(13, state.distance / 115));
   const speed = Math.min(0.95, 0.46 + state.distance / 1200);
-  const actionTime = Math.max(0, state.actionTime - dt);
-  const action: RunnerAction = actionTime > 0 ? state.action : 'run';
-  let shieldTime = Math.max(0, state.shieldTime - dt);
-  let magnetTime = Math.max(0, state.magnetTime - dt);
+  let elapsed = dt;
+  let eventTime = 0;
+  let shieldTime = state.shieldTime;
+  let magnetTime = state.magnetTime;
   let shards = state.shards;
   let status: RunnerStatus = 'playing';
+  let crashKind: RunnerState['crashKind'] = null;
+  const collected = new Set<number>();
 
-  const items: RunnerItem[] = [];
-  for (const item of state.items) {
-    const nextDepth = item.depth + speed * dt;
-    if (nextDepth > 1.16) continue;
-    const crossingPlayer = item.depth < 0.94 && nextDepth >= 0.94;
-    if (!crossingPlayer) {
-      items.push({ ...item, depth: nextDepth });
-      continue;
-    }
+  // Resolve in arrival order, not insertion order. Check timers at the moment of
+  // impact, so a jump/shield expiring later in this frame still protects you.
+  const crossing = state.items
+    .filter((item) => item.depth < RUNNER_PLAYER_DEPTH && item.depth + speed * dt >= RUNNER_PLAYER_DEPTH)
+    .sort((a, b) => b.depth - a.depth || a.id - b.id);
+  for (const item of crossing) {
+    const at = Math.max(0, (RUNNER_PLAYER_DEPTH - item.depth) / speed);
+    shieldTime = Math.max(0, shieldTime - (at - eventTime));
+    magnetTime = Math.max(0, magnetTime - (at - eventTime));
+    eventTime = at;
     const sameLane = item.lane === state.lane;
     const isShard = item.kind === 'shard';
     if (isShard && (sameLane || magnetTime > 0)) {
       shards += 1;
+      collected.add(item.id);
       continue;
     }
     if ((item.kind === 'shield' || item.kind === 'magnet') && sameLane) {
       if (item.kind === 'shield') shieldTime = 9;
       else magnetTime = 9;
+      collected.add(item.id);
       continue;
     }
-    if (!sameLane || isShard || item.kind === 'shield' || item.kind === 'magnet') {
+    if (!sameLane || item.kind === 'shard' || item.kind === 'shield' || item.kind === 'magnet') {
       continue;
     }
 
+    const action = state.actionTime > at ? state.action : 'run';
     const evaded = (item.kind === 'crate' || item.kind === 'gap')
       ? action === 'jump'
       : action === 'slide';
     if (evaded) continue;
     if (shieldTime > 0) {
       shieldTime = 0;
+      collected.add(item.id);
       continue;
     }
     status = 'over';
+    crashKind = item.kind;
+    elapsed = at;
+    break;
   }
 
+  shieldTime = Math.max(0, shieldTime - (elapsed - eventTime));
+  magnetTime = Math.max(0, magnetTime - (elapsed - eventTime));
+  const actionTime = Math.max(0, state.actionTime - elapsed);
+  const action: RunnerAction = actionTime > 0 ? state.action : 'run';
+  const distance = state.distance + elapsed * (9 + Math.min(13, state.distance / 115));
+  // Missed objects continue past the player instead of disappearing on contact.
+  const items = state.items
+    .filter((item) => !collected.has(item.id))
+    .map((item) => ({ ...item, depth: item.depth + speed * elapsed }))
+    .filter((item) => item.depth <= 1.18);
   const score = runnerScore({ distance, shards });
   let next: RunnerState = {
     ...state,
     status,
+    crashKind,
     action,
     actionTime,
     distance,
@@ -164,8 +193,8 @@ export function tickRunner(
     shieldTime,
     magnetTime,
     items,
-    spawnTime: state.spawnTime - dt,
-    bestScore: Math.max(state.bestScore, status === 'over' ? score : state.bestScore),
+    spawnTime: state.spawnTime - elapsed,
+    bestScore: Math.max(state.bestScore, score),
   };
 
   if (status === 'playing' && next.spawnTime <= 0) {
@@ -173,8 +202,9 @@ export function tickRunner(
     next = {
       ...next,
       ...wave,
-      spawnTime: Math.max(0.58, 1.18 - distance / 1400),
+      spawnTime: next.spawnTime + Math.max(0.58, 1.18 - distance / 1400),
     };
   }
   return next;
 }
+
