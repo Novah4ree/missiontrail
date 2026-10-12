@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   actRunner, createRunner, moveRunner, pauseRunner, runnerScore, startRunner, tickRunner,
+  CITY_HAZARDS, TRAIL_HAZARDS, RUNNER_OBSTACLE_HINTS,
   type RunnerItem, type RunnerState,
 } from './relic-runner-core.ts';
 
@@ -144,4 +145,66 @@ test('a long seeded run has unique IDs, bounded items, and safe lanes in every w
     assert.ok(new Set(newHazards.map((entry) => entry.lane)).size < 3);
   }
   assert.ok(current.waves > 200);
+});
+
+test('City Run and Trail Run share a single engine but retain independent biome selection', () => {
+  const city = startRunner(175, 'city');
+  const trail = startRunner(175, 'trail');
+  assert.equal(city.biome, 'city');
+  assert.equal(trail.biome, 'trail');
+  assert.equal(city.bestScore, 175);
+  assert.equal(trail.bestScore, 175);
+  assert.equal(createRunner(175, 'trail').status, 'ready');
+  assert.equal(createRunner(175, 'trail').biome, 'trail');
+});
+
+test('each biome spawns only its own obstacles', () => {
+  for (const biome of ['city', 'trail'] as const) {
+    const allowed = biome === 'city' ? CITY_HAZARDS : TRAIL_HAZARDS;
+    let current = startRunner(0, biome);
+    let seed = 83;
+    const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+    const hazards = new Set<string>();
+    for (let frame = 0; frame < 4000; frame++) {
+      current = tickRunner({ ...current, shieldTime: 100 }, 1 / 60, random);
+      for (const entry of current.items) {
+        if (entry.kind !== 'shield' && entry.kind !== 'magnet' && entry.kind !== 'shard') {
+          hazards.add(entry.kind);
+          assert.ok(allowed.includes(entry.kind), biome + ' spawned wrong obstacle: ' + entry.kind);
+        }
+      }
+    }
+    assert.ok(hazards.size >= 3, biome + ' must offer diverse obstacles');
+  }
+});
+
+test('trail boulders, roots and snakes require jumping or changing lanes', () => {
+  for (const kind of ['boulder', 'root', 'snake'] as const) {
+    const obstacle = game({ biome: 'trail', items: [item(1, kind, 0.93)] });
+    assert.equal(tickRunner(actRunner(obstacle, 'jump'), 0.1).status, 'playing');
+    assert.equal(tickRunner(actRunner(obstacle, 'slide'), 0.1).status, 'over');
+    assert.equal(tickRunner(moveRunner(obstacle, 1), 0.1).status, 'playing');
+  }
+});
+
+test('low logs, branches and city pipes require sliding', () => {
+  for (const kind of ['log', 'branch', 'pipe'] as const) {
+    const obstacle = game({ biome: kind === 'pipe' ? 'city' : 'trail', items: [item(1, kind, 0.93)] });
+    assert.equal(tickRunner(actRunner(obstacle, 'slide'), 0.1).status, 'playing');
+    assert.equal(tickRunner(actRunner(obstacle, 'jump'), 0.1).status, 'over');
+  }
+});
+
+test('vehicle blocks a full lane and must be dodged or shielded', () => {
+  const vehicle = game({ biome: 'city', items: [item(1, 'vehicle', 0.93)] });
+  assert.equal(tickRunner(actRunner(vehicle, 'jump'), 0.1).status, 'over');
+  assert.equal(tickRunner(actRunner(vehicle, 'slide'), 0.1).status, 'over');
+  assert.equal(tickRunner(moveRunner(vehicle, -1), 0.1).status, 'playing');
+  assert.equal(tickRunner({ ...vehicle, shieldTime: 8 }, 0.1).status, 'playing');
+});
+
+test('every biome hazard explains how to avoid it', () => {
+  for (const kind of [...CITY_HAZARDS, ...TRAIL_HAZARDS]) {
+    assert.ok(RUNNER_OBSTACLE_HINTS[kind].length > 12);
+  }
 });
