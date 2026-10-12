@@ -11,7 +11,7 @@
       "icon": "./assets/images/App_Icon_iOS.png",
       "bundleIdentifier": "com.anonymous.MissionTrail0.x2",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Allow Mission Trails to use your location to find nearby trails and track trails you choose to start.",
+        "NSLocationWhenInUseUsageDescription": "Mission Trails uses your location while the app is in use to find nearby trails, verify discovery proximity, and track trails you choose to start.",
         "NSMotionUsageDescription": "Mission Trails uses motion activity to count your steps and track walking progress during missions.",
         "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "Mission Trails uses Face ID to securely sign you in.",
@@ -68,8 +68,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow Mission Trails to use your location for nearby trails and verified GPS trail tracking.",
-          "locationWhenInUsePermission": "Allow Mission Trails to use your location for nearby trails and verified GPS trail tracking."
+          "locationWhenInUsePermission": "Mission Trails uses your location while the app is in use for nearby trails, discovery proximity, and verified GPS trail tracking."
         }
       ],
       [
