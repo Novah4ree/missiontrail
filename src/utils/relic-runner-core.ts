@@ -1,7 +1,27 @@
 export type RunnerLane = 0 | 1 | 2;
 export type RunnerAction = 'run' | 'jump' | 'slide';
 export type RunnerStatus = 'ready' | 'playing' | 'paused' | 'over';
-export type RunnerItemKind = 'crate' | 'barrier' | 'gap' | 'shard' | 'shield' | 'magnet';
+export type RunnerBiome = 'city' | 'trail';
+export type RunnerItemKind =
+  | 'crate' | 'barrier' | 'gap' | 'vehicle' | 'pipe'
+  | 'boulder' | 'root' | 'log' | 'snake' | 'branch'
+  | 'shard' | 'shield' | 'magnet';
+export type RunnerHazard = Exclude<RunnerItemKind, 'shard' | 'shield' | 'magnet'>;
+export const CITY_HAZARDS: RunnerHazard[] = ['crate', 'barrier', 'gap', 'vehicle', 'pipe'];
+export const TRAIL_HAZARDS: RunnerHazard[] = ['boulder', 'root', 'log', 'snake', 'branch', 'gap'];
+
+export const RUNNER_OBSTACLE_HINTS: Record<RunnerHazard, string> = {
+  crate: 'Jump the crate or switch lanes.',
+  barrier: 'Slide under the gate or switch lanes.',
+  gap: 'Jump the gap or switch lanes.',
+  vehicle: 'Switch lanes to avoid the vehicle.',
+  pipe: 'Slide under the low pipe.',
+  boulder: 'Jump the boulder or dodge it.',
+  root: 'Jump over roots on the trail.',
+  log: 'Slide under the fallen log.',
+  snake: 'Jump over the snake or switch lanes.',
+  branch: 'Slide beneath the low branch.',
+};
 
 // The renderer and simulation use the same point at the runner's feet.
 export const RUNNER_PLAYER_DEPTH = 0.94;
@@ -17,6 +37,7 @@ export type RunnerItem = {
 
 export type RunnerState = {
   status: RunnerStatus;
+  biome: RunnerBiome;
   lane: RunnerLane;
   action: RunnerAction;
   actionTime: number;
@@ -29,14 +50,15 @@ export type RunnerState = {
   nextId: number;
   waves: number;
   items: RunnerItem[];
-  crashKind: 'crate' | 'barrier' | 'gap' | null;
+  crashKind: RunnerHazard | null;
 };
 
 export const runnerScore = (state: Pick<RunnerState, 'distance' | 'shards'>): number =>
   Math.floor(state.distance) + state.shards * 30;
 
-export const createRunner = (bestScore = 0): RunnerState => ({
+export const createRunner = (bestScore = 0, biome: RunnerBiome = 'city'): RunnerState => ({
   status: 'ready',
+  biome,
   lane: 1,
   action: 'run',
   actionTime: 0,
@@ -52,8 +74,8 @@ export const createRunner = (bestScore = 0): RunnerState => ({
   crashKind: null,
 });
 
-export const startRunner = (bestScore = 0): RunnerState => ({
-  ...createRunner(bestScore),
+export const startRunner = (bestScore = 0, biome: RunnerBiome = 'city'): RunnerState => ({
+  ...createRunner(bestScore, biome),
   status: 'playing',
 });
 
@@ -86,8 +108,9 @@ function makeWave(
   const items = [...state.items];
   let nextId = state.nextId;
   const obstacleLane = laneFrom(random);
-  const kindRoll = random();
-  const hazard: RunnerItemKind = kindRoll < 0.42 ? 'crate' : kindRoll < 0.76 ? 'barrier' : 'gap';
+  const kindRoll = Math.min(0.999999, Math.max(0, random()));
+  const hazards = state.biome === 'trail' ? TRAIL_HAZARDS : CITY_HAZARDS;
+  const hazard = hazards[Math.floor(kindRoll * hazards.length)];
 
   if (state.waves > 1 && random() < 0.72) {
     items.push({ id: nextId++, lane: obstacleLane, depth: 0, kind: hazard });
@@ -156,9 +179,10 @@ export function tickRunner(
     }
 
     const action = state.actionTime > at ? state.action : 'run';
-    const evaded = (item.kind === 'crate' || item.kind === 'gap')
-      ? action === 'jump'
-      : action === 'slide';
+    const jumpHazard = item.kind === 'crate' || item.kind === 'gap' ||
+      item.kind === 'boulder' || item.kind === 'root' || item.kind === 'snake';
+    const evaded = item.kind === 'vehicle' ? false :
+      jumpHazard ? action === 'jump' : action === 'slide';
     if (evaded) continue;
     if (shieldTime > 0) {
       shieldTime = 0;
