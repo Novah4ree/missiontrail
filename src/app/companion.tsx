@@ -382,7 +382,7 @@ const PLAY_GAMES: {
   {
     id: 'relic-runner',
     title: 'Relic Runner',
-    subtitle: 'Swipe • Jump • Slide • Collect',
+    subtitle: 'City Run • Trail Run • Collect Relics',
     icon: 'flash-outline',
     route: './companion-relic-runner',
   },
