@@ -47,7 +47,6 @@ function TrackItem({ item, width, height, biome }: {
   const itemWidth = hazard ? unit * 1.2 : unit * 0.68;
   const itemHeight = item.kind === 'gap' ? unit * 0.34 : low ? unit * 1.34 : unit * 0.95;
   const terrain = biome === 'trail';
-  const groundColor = terrain ? '#45392D' : '#D77C49';
   const signColor = terrain ? '#90664F' : '#C1496B';
   return (
     <View style={{
