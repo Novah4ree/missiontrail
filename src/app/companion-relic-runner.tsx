@@ -159,7 +159,7 @@ export default function RelicRunnerScreen() {
   const start = () => apply(() => startRunner(bestRef.current, chosenBiome));
   const chooseBiome = (biome: RunnerBiome) => {
     setChosenBiome(biome);
-    if (gameRef.current.status === 'over') {
+    if (gameRef.current.status === 'ready' || gameRef.current.status === 'over') {
       apply((old) => createRunner(Math.max(bestRef.current, old.bestScore), biome));
     }
   };
