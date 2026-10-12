@@ -356,7 +356,7 @@ const PLAY_GAMES: {
   title: string;
   subtitle: string;
   icon: IoniconName;
-  route: './companion-food-sort' | './companion-matching-cards' | './companion-relic-runner';
+  route: './companion-food-sort' | './companion-matching-cards' | './companion-relicdoku' | './companion-relic-runner';
 }[] = [
   {
     id: 'food-sort',
@@ -371,6 +371,13 @@ const PLAY_GAMES: {
     subtitle: 'Flip • Remember • Match • Climb Levels',
     icon: 'grid-outline',
     route: './companion-matching-cards',
+  },
+  {
+    id: 'relicdoku',
+    title: 'Relicdoku',
+    subtitle: 'Solve • Relics • Logic • Earn Rewards',
+    icon: 'apps-outline',
+    route: './companion-relicdoku',
   },
   {
     id: 'relic-runner',
