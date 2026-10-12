@@ -11,7 +11,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RelicRunnerTrack } from '../components/relic-runner-track';
 import {
   actRunner, createRunner, moveRunner, pauseRunner, runnerScore, startRunner, tickRunner,
-  type RunnerState,
+  RUNNER_OBSTACLE_HINTS,
+  type RunnerBiome, type RunnerState,
 } from '../utils/relic-runner-core';
 
 const BEST_KEY = 'mission-trails-relic-runner-best-v1';
@@ -22,6 +23,7 @@ export default function RelicRunnerScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [game, setGame] = useState<RunnerState>(() => createRunner());
+  const [chosenBiome, setChosenBiome] = useState<RunnerBiome>('city');
   const [trackSize, setTrackSize] = useState({ width: 0, height: 0 });
   const gameRef = useRef(game);
   const focusedRef = useRef(false);
@@ -154,13 +156,18 @@ export default function RelicRunnerScreen() {
     if (router.canGoBack()) router.back();
     else router.replace('/companion');
   };
-  const start = () => apply(() => startRunner(bestRef.current));
+  const start = () => apply(() => startRunner(bestRef.current, chosenBiome));
+  const chooseBiome = (biome: RunnerBiome) => {
+    setChosenBiome(biome);
+    if (gameRef.current.status === 'over') {
+      apply((old) => createRunner(Math.max(bestRef.current, old.bestScore), biome));
+    }
+  };
   const score = runnerScore(game);
   const playing = game.status === 'playing';
   const compact = trackSize.height > 0 && trackSize.height < 400;
-  const crashHint = game.crashKind === 'barrier' ? 'Swipe down to slide under the pink gates.'
-    : game.crashKind === 'gap' ? 'Swipe up to jump over gaps.'
-      : 'Swipe up to jump over crates, or switch lanes.';
+  const crashHint = game.crashKind ? RUNNER_OBSTACLE_HINTS[game.crashKind] : 'Keep chasing the relics.';
+  const biomeName = game.biome === 'trail' ? 'TRAIL RUN' : 'CITY RUN';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 6, paddingBottom: Math.max(insets.bottom, 8),
@@ -187,7 +194,7 @@ export default function RelicRunnerScreen() {
         <Text style={styles.distance}>{Math.floor(game.distance)} m</Text>
         <Text style={styles.power}>{game.shieldTime > 0 ? 'SHIELD ' + Math.ceil(game.shieldTime) + 's' : ''}
           {game.magnetTime > 0 ? '  MAGNET ' + Math.ceil(game.magnetTime) + 's' : ''}</Text>
-        <Text style={styles.distance}>3 LANES · ENDLESS</Text>
+        <Text style={styles.distance}>{biomeName} · ENDLESS</Text>
       </View>
       <View style={styles.stage} onLayout={({ nativeEvent }) => {
         const { width, height } = nativeEvent.layout;
@@ -203,15 +210,37 @@ export default function RelicRunnerScreen() {
               {!compact && <View style={styles.modalIcon}><Ionicons name={game.status === 'over' ? 'flag' : game.status === 'paused' ? 'pause' : 'flash'} color={CYAN} size={28} /></View>}
               <Text style={styles.modalTitle}>{game.status === 'ready' ? 'CHASE THE RELICS' : game.status === 'paused' ? 'TAKE A BREATHER' : 'RUN COMPLETE'}</Text>
               {!compact && <Text style={styles.description}>{game.status === 'ready'
-                ? 'Find your lane. Chase the glow.\nJump crates and gaps. Slide under gates.'
+                ? 'Choose your course. Dodge obstacles, collect relic shards, and beat your record.'
                 : game.status === 'paused' ? 'Your run is paused. Ready when you are.'
                   : Math.floor(game.distance) + ' m  ·  ' + game.shards + ' shards\n' + crashHint}</Text>}
               {game.status === 'over' && !compact && <Text style={styles.finalScore}>{score.toLocaleString()}<Text style={styles.points}> PTS</Text></Text>}
+              {game.status === 'ready' && (
+                <View style={styles.biomeRow}>
+                  {(['city', 'trail'] as RunnerBiome[]).map((biome) => (
+                    <Pressable key={biome} accessibilityRole="button"
+                      accessibilityLabel={biome === 'city' ? 'Choose City Run' : 'Choose Trail Run'}
+                      accessibilityState={{ selected: chosenBiome === biome }}
+                      onPress={() => chooseBiome(biome)}
+                      style={[styles.biomeCard, chosenBiome === biome && styles.biomeSelected]}>
+                      <Ionicons name={biome === 'city' ? 'business-outline' : 'leaf-outline'}
+                        size={28} color={chosenBiome === biome ? CYAN : '#AFC8CA'} />
+                      <Text style={styles.biomeTitle}>{biome === 'city' ? 'CITY RUN' : 'TRAIL RUN'}</Text>
+                      <Text style={styles.biomeSubtitle}>{biome === 'city' ? 'Streets & neon' : 'Forest & canyon'}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
               <Pressable style={styles.primary} accessibilityRole="button"
                 onPress={() => gameRef.current.status === 'paused' ? apply(pauseRunner) : start()}>
                 <Text style={styles.primaryText}>{game.status === 'paused' ? 'RESUME RUN' : game.status === 'over' ? 'RUN AGAIN' : 'START RUN'}</Text>
                 <Ionicons name="arrow-forward" color="#09251F" size={19} />
               </Pressable>
+              {game.status === 'over' && (
+                <Pressable accessibilityRole="button" onPress={() => chooseBiome(game.biome === 'city' ? 'trail' : 'city')}
+                  style={styles.changeBiome}>
+                  <Text style={styles.changeBiomeText}>CHANGE MAP: {game.biome === 'city' ? 'TRAIL RUN' : 'CITY RUN'}</Text>
+                </Pressable>
+              )}
             </View>
           </View>
         )}
@@ -263,6 +292,14 @@ const styles = StyleSheet.create({
   description: { color: '#AFC8CA', textAlign: 'center', marginTop: 12, lineHeight: 21, fontSize: 13 },
   finalScore: { color: '#FFDC82', fontWeight: '900', fontSize: 34, marginTop: 10 },
   points: { fontSize: 12, color: '#AFC8CA' },
+  biomeRow: { width: '100%', flexDirection: 'row', gap: 9, marginTop: 16 },
+  biomeCard: { flex: 1, borderRadius: 14, borderWidth: 2, borderColor: '#274B59',
+    backgroundColor: '#142A38', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, paddingHorizontal: 4 },
+  biomeSelected: { borderColor: CYAN, backgroundColor: '#193A45' },
+  biomeTitle: { color: '#F1F7F6', fontWeight: '900', fontSize: 13, marginTop: 8 },
+  biomeSubtitle: { color: '#AFC8CA', fontSize: 10, marginTop: 4, textAlign: 'center' },
+  changeBiome: { padding: 12, marginTop: 12 },
+  changeBiomeText: { color: CYAN, fontSize: 12, fontWeight: '900', textAlign: 'center' },
   primary: { marginTop: 16, paddingVertical: 14, paddingHorizontal: 20, borderRadius: 14, backgroundColor: CYAN, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, width: '100%' },
   primaryText: { fontWeight: '900', color: '#09251F', fontSize: 13, letterSpacing: 1 },
   instructions: { color: '#8FAEB5', fontWeight: '700', fontSize: 9, textAlign: 'center', marginVertical: 9, letterSpacing: 0.3 },
