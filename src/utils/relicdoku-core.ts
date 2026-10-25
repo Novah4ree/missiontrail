@@ -1,10 +1,14 @@
 export type CellState = "empty" | "relic" | "marked";
+export type Difficulty = "easy" | "hard";
+export type RevealedRelic = { row: number; col: number };
+export type RelicdokuProgress = { selected: Difficulty; easy: number; hard: number };
 
 export type LevelData = {
   size: number;
   solution: number[];
   regions: number[][];
-  difficulty: string;
+  difficulty: Difficulty;
+  revealed: RevealedRelic[];
 };
 
 export const TOTAL_LEVELS = 500;
@@ -28,7 +32,14 @@ export function countRelics(board: CellState[][]): number {
   );
 }
 
-function getSizeForLevel(level: number): number {
+export function getSizeForLevel(level: number, difficulty: Difficulty = "easy"): number {
+  if (difficulty === "hard") {
+    if (level <= 15) return 8;
+    if (level <= 50) return 9;
+    if (level <= 125) return 10;
+    if (level <= 250) return 11;
+    return 12;
+  }
   if (level <= 4) return 4;
   if (level <= 18) return 5;
   if (level <= 108) return 6;
@@ -36,12 +47,63 @@ function getSizeForLevel(level: number): number {
   return 8;
 }
 
-function getDifficulty(size: number): string {
-  if (size <= 4) return "EASY";
-  if (size === 5) return "NORMAL";
-  if (size === 6) return "TRICKY";
-  if (size === 7) return "HARD";
-  return "MYTHIC";
+function safeLevel(value: unknown): number {
+  const level = typeof value === "number" || typeof value === "string" ? Number(value) : NaN;
+  return Number.isInteger(level) && level >= 1 && level <= TOTAL_LEVELS ? level : 1;
+}
+
+export function parseProgress(stored: string | null, legacy: string | null): RelicdokuProgress {
+  const fallback: RelicdokuProgress = { selected: "easy", easy: safeLevel(legacy), hard: 1 };
+  if (!stored) return fallback;
+  try {
+    const value: unknown = JSON.parse(stored);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
+    const progress = value as Partial<RelicdokuProgress>;
+    return {
+      selected: progress.selected === "hard" ? "hard" : "easy",
+      easy: progress.easy === undefined ? fallback.easy : safeLevel(progress.easy),
+      hard: safeLevel(progress.hard),
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function seededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (Math.imul(1664525, state) + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+// Find one seeded arrangement instead of enumerating millions of permutations
+// when Hard reaches 12 columns. Easy retains its existing level layouts.
+function createHardSolution(size: number, level: number): number[] {
+  const random = seededRandom(level * 7919 + size * 104729);
+  const candidates = Array.from({ length: size }, () => {
+    const columns = Array.from({ length: size }, (_, col) => col);
+    for (let i = size - 1; i > 0; i -= 1) {
+      const j = Math.floor(random() * (i + 1));
+      [columns[i], columns[j]] = [columns[j], columns[i]];
+    }
+    return columns;
+  });
+  const solution: number[] = [];
+  const used = new Set<number>();
+  function search(row: number): boolean {
+    if (row === size) return true;
+    for (const col of candidates[row]) {
+      if (used.has(col) || (row > 0 && Math.abs(solution[row - 1] - col) <= 1)) continue;
+      used.add(col);
+      solution[row] = col;
+      if (search(row + 1)) return true;
+      used.delete(col);
+    }
+    return false;
+  }
+  if (!search(0)) throw new Error(`No Relicdoku arrangement for size ${size}`);
+  return solution;
 }
 
 function getValidSolutions(size: number): number[][] {
@@ -120,26 +182,46 @@ function createRegionMap(
   );
 }
 
-export function buildLevel(level: number): LevelData {
-  const size = getSizeForLevel(level);
-  const solutions = getValidSolutions(size);
-
-  const solutionIndex = ((level - 1) * 73 + size * 19) % solutions.length;
-
-  const solution = [...solutions[solutionIndex]];
-  const regions = createRegionMap(size, solution, level);
+export function buildLevel(level: number, difficulty: Difficulty = "easy"): LevelData {
+  const size = getSizeForLevel(level, difficulty);
+  let solution: number[];
+  if (difficulty === "hard") {
+    solution = createHardSolution(size, level);
+  } else {
+    const solutions = getValidSolutions(size);
+    solution = [...solutions[((level - 1) * 73 + size * 19) % solutions.length]];
+  }
+  const regions = createRegionMap(size, solution, difficulty === "hard" ? level + 997 : level);
+  const revealed: RevealedRelic[] = [];
+  if (difficulty === "hard") {
+    const count = level <= 50 ? 2 : 1;
+    for (let index = 0; index < count; index += 1) {
+      const row = (level * 3 + index * Math.floor(size / 2)) % size;
+      revealed.push({ row, col: solution[row] });
+    }
+  }
 
   return {
     size,
     solution,
     regions,
-    difficulty: getDifficulty(size),
+    difficulty,
+    revealed,
   };
 }
 
 export function createInitialBoard(levelData: LevelData): CellState[][] {
-  // Starting, restarting and advancing must all begin without clues or X marks.
-  return createEmptyBoard(levelData.size);
+  const board = createEmptyBoard(levelData.size);
+  for (const { row, col } of levelData.revealed) board[row][col] = "relic";
+  return board;
+}
+
+export function isRevealed(levelData: LevelData, row: number, col: number): boolean {
+  return levelData.revealed.some((cell) => cell.row === row && cell.col === col);
+}
+
+export function hasPlayerRelic(board: CellState[][], levelData: LevelData): boolean {
+  return board.some((cells, row) => cells.some((cell, col) => cell === "relic" && !isRevealed(levelData, row, col)));
 }
 
 export function isPlacementCompatible(
@@ -216,49 +298,43 @@ export function findCompletion(
   const usedRegions = new Set<number>();
   const result = Array.from({ length: size }, () => -1);
 
-  function search(row: number): boolean {
-    if (row === size) {
-      return true;
+  function search(remaining: number): boolean {
+    if (remaining === 0) return true;
+    // Solve the most constrained row first, including revealed rows. This keeps
+    // hint and dead-end checks responsive on 12x12 boards.
+    let row = -1;
+    let candidates: number[] = [];
+    for (let r = 0; r < size; r += 1) {
+      if (result[r] !== -1) continue;
+      const fixedCol = fixedByRow.get(r);
+      const available: number[] = [];
+      for (let col = 0; col < size; col += 1) {
+        if (fixedCol !== undefined && col !== fixedCol) continue;
+        if (usedColumns.has(col) || usedRegions.has(regions[r][col])) continue;
+        if (r > 0 && result[r - 1] >= 0 && Math.abs(result[r - 1] - col) <= 1) continue;
+        if (r + 1 < size && result[r + 1] >= 0 && Math.abs(result[r + 1] - col) <= 1) continue;
+        available.push(col);
+      }
+      if (available.length === 0) return false;
+      if (row === -1 || available.length < candidates.length) {
+        row = r;
+        candidates = available;
+      }
     }
-
-    const fixedCol = fixedByRow.get(row);
-    const candidates =
-      fixedCol === undefined
-        ? Array.from({ length: size }, (_, index) => index)
-        : [fixedCol];
-
     for (const col of candidates) {
       const region = regions[row][col];
-
-      if (usedColumns.has(col) || usedRegions.has(region)) {
-        continue;
-      }
-
-      if (
-        row > 0 &&
-        result[row - 1] >= 0 &&
-        Math.abs(result[row - 1] - col) <= 1
-      ) {
-        continue;
-      }
-
       usedColumns.add(col);
       usedRegions.add(region);
       result[row] = col;
-
-      if (search(row + 1)) {
-        return true;
-      }
-
+      if (search(remaining - 1)) return true;
       result[row] = -1;
       usedColumns.delete(col);
       usedRegions.delete(region);
     }
-
     return false;
   }
 
-  return search(0) ? result : null;
+  return search(size) ? result : null;
 }
 
 // Pencil marks are player notes, not constraints: hints can correct a mistaken X.

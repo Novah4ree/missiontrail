@@ -7,8 +7,12 @@ import {
   createInitialBoard,
   findCompletion,
   getVisibleMark,
+  getSizeForLevel,
+  hasPlayerRelic,
   isAutoBlocked,
   isPlacementCompatible,
+  isRevealed,
+  parseProgress,
   toggleMark,
   TOTAL_LEVELS,
 } from "./relicdoku-core.ts";
@@ -121,4 +125,82 @@ test("solver rejects conflicting relics while ignoring pencil notes", () => {
   board[1][0] = "empty";
   board[1][1] = "relic";
   assert.equal(findCompletion(board, data), null);
+});
+
+test("Hard scales from 64 to 144 squares and always has more relics than Easy", () => {
+  let previousSize = 0;
+  let previousClues = 2;
+  for (let level = 1; level <= TOTAL_LEVELS; level += 1) {
+    const hard = buildLevel(level, "hard");
+    assert.ok(hard.size >= previousSize);
+    assert.ok(hard.size > getSizeForLevel(level, "easy"));
+    assert.ok(hard.revealed.length >= 1 && hard.revealed.length <= 2);
+    assert.ok(hard.revealed.length <= previousClues);
+    assert.ok(hard.revealed.length < hard.size / 2);
+    previousSize = hard.size;
+    previousClues = hard.revealed.length;
+  }
+  assert.equal(getSizeForLevel(1, "hard"), 8);
+  assert.equal(getSizeForLevel(500, "hard"), 12);
+});
+
+test("all 500 Hard levels have valid fixed starter clues and can be completed", () => {
+  for (let level = 1; level <= TOTAL_LEVELS; level += 1) {
+    const data = buildLevel(level, "hard");
+    const board = createInitialBoard(data);
+    assert.equal(countRelics(board), data.revealed.length);
+    assert.equal(hasPlayerRelic(board, data), false);
+    assert.equal(board.flat().filter((cell) => cell === "marked").length, 0);
+    for (const { row, col } of data.revealed) {
+      assert.ok(isRevealed(data, row, col));
+      assert.equal(col, data.solution[row]);
+      assert.ok(isPlacementCompatible(board, data.regions, row, col));
+    }
+    const completion = findCompletion(board, data);
+    assert.ok(completion, `Hard level ${level}`);
+    completion.forEach((col, row) => {
+      assert.ok(isPlacementCompatible(board, data.regions, row, col));
+      board[row][col] = "relic";
+    });
+    assert.equal(countRelics(board), data.size);
+    assert.ok(hasPlayerRelic(board, data));
+    assert.deepEqual(findCompletion(board, data), completion);
+    // A restart restores only clues, never the old placements or notes.
+    assert.equal(countRelics(createInitialBoard(data)), data.revealed.length);
+  }
+});
+
+test("Hard boards are deterministic across restart and saved-level resume", () => {
+  for (const level of [1, 15, 16, 50, 51, 125, 126, 250, 251, 500]) {
+    assert.deepEqual(buildLevel(level, "hard"), buildLevel(level, "hard"));
+  }
+});
+
+test("revealed clues alone never activate automatic X marks", () => {
+  const data = buildLevel(251, "hard");
+  const board = createInitialBoard(data);
+  for (let row = 0; row < data.size; row += 1) {
+    for (let col = 0; col < data.size; col += 1) {
+      assert.equal(getVisibleMark(board, data.regions, row, col, hasPlayerRelic(board, data)), null);
+    }
+  }
+  const row = data.solution.findIndex((col, r) => !isRevealed(data, r, col));
+  board[row][data.solution[row]] = "relic";
+  assert.ok(hasPlayerRelic(board, data));
+  board[row][data.solution[row]] = "empty";
+  assert.equal(hasPlayerRelic(board, data), false);
+});
+
+test("progress migrates the old level into Easy and preserves independent mode levels", () => {
+  assert.deepEqual(parseProgress(null, "251"), { selected: "easy", easy: 251, hard: 1 });
+  assert.deepEqual(parseProgress('{"selected":"hard","easy":42,"hard":126}', "251"), { selected: "hard", easy: 42, hard: 126 });
+  assert.deepEqual(parseProgress('{"selected":"hard","hard":16}', "251"), { selected: "hard", easy: 251, hard: 16 });
+});
+
+test("corrupt or out-of-range saved progress has safe defaults", () => {
+  for (const invalid of ["not json", "null", "[]", "5"]) {
+    assert.deepEqual(parseProgress(invalid, "12"), { selected: "easy", easy: 12, hard: 1 });
+  }
+  assert.deepEqual(parseProgress('{"selected":"other","easy":-10,"hard":501}', null), { selected: "easy", easy: 1, hard: 1 });
+  assert.deepEqual(parseProgress('{"easy":true,"hard":null}', null), { selected: "easy", easy: 1, hard: 1 });
 });
