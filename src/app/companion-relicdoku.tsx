@@ -6,36 +6,40 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
   Pressable,
-  SafeAreaView,
+  Switch,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 
-type CellState = "empty" | "relic";
+import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  buildLevel,
+  cloneBoard,
+  countRelics,
+  createInitialBoard,
+  findCompletion,
+  getVisibleMark,
+  isAutoBlocked,
+  toggleMark,
+  TOTAL_LEVELS,
+} from "../utils/relicdoku-core";
+import type { CellState } from "../utils/relicdoku-core";
 
-type LevelData = {
-  size: number;
-  solution: number[];
-  regions: number[][];
-  locked: Set<string>;
-  difficulty: string;
-  relicIndex: number;
-};
-
-const TOTAL_LEVELS = 500;
 const PROGRESS_KEY = "@missiontrails/relicdoku-level-v2";
+const START_MESSAGE = "Your board is clear. Tap a square to place a relic.";
+type InputMode = "relic" | "marked";
 
 const REGION_COLORS = [
-  "#6C3BA8",
-  "#2F83C8",
-  "#D88736",
-  "#35A98C",
-  "#B94E9E",
-  "#6872D8",
-  "#B76052",
-  "#4E9C4B",
+  "#C8ADF0",
+  "#9FCEF3",
+  "#F8C68C",
+  "#99DCC6",
+  "#F2ACCB",
+  "#B5BDF3",
+  "#F0A89A",
+  "#C2DD96",
 ];
 
 const RELICS = [
@@ -89,298 +93,12 @@ const RELICS = [
   },
 ];
 
-const solutionCache = new Map<number, number[][]>();
-
-function createEmptyBoard(size: number): CellState[][] {
-  return Array.from({ length: size }, () =>
-    Array.from({ length: size }, () => "empty" as CellState),
-  );
-}
-
-function cloneBoard(board: CellState[][]): CellState[][] {
-  return board.map((row) => [...row]);
-}
-
-function countRelics(board: CellState[][]): number {
-  return board.reduce(
-    (total, row) => total + row.filter((cell) => cell === "relic").length,
-    0,
-  );
-}
-
-function getSizeForLevel(level: number): number {
-  if (level <= 4) return 4;
-  if (level <= 18) return 5;
-  if (level <= 108) return 6;
-  if (level <= 250) return 7;
-  return 8;
-}
-
-function getDifficulty(size: number): string {
-  if (size <= 4) return "EASY";
-  if (size === 5) return "NORMAL";
-  if (size === 6) return "TRICKY";
-  if (size === 7) return "HARD";
-  return "MYTHIC";
-}
-
-function getValidSolutions(size: number): number[][] {
-  const cached = solutionCache.get(size);
-  if (cached) {
-    return cached;
-  }
-
-  const solutions: number[][] = [];
-  const used = new Set<number>();
-  const current: number[] = [];
-
-  function build(row: number) {
-    if (row === size) {
-      solutions.push([...current]);
-      return;
-    }
-
-    for (let col = 0; col < size; col += 1) {
-      if (used.has(col)) {
-        continue;
-      }
-
-      if (row > 0 && Math.abs(current[row - 1] - col) <= 1) {
-        continue;
-      }
-
-      used.add(col);
-      current.push(col);
-      build(row + 1);
-      current.pop();
-      used.delete(col);
-    }
-  }
-
-  build(0);
-  solutionCache.set(size, solutions);
-  return solutions;
-}
-
-function createRegionMap(
-  size: number,
-  solution: number[],
-  seed: number,
-): number[][] {
-  const anchors = solution.map((col, row) => ({
-    row,
-    col,
-    region: row,
-  }));
-
-  return Array.from({ length: size }, (_, row) =>
-    Array.from({ length: size }, (_, col) => {
-      let bestRegion = 0;
-      let bestDistance = Number.POSITIVE_INFINITY;
-      let bestTie = Number.POSITIVE_INFINITY;
-
-      for (const anchor of anchors) {
-        const distance =
-          Math.abs(anchor.row - row) + Math.abs(anchor.col - col);
-
-        const tie = (anchor.region * 37 + seed * 13 + row * 7 + col * 11) % 997;
-
-        if (
-          distance < bestDistance ||
-          (distance === bestDistance && tie < bestTie)
-        ) {
-          bestDistance = distance;
-          bestTie = tie;
-          bestRegion = anchor.region;
-        }
-      }
-
-      return bestRegion;
-    }),
-  );
-}
-
-function buildLevel(level: number): LevelData {
-  const size = getSizeForLevel(level);
-  const solutions = getValidSolutions(size);
-
-  const solutionIndex = ((level - 1) * 73 + size * 19) % solutions.length;
-
-  const solution = [...solutions[solutionIndex]];
-  const regions = createRegionMap(size, solution, level);
-
-  const locked = new Set<string>();
-
-  const lockedCount = level <= 3 ? 2 : level <= 15 ? 1 : 0;
-
-  if (lockedCount >= 1) {
-    const row = (level * 3) % size;
-    locked.add(`${row}-${solution[row]}`);
-  }
-
-  if (lockedCount >= 2) {
-    const firstRow = (level * 3) % size;
-    let secondRow = (firstRow + Math.max(2, Math.floor(size / 2))) % size;
-
-    if (secondRow === firstRow) {
-      secondRow = (firstRow + 1) % size;
-    }
-
-    locked.add(`${secondRow}-${solution[secondRow]}`);
-  }
-
-  return {
-    size,
-    solution,
-    regions,
-    locked,
-    difficulty: getDifficulty(size),
-    relicIndex: (level - 1) % RELICS.length,
-  };
-}
-
-function createInitialBoard(levelData: LevelData): CellState[][] {
-  const board = createEmptyBoard(levelData.size);
-
-  for (const key of levelData.locked) {
-    const [rowText, colText] = key.split("-");
-    const row = Number(rowText);
-    const col = Number(colText);
-
-    if (
-      Number.isInteger(row) &&
-      Number.isInteger(col) &&
-      board[row]?.[col] !== undefined
-    ) {
-      board[row][col] = "relic";
-    }
-  }
-
-  return board;
-}
-
-function isPlacementCompatible(
-  board: CellState[][],
-  regions: number[][],
-  row: number,
-  col: number,
-): boolean {
-  const region = regions[row][col];
-
-  for (let r = 0; r < board.length; r += 1) {
-    for (let c = 0; c < board.length; c += 1) {
-      if (board[r][c] !== "relic") {
-        continue;
-      }
-
-      if (r === row && c === col) {
-        continue;
-      }
-
-      if (r === row || c === col) {
-        return false;
-      }
-
-      if (regions[r][c] === region) {
-        return false;
-      }
-
-      if (Math.abs(r - row) <= 1 && Math.abs(c - col) <= 1) {
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-function isAutoBlocked(
-  board: CellState[][],
-  regions: number[][],
-  row: number,
-  col: number,
-): boolean {
-  if (board[row][col] === "relic") {
-    return false;
-  }
-
-  return !isPlacementCompatible(board, regions, row, col);
-}
-
-function findCompletion(
-  board: CellState[][],
-  levelData: LevelData,
-): number[] | null {
-  const { size, regions } = levelData;
-
-  const fixedByRow = new Map<number, number>();
-
-  for (let row = 0; row < size; row += 1) {
-    for (let col = 0; col < size; col += 1) {
-      if (board[row][col] !== "relic") {
-        continue;
-      }
-
-      if (fixedByRow.has(row)) {
-        return null;
-      }
-
-      fixedByRow.set(row, col);
-    }
-  }
-
-  const usedColumns = new Set<number>();
-  const usedRegions = new Set<number>();
-  const result = Array.from({ length: size }, () => -1);
-
-  function search(row: number): boolean {
-    if (row === size) {
-      return true;
-    }
-
-    const fixedCol = fixedByRow.get(row);
-    const candidates =
-      fixedCol === undefined
-        ? Array.from({ length: size }, (_, index) => index)
-        : [fixedCol];
-
-    for (const col of candidates) {
-      const region = regions[row][col];
-
-      if (usedColumns.has(col) || usedRegions.has(region)) {
-        continue;
-      }
-
-      if (
-        row > 0 &&
-        result[row - 1] >= 0 &&
-        Math.abs(result[row - 1] - col) <= 1
-      ) {
-        continue;
-      }
-
-      usedColumns.add(col);
-      usedRegions.add(region);
-      result[row] = col;
-
-      if (search(row + 1)) {
-        return true;
-      }
-
-      result[row] = -1;
-      usedColumns.delete(col);
-      usedRegions.delete(region);
-    }
-
-    return false;
-  }
-
-  return search(0) ? result : null;
-}
-
 export default function CompanionRelicdokuScreen() {
   const router = useRouter();
 
+  const [ready, setReady] = useState(false);
+  const [mode, setMode] = useState<InputMode>("relic");
+  const [autoMark, setAutoMark] = useState(false);
   const [level, setLevel] = useState(1);
   const levelData = useMemo(() => buildLevel(level), [level]);
 
@@ -391,9 +109,7 @@ export default function CompanionRelicdokuScreen() {
   const [lives, setLives] = useState(3);
   const [history, setHistory] = useState<CellState[][][]>([]);
   const [completed, setCompleted] = useState(false);
-  const [message, setMessage] = useState(
-    "Tap an open square to place the relic. X marks appear automatically.",
-  );
+  const [message, setMessage] = useState(START_MESSAGE);
 
   const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const failTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -418,9 +134,8 @@ export default function CompanionRelicdokuScreen() {
     setLives(3);
     setHistory([]);
     setCompleted(false);
-    setMessage(
-      "Tap an open square to place the relic. X marks appear automatically.",
-    );
+    setMode("relic");
+    setMessage(START_MESSAGE);
   }, []);
 
   useEffect(() => {
@@ -441,6 +156,8 @@ export default function CompanionRelicdokuScreen() {
         }
       } catch (error) {
         console.warn("Could not load Relicdoku progress:", error);
+      } finally {
+        if (active) setReady(true);
       }
     })();
 
@@ -457,10 +174,13 @@ export default function CompanionRelicdokuScreen() {
     };
   }, [startLevel]);
 
-  const activeRelic = RELICS[levelData.relicIndex];
+  const activeRelic = RELICS[(level - 1) % RELICS.length];
+  const interactionDisabled = !ready || completed || lives <= 0;
 
-  function isLocked(row: number, col: number): boolean {
-    return levelData.locked.has(`${row}-${col}`);
+  function saveProgress(nextLevel: number) {
+    void AsyncStorage.setItem(PROGRESS_KEY, String(nextLevel)).catch((error) => {
+      console.warn("Could not save Relicdoku progress:", error);
+    });
   }
 
   function saveHistory(currentBoard: CellState[][]) {
@@ -477,7 +197,7 @@ export default function CompanionRelicdokuScreen() {
     if (level >= TOTAL_LEVELS) {
       setMessage(`You cleared all ${TOTAL_LEVELS} Relicdoku levels.`);
 
-      void AsyncStorage.setItem(PROGRESS_KEY, String(TOTAL_LEVELS));
+      saveProgress(TOTAL_LEVELS);
 
       return;
     }
@@ -486,7 +206,7 @@ export default function CompanionRelicdokuScreen() {
 
     setMessage(`Level ${level} complete! Loading Level ${nextLevel}...`);
 
-    void AsyncStorage.setItem(PROGRESS_KEY, String(nextLevel));
+    saveProgress(nextLevel);
 
     advanceTimer.current = setTimeout(() => {
       startLevel(nextLevel);
@@ -494,12 +214,7 @@ export default function CompanionRelicdokuScreen() {
   }
 
   function handleCellPress(row: number, col: number) {
-    if (completed || lives <= 0) {
-      return;
-    }
-
-    if (isLocked(row, col)) {
-      setMessage("That relic is locked in place.");
+    if (interactionDisabled) {
       return;
     }
 
@@ -511,6 +226,14 @@ export default function CompanionRelicdokuScreen() {
 
       setBoard(next);
       setMessage("Relic removed.");
+      return;
+    }
+
+    if (mode === "marked") {
+      const next = toggleMark(board, row, col);
+      saveHistory(board);
+      setBoard(next);
+      setMessage(next[row][col] === "marked" ? "Square marked. Tap it again to erase the X." : "X erased.");
       return;
     }
 
@@ -561,7 +284,7 @@ export default function CompanionRelicdokuScreen() {
   }
 
   function useHint() {
-    if (completed || lives <= 0) {
+    if (interactionDisabled) {
       return;
     }
 
@@ -599,7 +322,7 @@ export default function CompanionRelicdokuScreen() {
   }
 
   function undo() {
-    if (completed) {
+    if (interactionDisabled) {
       return;
     }
 
@@ -621,34 +344,15 @@ export default function CompanionRelicdokuScreen() {
 
   function regionBorders(row: number, col: number) {
     const region = levelData.regions[row][col];
-
     return {
-      borderTopWidth:
-        row === 0 || levelData.regions[row - 1][col] !== region ? 3 : 0.5,
-
+      borderTopWidth: row === 0 ? 2 : 0,
+      borderLeftWidth: col === 0 ? 2 : 0,
       borderBottomWidth:
-        row === levelData.size - 1 || levelData.regions[row + 1][col] !== region
-          ? 3
-          : 0.5,
-
-      borderLeftWidth:
-        col === 0 || levelData.regions[row][col - 1] !== region ? 3 : 0.5,
-
+        row === levelData.size - 1 || levelData.regions[row + 1][col] !== region ? 2 : 0.5,
       borderRightWidth:
-        col === levelData.size - 1 || levelData.regions[row][col + 1] !== region
-          ? 3
-          : 0.5,
+        col === levelData.size - 1 || levelData.regions[row][col + 1] !== region ? 2 : 0.5,
     };
   }
-
-  const relicImageSize =
-    levelData.size >= 8
-      ? 27
-      : levelData.size === 7
-        ? 30
-        : levelData.size === 6
-          ? 34
-          : 39;
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -659,7 +363,7 @@ export default function CompanionRelicdokuScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Back to companion" style={styles.backButton} onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={29} color="#FFFFFF" />
           </Pressable>
 
@@ -719,60 +423,38 @@ export default function CompanionRelicdokuScreen() {
           </View>
         </View>
 
-        <View style={styles.board}>
+        <View style={styles.board} testID="relicdoku-board">
           {board.map((rowCells, row) => (
-            <View key={`row-${row}`} style={styles.boardRow}>
+            <View key={row} style={styles.boardRow}>
               {rowCells.map((cell, col) => {
                 const region = levelData.regions[row][col];
-
-                const locked = isLocked(row, col);
-
-                const blocked =
-                  cell !== "relic" &&
-                  isAutoBlocked(board, levelData.regions, row, col);
-
+                const mark = getVisibleMark(board, levelData.regions, row, col, autoMark);
+                const cellLabel = cell === "relic" ? activeRelic.name
+                  : mark === "manual" ? "marked X"
+                  : mark === "auto" ? "automatically excluded" : "empty";
                 return (
                   <Pressable
-                    key={`${row}-${col}`}
+                    key={col}
+                    testID={`relicdoku-cell-${row}-${col}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Row ${row + 1}, column ${col + 1}, territory ${region + 1}, ${cellLabel}`}
+                    accessibilityHint={mode === "marked" ? "Tap to add or erase an X. Tap a relic to remove it." : "Tap to place or remove a relic."}
                     onPress={() => handleCellPress(row, col)}
-                    disabled={completed || blocked}
+                    disabled={interactionDisabled}
                     style={[
                       styles.cell,
-                      {
-                        backgroundColor:
-                          REGION_COLORS[region % REGION_COLORS.length],
-                      },
+                      { backgroundColor: REGION_COLORS[region % REGION_COLORS.length] },
                       regionBorders(row, col),
-                      blocked && styles.blockedCell,
                     ]}
                   >
-                    {blocked && <Text style={styles.autoX}>×</Text>}
-
+                    {mark && <Text style={[styles.markX, mark === "auto" && styles.automaticMark]}>×</Text>}
                     {cell === "relic" && (
-                      <View
-                        style={[
-                          styles.relicContainer,
-                          locked && styles.lockedRelicContainer,
-                        ]}
-                      >
+                      <View style={styles.relicContainer}>
                         <Image
                           source={activeRelic.image}
                           resizeMode="contain"
-                          style={{
-                            width: relicImageSize,
-                            height: relicImageSize,
-                          }}
+                          style={styles.cellRelic}
                         />
-
-                        {locked && (
-                          <View style={styles.lockIndicator}>
-                            <Ionicons
-                              name="lock-closed"
-                              size={8}
-                              color="#05000B"
-                            />
-                          </View>
-                        )}
                       </View>
                     )}
                   </Pressable>
@@ -780,6 +462,52 @@ export default function CompanionRelicdokuScreen() {
               })}
             </View>
           ))}
+        </View>
+
+        <View style={styles.modeRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Place relic"
+            accessibilityState={{ selected: mode === "relic", disabled: interactionDisabled }}
+            disabled={interactionDisabled}
+            style={[styles.modeButton, mode === "relic" && styles.modeButtonActive]}
+            onPress={() => {
+              setMode("relic");
+              setMessage("Tap a square to place a relic. Tap a placed relic to remove it.");
+            }}
+          >
+            <Image source={activeRelic.image} resizeMode="contain" style={styles.modeRelic} />
+            <Text style={styles.modeText}>Place relic</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Mark X"
+            accessibilityState={{ selected: mode === "marked", disabled: interactionDisabled }}
+            disabled={interactionDisabled}
+            style={[styles.modeButton, mode === "marked" && styles.modeButtonActive]}
+            onPress={() => {
+              setMode("marked");
+              setMessage("Tap squares to add or erase X notes. Marking never costs a heart.");
+            }}
+          >
+            <Ionicons name="close" size={23} color="#EDE4FA" />
+            <Text style={styles.modeText}>Mark X</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.autoMarkRow}>
+          <View style={styles.autoMarkCopy}>
+            <Text style={styles.autoMarkTitle}>Auto X</Text>
+            <Text style={styles.autoMarkDescription}>Mark blocked squares after you place a relic</Text>
+          </View>
+          <Switch
+            accessibilityLabel="Auto X"
+            value={autoMark}
+            disabled={interactionDisabled}
+            onValueChange={setAutoMark}
+            trackColor={{ false: "#3E344A", true: "#8455B8" }}
+            thumbColor="#F8F2FF"
+          />
         </View>
 
         <View
@@ -791,14 +519,16 @@ export default function CompanionRelicdokuScreen() {
             color={completed ? "#70F2A0" : "#62E7FF"}
           />
 
-          <Text style={styles.messageText}>{message}</Text>
+          <Text accessibilityLiveRegion="polite" style={styles.messageText}>{ready ? message : "Loading your level..."}</Text>
         </View>
 
         <View style={styles.controls}>
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Hint"
             style={styles.controlButton}
             onPress={useHint}
-            disabled={completed}
+            disabled={interactionDisabled}
           >
             <Ionicons name="bulb-outline" size={20} color="#FFFFFF" />
 
@@ -806,16 +536,18 @@ export default function CompanionRelicdokuScreen() {
           </Pressable>
 
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Undo"
             style={styles.controlButton}
             onPress={undo}
-            disabled={completed}
+            disabled={interactionDisabled}
           >
             <Ionicons name="arrow-undo-outline" size={20} color="#FFFFFF" />
 
             <Text style={styles.controlText}>Undo</Text>
           </Pressable>
 
-          <Pressable style={styles.controlButton} onPress={restart}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Restart" style={styles.controlButton} onPress={restart} disabled={!ready}>
             <Ionicons name="refresh-outline" size={20} color="#FFFFFF" />
 
             <Text style={styles.controlText}>Restart</Text>
@@ -827,7 +559,7 @@ export default function CompanionRelicdokuScreen() {
 
           <Rule
             number="1"
-            text="Tap an open square to place the Mission Trails relic. Tap your relic again to remove it."
+            text="Choose Place relic to place or remove a relic. Choose Mark X to add or erase a note."
           />
 
           <Rule
@@ -839,7 +571,7 @@ export default function CompanionRelicdokuScreen() {
 
           <Rule
             number="4"
-            text="You do not place X marks anymore. Impossible squares are marked automatically."
+            text="X marks are optional. Turn on Auto X for help eliminating squares after you place a relic."
           />
 
           <Rule
@@ -871,7 +603,10 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    paddingHorizontal: 18,
+    width: "100%",
+    maxWidth: 540,
+    alignSelf: "center",
+    paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 50,
   },
@@ -994,10 +729,10 @@ const styles = StyleSheet.create({
     width: "100%",
     aspectRatio: 1,
     backgroundColor: "#08020E",
-    borderRadius: 18,
+    borderRadius: 12,
     overflow: "hidden",
     borderWidth: 2,
-    borderColor: "#BE4CFF",
+    borderColor: "#E3D6F6",
   },
 
   boardRow: {
@@ -1007,48 +742,95 @@ const styles = StyleSheet.create({
 
   cell: {
     flex: 1,
-    borderColor: "#09000E",
+    borderColor: "#342B45",
+    minWidth: 0,
+    minHeight: 0,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  blockedCell: {
-    opacity: 0.56,
+  markX: {
+    color: "#342B45",
+    fontSize: 26,
+    fontWeight: "600",
   },
 
-  autoX: {
-    position: "absolute",
-    color: "rgba(255,255,255,0.52)",
-    fontSize: 24,
-    fontWeight: "500",
+  automaticMark: {
+    color: "rgba(52,43,69,0.45)",
   },
 
   relicContainer: {
-    position: "relative",
-    minWidth: 42,
-    minHeight: 42,
-    borderRadius: 21,
-    backgroundColor: "rgba(5,0,11,0.62)",
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.72)",
+    width: "82%",
+    height: "82%",
+    maxWidth: 64,
+    maxHeight: 64,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  lockedRelicContainer: {
-    borderColor: "#FFD76A",
+  cellRelic: {
+    width: "100%",
+    height: "100%",
   },
 
-  lockIndicator: {
-    position: "absolute",
-    right: -4,
-    bottom: -4,
-    width: 17,
-    height: 17,
-    borderRadius: 9,
-    backgroundColor: "#FFD76A",
+  modeRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 16,
+  },
+
+  modeButton: {
+    flex: 1,
+    minHeight: 50,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#43314F",
+    backgroundColor: "#160D20",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 8,
+  },
+
+  modeButtonActive: {
+    borderColor: "#D2A4FF",
+    backgroundColor: "#573078",
+  },
+
+  modeRelic: {
+    width: 27,
+    height: 27,
+  },
+
+  modeText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
+  autoMarkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 4,
+    marginTop: 12,
+  },
+
+  autoMarkCopy: {
+    flex: 1,
+  },
+
+  autoMarkTitle: {
+    color: "#EDE4FA",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  autoMarkDescription: {
+    color: "#AFA2BC",
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 2,
   },
 
   messageCard: {
@@ -1146,3 +928,4 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
 });
+

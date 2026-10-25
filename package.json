@@ -73,6 +73,7 @@
     "test:missions": "node --experimental-strip-types --test supabase/functions/_shared/mission-requirements.test.ts",
     "test:trails": "node --experimental-strip-types --test supabase/functions/_shared/trail-normalization.test.ts",
     "test:meetups": "node --experimental-strip-types --test src/utils/meetup-discovery.test.ts",
+    "test:relicdoku": "node --experimental-strip-types --test src/utils/relicdoku-core.test.ts",
     "test:proximity": "node --experimental-strip-types --test supabase/functions/_shared/proximity-verification.test.ts",
     "test:relic-flow": "node --experimental-strip-types --test supabase/functions/_shared/dynamic-relic-flow.test.ts",
     "test:database": "supabase test db",
@@ -83,3 +84,4 @@
     "react-native-screens": "$react-native-screens"
   }
 }
+
