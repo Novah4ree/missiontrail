@@ -23,7 +23,6 @@ import {
   createInitialBoard,
   findCompletion,
   getVisibleMark,
-  hasPlayerRelic,
   isAutoBlocked,
   isRevealed,
   parseProgress,
@@ -35,7 +34,7 @@ import { createClock, elapsedSeconds, formatTime, pauseClock, resumeClock, start
 
 const LEGACY_PROGRESS_KEY = "@missiontrails/relicdoku-level-v2";
 const PROGRESS_KEY = "@missiontrails/relicdoku-progress-v3";
-const START_MESSAGE = "Your board is clear. Tap a square to place a relic.";
+const START_MESSAGE = "One relic is locked. Place the remaining relics. Only you can add X marks.";
 type InputMode = "relic" | "marked";
 
 const REGION_COLORS = [
@@ -109,7 +108,6 @@ export default function CompanionRelicdokuScreen() {
 
   const [ready, setReady] = useState(false);
   const [mode, setMode] = useState<InputMode>("relic");
-  const [autoMark, setAutoMark] = useState(false);
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [expanded, setExpanded] = useState(false);
   const [level, setLevel] = useState(1);
@@ -167,7 +165,7 @@ export default function CompanionRelicdokuScreen() {
     setMode("relic");
     setExpanded(false);
     setMessage(nextData.revealed.length
-      ? `${nextData.revealed.length} relics revealed. Find the other ${nextData.size - nextData.revealed.length}. The timer starts with your first move.`
+      ? `One relic is locked. Find the other ${nextData.size - 1}. X marks appear only when you place them.`
       : START_MESSAGE);
   }, []);
 
@@ -241,8 +239,6 @@ export default function CompanionRelicdokuScreen() {
 
   const activeRelic = RELICS[(level - 1) % RELICS.length];
   const interactionDisabled = !ready || completed || lives <= 0 || !focused || !appActive || !windowFocused;
-  // Revealed clues must not flood a new Hard board with automatic X marks.
-  const showAutoMarks = autoMark && hasPlayerRelic(board, levelData);
 
   function saveProgress(nextLevel: number, nextDifficulty: Difficulty = difficulty) {
     progress.current = { ...progress.current, selected: nextDifficulty, [nextDifficulty]: nextLevel };
@@ -570,10 +566,10 @@ export default function CompanionRelicdokuScreen() {
               {rowCells.map((cell, col) => {
                 const region = levelData.regions[row][col];
                 const revealed = isRevealed(levelData, row, col);
-                const mark = getVisibleMark(board, levelData.regions, row, col, showAutoMarks);
+                const mark = getVisibleMark(board, row, col);
                 const cellLabel = cell === "relic" ? `${activeRelic.name}${revealed ? ", revealed clue" : ""}`
                   : mark === "manual" ? "marked X"
-                  : mark === "auto" ? "automatically excluded" : "empty";
+                  : "empty";
                 return (
                   <Pressable
                     key={col}
@@ -589,7 +585,7 @@ export default function CompanionRelicdokuScreen() {
                       regionBorders(row, col),
                     ]}
                   >
-                    {mark && <Text style={[styles.markX, { fontSize: levelData.size > 8 && !expanded ? 19 : 26 }, mark === "auto" && styles.automaticMark]}>×</Text>}
+                    {mark && <Text style={[styles.markX, { fontSize: levelData.size > 8 && !expanded ? 19 : 26 }]}>×</Text>}
                     {cell === "relic" && (
                       <View style={[styles.relicContainer, revealed && styles.revealedRelic]}>
                         <Image
@@ -641,21 +637,6 @@ export default function CompanionRelicdokuScreen() {
             <Ionicons name="close" size={23} color="#EDE4FA" />
             <Text style={styles.modeText}>Mark X</Text>
           </Pressable>
-        </View>
-
-        <View style={styles.autoMarkRow}>
-          <View style={styles.autoMarkCopy}>
-            <Text style={styles.autoMarkTitle}>Auto X</Text>
-            <Text style={styles.autoMarkDescription}>Mark blocked squares after you place a relic</Text>
-          </View>
-          <Switch
-            accessibilityLabel="Auto X"
-            value={autoMark}
-            disabled={interactionDisabled}
-            onValueChange={setAutoMark}
-            trackColor={{ false: "#3E344A", true: "#8455B8" }}
-            thumbColor="#F8F2FF"
-          />
         </View>
 
         <View
@@ -719,12 +700,12 @@ export default function CompanionRelicdokuScreen() {
 
           <Rule
             number="4"
-            text="X marks are optional. Turn on Auto X for help eliminating squares after you place a relic."
+            text="Only you can add X marks. Choose Mark X, then tap a square. No X marks appear automatically."
           />
 
           <Rule
             number="5"
-            text="Finish the board to advance automatically. Both modes grow larger; Hard reveals fewer starter clues as you progress."
+            text="Each board starts with one locked relic. Finish to advance. Both modes grow larger; Hard has more squares and relics."
           />
           <Rule number="6" text="The timer counts your playing time and pauses when you leave the game. Restarting or changing difficulty resets it." />
         </View>
@@ -935,10 +916,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  automaticMark: {
-    color: "rgba(52,43,69,0.45)",
-  },
-
   relicContainer: {
     width: "82%",
     height: "82%",
@@ -986,31 +963,6 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "700",
-  },
-
-  autoMarkRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 4,
-    marginTop: 12,
-  },
-
-  autoMarkCopy: {
-    flex: 1,
-  },
-
-  autoMarkTitle: {
-    color: "#EDE4FA",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-
-  autoMarkDescription: {
-    color: "#AFA2BC",
-    fontSize: 11,
-    lineHeight: 16,
-    marginTop: 2,
   },
 
   messageCard: {

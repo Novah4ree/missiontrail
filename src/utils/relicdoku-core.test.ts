@@ -17,17 +17,16 @@ import {
   TOTAL_LEVELS,
 } from "./relicdoku-core.ts";
 
-test("all 500 levels start empty, including the former starter-clue levels", () => {
+test("all 500 Easy levels start with exactly one locked relic and no X marks", () => {
   for (let level = 1; level <= TOTAL_LEVELS; level += 1) {
     const data = buildLevel(level);
     const board = createInitialBoard(data);
-    assert.equal(countRelics(board), 0, `Level ${level}`);
+    assert.equal(countRelics(board), 1, `Level ${level}`);
+    assert.equal(data.revealed.length, 1);
     for (let row = 0; row < data.size; row += 1) {
       for (let col = 0; col < data.size; col += 1) {
-        assert.equal(board[row][col], "empty");
-        // Even a player who kept Auto X on must see a clean new board.
-        assert.equal(getVisibleMark(board, data.regions, row, col, true), null);
-        assert.equal(isAutoBlocked(board, data.regions, row, col), false);
+        assert.equal(board[row][col], isRevealed(data, row, col) ? "relic" : "empty");
+        assert.equal(getVisibleMark(board, row, col), null);
       }
     }
   }
@@ -61,28 +60,28 @@ test("manual X notes toggle without changing relics or the previous undo snapsho
   const marked = toggleMark(original, 0, 0);
   assert.equal(original[0][0], "empty");
   assert.equal(marked[0][0], "marked");
-  assert.equal(countRelics(marked), 0);
-  assert.equal(getVisibleMark(marked, data.regions, 0, 0, false), "manual");
+  assert.equal(countRelics(marked), 1);
+  assert.equal(getVisibleMark(marked, 0, 0), "manual");
   assert.equal(toggleMark(marked, 0, 0)[0][0], "empty");
   marked[0][0] = "relic";
   assert.equal(toggleMark(marked, 0, 0)[0][0], "relic");
 });
 
-test("Auto X is opt-in and disappears when the blocking relic is removed", () => {
+test("placing and removing relics never creates X marks", () => {
   const data = buildLevel(5);
   const board = createInitialBoard(data);
   const col = data.solution[0];
   board[0][col] = "relic";
   const blockedCol = (col + 1) % data.size;
-  assert.equal(getVisibleMark(board, data.regions, 0, blockedCol, false), null);
-  assert.equal(getVisibleMark(board, data.regions, 0, blockedCol, true), "auto");
+  assert.equal(getVisibleMark(board, 0, blockedCol), null);
+  assert.equal(getVisibleMark(board, 0, blockedCol), null);
   assert.equal(board[0][blockedCol], "empty");
-  assert.equal(getVisibleMark(board, data.regions, 0, col, true), null);
+  assert.equal(getVisibleMark(board, 0, col), null);
   board[0][col] = "empty";
-  assert.equal(getVisibleMark(board, data.regions, 0, blockedCol, true), null);
+  assert.equal(getVisibleMark(board, 0, blockedCol), null);
 });
 
-test("manual notes survive automatic exclusions and removing the relic", () => {
+test("manual notes survive placing and removing a relic", () => {
   const data = buildLevel(1);
   const board = createInitialBoard(data);
   const col = data.solution[0];
@@ -90,10 +89,10 @@ test("manual notes survive automatic exclusions and removing the relic", () => {
   board[0][markedCol] = "marked";
   board[0][col] = "relic";
   const snapshot = cloneBoard(board);
-  assert.equal(getVisibleMark(board, data.regions, 0, markedCol, true), "manual");
+  assert.equal(getVisibleMark(board, 0, markedCol), "manual");
   board[0][col] = "empty";
   assert.equal(snapshot[0][col], "relic");
-  assert.equal(getVisibleMark(board, data.regions, 0, markedCol, false), "manual");
+  assert.equal(getVisibleMark(board, 0, markedCol), "manual");
 });
 
 test("incorrect pencil marks never make a solvable puzzle fail or prevent a hint", () => {
@@ -109,7 +108,8 @@ test("restart creates an independent clean board after notes and relic placement
   old[0][data.solution[0]] = "relic";
   old[1][0] = "marked";
   const restarted = createInitialBoard(data);
-  assert.ok(restarted.flat().every((cell) => cell === "empty"));
+  assert.equal(countRelics(restarted), 1);
+  assert.ok(restarted.flat().every((cell) => cell !== "marked"));
   assert.equal(old[0][data.solution[0]], "relic");
 });
 
@@ -129,12 +129,12 @@ test("solver rejects conflicting relics while ignoring pencil notes", () => {
 
 test("Hard scales from 64 to 144 squares and always has more relics than Easy", () => {
   let previousSize = 0;
-  let previousClues = 2;
+  let previousClues = 1;
   for (let level = 1; level <= TOTAL_LEVELS; level += 1) {
     const hard = buildLevel(level, "hard");
     assert.ok(hard.size >= previousSize);
     assert.ok(hard.size > getSizeForLevel(level, "easy"));
-    assert.ok(hard.revealed.length >= 1 && hard.revealed.length <= 2);
+    assert.equal(hard.revealed.length, 1);
     assert.ok(hard.revealed.length <= previousClues);
     assert.ok(hard.revealed.length < hard.size / 2);
     previousSize = hard.size;
@@ -181,7 +181,7 @@ test("revealed clues alone never activate automatic X marks", () => {
   const board = createInitialBoard(data);
   for (let row = 0; row < data.size; row += 1) {
     for (let col = 0; col < data.size; col += 1) {
-      assert.equal(getVisibleMark(board, data.regions, row, col, hasPlayerRelic(board, data)), null);
+      assert.equal(getVisibleMark(board, row, col), null);
     }
   }
   const row = data.solution.findIndex((col, r) => !isRevealed(data, r, col));

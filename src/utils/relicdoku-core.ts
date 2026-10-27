@@ -192,14 +192,8 @@ export function buildLevel(level: number, difficulty: Difficulty = "easy"): Leve
     solution = [...solutions[((level - 1) * 73 + size * 19) % solutions.length]];
   }
   const regions = createRegionMap(size, solution, difficulty === "hard" ? level + 997 : level);
-  const revealed: RevealedRelic[] = [];
-  if (difficulty === "hard") {
-    const count = level <= 50 ? 2 : 1;
-    for (let index = 0; index < count; index += 1) {
-      const row = (level * 3 + index * Math.floor(size / 2)) % size;
-      revealed.push({ row, col: solution[row] });
-    }
-  }
+  const row = (level * 3) % size;
+  const revealed: RevealedRelic[] = [{ row, col: solution[row] }];
 
   return {
     size,
@@ -346,16 +340,11 @@ export function toggleMark(board: CellState[][], row: number, col: number): Cell
   return next;
 }
 
-// Automatic exclusions are derived, never stored in the board or undo history.
+// Only player-created notes are rendered as X marks.
 export function getVisibleMark(
   board: CellState[][],
-  regions: number[][],
   row: number,
   col: number,
-  autoMark: boolean,
-): "manual" | "auto" | null {
-  if (board[row][col] === "relic") return null;
-  if (board[row][col] === "marked") return "manual";
-  return autoMark && isAutoBlocked(board, regions, row, col) ? "auto" : null;
+): "manual" | null {
+  return board[row][col] === "marked" ? "manual" : null;
 }
-
